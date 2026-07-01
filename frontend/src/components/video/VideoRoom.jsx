@@ -271,6 +271,42 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => clearInterval(iv);
   }, [modalTab, showSettingsModal]);
 
+  const moreRef = useRef(null);
+
+  // ── Timer ──
+  useEffect(() => {
+    const start = parseInt(sessionStorage.getItem('NxtMeet_start') || sessionStorage.getItem('etherx_meet_start') || String(Date.now()), 10);
+    sessionStorage.setItem('NxtMeet_start', String(start));
+    const t = setInterval(() => setElapsed(Math.floor((Date.now()-start)/1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── Close more panel on outside click ──
+  useEffect(() => {
+    if (!moreOpen) return;
+    const fn = e => { if (moreRef.current && !moreRef.current.contains(e.target)) { setMoreOpen(false); setActiveSub(null); } };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [moreOpen]);
+
+  const handleKicked = useCallback(() => {
+    sessionStorage.removeItem('etherx_host_room');
+    navigate(ROUTES.DASHBOARD);
+  }, [navigate]);
+
+  const {
+    localStream, peers,
+    micMuted, cameraOff, isScreenSharing,
+    spotlightId, setSpotlightId,
+    toggleMic, toggleCamera, toggleScreenShare,
+    userName, connectionError,
+    reactions, sendReaction,
+    networkQuality,
+    sendHandRaise, sendHandLower,
+    createPoll, votePoll,
+    updateNotes,
+  } = useWebRTC(roomCode, { onKicked: handleKicked });
+
   const lastPlayedReactionIdRef = useRef(0);
 
   // Synthesize audio using Web Audio API for soundboard reactions
@@ -487,42 +523,6 @@ export default function VideoRoom({ roomCode, isHost }) {
       playAudioSynth(latest.emoji);
     }
   }, [reactions]);
-
-  const moreRef = useRef(null);
-
-  // ── Timer ──
-  useEffect(() => {
-    const start = parseInt(sessionStorage.getItem('NxtMeet_start') || sessionStorage.getItem('etherx_meet_start') || String(Date.now()), 10);
-    sessionStorage.setItem('NxtMeet_start', String(start));
-    const t = setInterval(() => setElapsed(Math.floor((Date.now()-start)/1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  // ── Close more panel on outside click ──
-  useEffect(() => {
-    if (!moreOpen) return;
-    const fn = e => { if (moreRef.current && !moreRef.current.contains(e.target)) { setMoreOpen(false); setActiveSub(null); } };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, [moreOpen]);
-
-  const handleKicked = useCallback(() => {
-    sessionStorage.removeItem('etherx_host_room');
-    navigate(ROUTES.DASHBOARD);
-  }, [navigate]);
-
-  const {
-    localStream, peers,
-    micMuted, cameraOff, isScreenSharing,
-    spotlightId, setSpotlightId,
-    toggleMic, toggleCamera, toggleScreenShare,
-    userName, connectionError,
-    reactions, sendReaction,
-    networkQuality,
-    sendHandRaise, sendHandLower,
-    createPoll, votePoll,
-    updateNotes,
-  } = useWebRTC(roomCode, { onKicked: handleKicked });
 
   const handleEnd = () => {
     if (isRecording) stopRecording();
