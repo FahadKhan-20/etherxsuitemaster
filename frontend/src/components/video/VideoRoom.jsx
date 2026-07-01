@@ -271,6 +271,222 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => clearInterval(iv);
   }, [modalTab, showSettingsModal]);
 
+  const lastPlayedReactionIdRef = useRef(0);
+
+  // Synthesize audio using Web Audio API for soundboard reactions
+  const playAudioSynth = (emoji) => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.15, ctx.currentTime);
+      masterGain.connect(ctx.destination);
+
+      const createNoiseBuffer = () => {
+        const bufferSize = ctx.sampleRate * 2;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        return buffer;
+      };
+
+      switch (emoji) {
+        case '🔔': { // Ding
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.connect(gainNode);
+          gainNode.connect(masterGain);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(987.77, ctx.currentTime);
+          gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+          osc.start();
+          osc.stop(ctx.currentTime + 1.6);
+          break;
+        }
+        case '💥': { // Boom
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.connect(gainNode);
+          gainNode.connect(masterGain);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(150, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.4);
+          gainNode.gain.setValueAtTime(0.8, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.9);
+          break;
+        }
+        case '🚨': { // Alert
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.connect(gainNode);
+          gainNode.connect(masterGain);
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(400, ctx.currentTime);
+          osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.15);
+          osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.3);
+          osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.45);
+          osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.6);
+          gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.75);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.8);
+          break;
+        }
+        case '👏': { // Clap
+          const noise = ctx.createBufferSource();
+          noise.buffer = createNoiseBuffer();
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.value = 1000;
+          filter.Q.value = 2;
+          const gainNode = ctx.createGain();
+          noise.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(masterGain);
+          gainNode.gain.setValueAtTime(0.8, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+          noise.start();
+          noise.stop(ctx.currentTime + 0.2);
+          break;
+        }
+        case '🎉': { // Applause
+          const now = ctx.currentTime;
+          const totalClaps = 12;
+          for (let i = 0; i < totalClaps; i++) {
+            const startTime = now + i * 0.12 + Math.random() * 0.05;
+            const noise = ctx.createBufferSource();
+            noise.buffer = createNoiseBuffer();
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 800 + Math.random() * 400;
+            filter.Q.value = 2;
+            const gainNode = ctx.createGain();
+            noise.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(masterGain);
+            gainNode.gain.setValueAtTime(0.4, startTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.2);
+            noise.start(startTime);
+            noise.stop(startTime + 0.25);
+          }
+          break;
+        }
+        case '🎺': { // Fanfare
+          const notes = [261.63, 329.63, 392.00, 523.25];
+          const now = ctx.currentTime;
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(masterGain);
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+            const noteStart = now + idx * 0.12;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.setValueAtTime(0.5, noteStart);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.5);
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.6);
+          });
+          break;
+        }
+        case '🎵': { // Music
+          const notes = [523.25, 587.33, 659.25, 783.99, 1046.50];
+          const now = ctx.currentTime;
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(masterGain);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.15);
+            const noteStart = now + idx * 0.15;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.setValueAtTime(0.4, noteStart);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.4);
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.5);
+          });
+          break;
+        }
+        case '😂': { // Laugh
+          const now = ctx.currentTime;
+          const totalChirps = 6;
+          for (let i = 0; i < totalChirps; i++) {
+            const startTime = now + i * 0.18;
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(masterGain);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, startTime);
+            osc.frequency.exponentialRampToValueAtTime(900, startTime + 0.12);
+            gainNode.gain.setValueAtTime(0.5, startTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.15);
+            osc.start(startTime);
+            osc.stop(startTime + 0.18);
+          }
+          break;
+        }
+        case '🥁': { // Drum Roll
+          const now = ctx.currentTime;
+          const rollHits = 15;
+          for (let i = 0; i < rollHits; i++) {
+            const startTime = now + i * 0.05;
+            const noise = ctx.createBufferSource();
+            noise.buffer = createNoiseBuffer();
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 300;
+            const gainNode = ctx.createGain();
+            noise.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(masterGain);
+            gainNode.gain.setValueAtTime(0.3, startTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
+            noise.start(startTime);
+            noise.stop(startTime + 0.1);
+          }
+          const crashTime = now + rollHits * 0.05;
+          const cymbal = ctx.createBufferSource();
+          cymbal.buffer = createNoiseBuffer();
+          const cymbalFilter = ctx.createBiquadFilter();
+          cymbalFilter.type = 'highpass';
+          cymbalFilter.frequency.value = 5000;
+          const cymbalGain = ctx.createGain();
+          cymbal.connect(cymbalFilter);
+          cymbalFilter.connect(cymbalGain);
+          cymbalGain.connect(masterGain);
+          cymbalGain.gain.setValueAtTime(0.6, crashTime);
+          cymbalGain.gain.exponentialRampToValueAtTime(0.001, crashTime + 1.2);
+          cymbal.start(crashTime);
+          cymbal.stop(crashTime + 1.3);
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error('Audio synth error:', err);
+    }
+  };
+
+  // Sync and play synthesized audio for soundboard reactions
+  useEffect(() => {
+    if (!reactions || reactions.length === 0) return;
+    const latest = reactions[reactions.length - 1];
+    if (latest && latest.id !== lastPlayedReactionIdRef.current) {
+      lastPlayedReactionIdRef.current = latest.id;
+      playAudioSynth(latest.emoji);
+    }
+  }, [reactions]);
 
   const moreRef = useRef(null);
 
