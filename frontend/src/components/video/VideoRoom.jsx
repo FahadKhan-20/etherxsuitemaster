@@ -1705,7 +1705,7 @@ export default function VideoRoom({ roomCode, isHost }) {
             {/* Grid */}
             <TBtn icon={Grid} active={gridView} onClick={() => setGridView(v=>!v)} label="Grid view" />
             {/* Add person */}
-            <TBtn icon={UserPlus} onClick={handleCopyLink} label="Invite — copy link" />
+            <TBtn icon={copied ? Check : UserPlus} active={copied} onClick={handleCopyLink} label={copied ? "Link Copied!" : "Invite — copy link"} />
             {/* Activities */}
             <TBtn icon={Sparkles} active={activeSub !== null && activeSub !== 'speaktime' && activeSub !== 'polls'} onClick={() => { setActiveSub(v => v === 'activities' ? null : 'activities'); setChatOpen(false); setShowPeople(false); }} label="Activities" />
 
