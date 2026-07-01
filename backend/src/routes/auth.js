@@ -260,4 +260,40 @@ router.put('/me', auth, async (req, res, next) => {
   }
 });
 
+const os = require('os');
+
+router.get('/local-ip', (req, res) => {
+  const interfaces = os.networkInterfaces();
+  let localIp = 'localhost';
+  
+  // 1. Prioritize Wi-Fi/wlan/ethernet physical adapters
+  for (const name of Object.keys(interfaces)) {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('wi-fi') || lowerName.includes('wlan') || lowerName.includes('ethernet')) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('169.254.')) {
+          localIp = iface.address;
+          break;
+        }
+      }
+    }
+    if (localIp !== 'localhost') break;
+  }
+  
+  // 2. Fallback to any other IPv4 (excluding link-local)
+  if (localIp === 'localhost') {
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('169.254.')) {
+          localIp = iface.address;
+          break;
+        }
+      }
+      if (localIp !== 'localhost') break;
+    }
+  }
+  
+  res.json({ success: true, localIp });
+});
+
 module.exports = router;
