@@ -261,6 +261,12 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [activeDashes, setActiveDashes] = useState(0);
   const [isPlayingTest, setIsPlayingTest] = useState(false);
 
+  const [toast, setToast] = useState(null);
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   useEffect(() => {
     if (modalTab !== 'audio' || !showSettingsModal) {
       setActiveDashes(0);
@@ -1380,7 +1386,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {/* List items */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {[
-              { label: 'Performance settings', icon: Activity, fn: () => alert('Performance optimized for local network.') },
+              { label: 'Performance settings', icon: Activity, fn: () => { setMoreOpen(false); showToast('Performance optimized for local network.'); } },
               {
                 label: 'View full screen', icon: Maximize, fn: () => {
                   if (!document.fullscreenElement) {
@@ -1391,20 +1397,20 @@ export default function VideoRoom({ roomCode, isHost }) {
                   setMoreOpen(false);
                 }
               },
-              { label: 'Security options', icon: Shield, fn: () => alert('Room security: End-to-end encrypted.') },
-              { label: 'Closed captions', icon: Subtitles, fn: () => { setMoreOpen(false); alert('Closed captions enabled.'); } },
+              { label: 'Security options', icon: Shield, fn: () => { setMoreOpen(false); showToast('Room security: End-to-end encrypted.'); } },
+              { label: 'Closed captions', icon: Subtitles, fn: () => { setMoreOpen(false); showToast('Closed captions enabled.'); } },
               { label: 'Polls', icon: Vote, fn: () => { setActiveSub('polls'); setChatOpen(false); setShowPeople(false); setMoreOpen(false); } },
-              { label: 'File sharing', icon: FolderOpen, fn: () => alert('Drag & drop files into Chat to share.') },
+              { label: 'File sharing', icon: FolderOpen, fn: () => { setMoreOpen(false); showToast('Drag & drop files into Chat to share.'); } },
               { divider: true },
-              { label: 'Share video', icon: Play, fn: () => alert('Video sharing initialized.') },
-              { label: 'Share audio', icon: Volume2, fn: () => alert('Audio sharing initialized.') },
-              { label: 'Disable extra noise suppression', icon: MicOff, fn: () => alert('Noise suppression disabled.') },
+              { label: 'Share video', icon: Play, fn: () => { setMoreOpen(false); showToast('Video sharing initialized.'); } },
+              { label: 'Share audio', icon: Volume2, fn: () => { setMoreOpen(false); showToast('Audio sharing initialized.'); } },
+              { label: 'Disable extra noise suppression', icon: MicOff, fn: () => { setMoreOpen(false); showToast('Noise suppression disabled.'); } },
               { label: 'Select background', icon: ImageIcon, fn: () => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
               { label: 'Participants stats', icon: BarChart3, fn: () => { setActiveSub('speaktime'); setChatOpen(false); setShowPeople(false); setMoreOpen(false); } },
               { divider: true },
               { label: 'Settings', icon: Settings, fn: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
               { label: 'View shortcuts', icon: Keyboard, fn: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
-              { label: 'Leave feedback', icon: MessageSquare, fn: () => alert('Feedback submitted successfully!') }
+              { label: 'Leave feedback', icon: MessageSquare, fn: () => { setMoreOpen(false); showToast('Feedback submitted successfully!'); } }
             ].map((item, idx) => {
               if (item.divider) {
                 return <div key={`div-${idx}`} style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '6px 0' }} />;
@@ -1877,6 +1883,21 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
+      {/* Premium Toast Notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1100,
+          background: 'rgba(18, 18, 18, 0.85)', backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 12,
+          padding: '12px 24px', color: '#fff', fontSize: 13, fontWeight: 500,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: 10,
+          animation: 'slideDown 0.3s ease-out forwards'
+        }}>
+          <span style={{ fontSize: 16 }}>ℹ️</span>
+          <span>{toast}</span>
+        </div>
+      )}
+
       <style>{`
         @keyframes twinkle { 0%,100%{opacity:0.3} 50%{opacity:0.9} }
         @keyframes rainFall { 0%{transform:translateY(-60px)} 100%{transform:translateY(110vh)} }
@@ -1885,6 +1906,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes confettiFall { 0%{transform:translateY(-20px) rotate(0deg)} 100%{transform:translateY(110vh) rotate(720deg)} }
         @keyframes soundFlashAnim { 0%{transform:scale(0.3);opacity:0} 20%{transform:scale(1.2);opacity:1} 100%{transform:scale(1.6);opacity:0} }
         @keyframes chainPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes slideDown { 0%{transform:translate(-50%,-20px);opacity:0} 100%{transform:translate(-50%,0);opacity:1} }
       `}</style>
     </div>
   );
