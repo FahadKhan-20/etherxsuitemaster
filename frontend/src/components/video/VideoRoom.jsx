@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { useWebRTC } from '../../hooks/useWebRTC';
+import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
 import { useMeeting } from '../../context/MeetingContext';
 import VideoTile from './VideoTile';
@@ -307,6 +308,12 @@ export default function VideoRoom({ roomCode, isHost }) {
     updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+
+  const {
+    devices,
+    switchDevice,
+    selectedDevices
+  } = useMediaDevices();
 
   const lastPlayedReactionIdRef = useRef(0);
 
