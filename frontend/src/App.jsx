@@ -5,6 +5,7 @@ import { AnimationProvider } from './context/AnimationContext';
 import { MeetingProvider } from './context/MeetingContext';
 import { UserProvider } from './context/UserContext';
 import { UIProvider } from './context/UIContext';
+import { WalletProvider } from './context/WalletContext';
 import VideoBackground from './components/effects/VideoBackground';
 import Landing from './pages/Landing';
 import Join from './pages/Join';
@@ -56,15 +57,17 @@ function App() {
   return (
     <BrowserRouter>
       <VideoBackground />
-      <AnimationProvider>
-        <UserProvider>
-          <UIProvider>
-            <MeetingProvider>
-              <AppRoutes />
-            </MeetingProvider>
-          </UIProvider>
-        </UserProvider>
-      </AnimationProvider>
+      <WalletProvider>
+        <AnimationProvider>
+          <UserProvider>
+            <UIProvider>
+              <MeetingProvider>
+                <AppRoutes />
+              </MeetingProvider>
+            </UIProvider>
+          </UserProvider>
+        </AnimationProvider>
+      </WalletProvider>
     </BrowserRouter>
   );
 }
