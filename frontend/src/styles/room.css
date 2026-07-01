@@ -1,14 +1,14 @@
 .gmeet-room {
   --nm-primary-gold: #d4af37;
   --nm-shadow-gold: #b8860b;
-  --nm-background: #141414;
+  --nm-background: #0a0a0a;
   height: 100vh;
   overflow: hidden;
   display: grid;
   grid-template-rows: 52px 1fr 72px;
   background: var(--nm-background);
   color: #d4af37;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   position: relative;
 }
 
@@ -221,51 +221,51 @@
 /* ── LiveKit gold theme overrides ── */
 :root {
   --lk-color-primary: #d4af37;
-  --lk-color-primary-hover: #c39a20;
-  --lk-control-bar-background: #1a1a1a;
-  --lk-bg1: #141414;
-  --lk-bg2: #1a1a1a;
-  --lk-bg3: #222222;
-  --lk-border-color: #2d2a24;
+  --lk-color-primary-hover: #c4a45e;
+  --lk-control-bar-background: #0d0f0f;
+  --lk-bg1: #0a0a0a;
+  --lk-bg2: #111314;
+  --lk-bg3: #1a1c1c;
+  --lk-border-color: #b8860b;
   --lk-foreground1: #d4af37;
-  --lk-foreground2: #eedca0;
-  --lk-foreground3: rgba(238, 220, 160, 0.6);
+  --lk-foreground2: #c4a45e;
+  --lk-foreground3: rgba(212,175,55,0.6);
 }
 
 [data-lk-theme] {
   --lk-color-primary: #d4af37 !important;
-  --lk-bg1: #141414 !important;
-  --lk-bg2: #1a1a1a !important;
-  --lk-bg3: #222222 !important;
-  --lk-control-bar-background: #1a1a1a !important;
-  --lk-border-color: rgba(45, 42, 36, 0.6) !important;
+  --lk-bg1: #0a0a0a !important;
+  --lk-bg2: #111314 !important;
+  --lk-bg3: #1a1c1c !important;
+  --lk-control-bar-background: #0d0f0f !important;
+  --lk-border-color: rgba(184,134,11,0.6) !important;
   --lk-foreground1: #d4af37 !important;
-  --lk-foreground2: #eedca0 !important;
-  --lk-foreground3: rgba(238, 220, 160, 0.55) !important;
+  --lk-foreground2: #c4a45e !important;
+  --lk-foreground3: rgba(212,175,55,0.55) !important;
 }
 
 /* Join button gold */
 [data-lk-theme] button[class*="lk-join"],
 [data-lk-theme] button[class*="lk-button"]:not([class*="lk-disconnect"]) {
   background: #d4af37 !important;
-  color: #141414 !important;
+  color: #0a0a0a !important;
   border-color: #d4af37 !important;
 }
 
 [data-lk-theme] button[class*="lk-join"]:hover,
 [data-lk-theme] button[class*="lk-button"]:not([class*="lk-disconnect"]):hover {
-  background: #c39a20 !important;
+  background: #c4a45e !important;
 }
 
 /* Control bar */
 [data-lk-theme] .lk-control-bar {
-  background: #1a1a1a !important;
-  border-top: 1px solid rgba(45, 42, 36, 0.5) !important;
+  background: #0d0f0f !important;
+  border-top: 1px solid rgba(184,134,11,0.5) !important;
 }
 
 /* PreJoin panel */
 [data-lk-theme] .lk-prejoin {
-  background: #141414 !important;
+  background: #0a0a0a !important;
 }
 
 [data-lk-theme] .lk-prejoin h2,
@@ -276,7 +276,7 @@
 
 /* Video tiles */
 [data-lk-theme] .lk-participant-tile {
-  background: #1a1a1a !important;
+  background: #111314 !important;
 }
 
 .etherx-room-wrap {
@@ -291,13 +291,14 @@
   top: 12px;
   left: 16px;
   z-index: 2;
-  width: 140px;
+  height: 140px;
+  width: auto;
   pointer-events: none;
 }
 
 .etherx-room-logo img {
-  width: 140px;
-  height: auto;
+  height: 140px;
+  width: auto;
   object-fit: contain;
   display: block;
 }
