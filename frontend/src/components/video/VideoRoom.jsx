@@ -305,7 +305,8 @@ export default function VideoRoom({ roomCode, isHost }) {
     sendHandRaise, sendHandLower,
     createPoll, votePoll,
     updateNotes,
-  } = useWebRTC(roomCode, { onKicked: handleKicked });
+    admitted, denied, joinRequests, admitUser, denyUser,
+  } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const lastPlayedReactionIdRef = useRef(0);
 
@@ -1045,8 +1046,139 @@ export default function VideoRoom({ roomCode, isHost }) {
   ];
 
   // ─── JSX ──────────────────────────────────────────────────────────────────
+  if (!admitted) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0,
+        background: 'linear-gradient(135deg, #09090b, #18181b)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'Inter, system-ui, sans-serif', color: '#fff', padding: 20
+      }}>
+        <style>{`
+          @keyframes wait-ping {
+            0% { transform: scale(1); opacity: 1; }
+            70%, 100% { transform: scale(2.5); opacity: 0; }
+          }
+        `}</style>
+        <div style={{
+          maxWidth: 480, width: '100%',
+          background: 'rgba(255, 255, 255, 0.03)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 24, padding: '40px 32px',
+          textAlign: 'center',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+        }}>
+          <img src={etherxLogo} alt="EtherX" style={{ width: 140, marginBottom: 30 }} />
+          
+          {denied ? (
+            <>
+              <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                <span style={{ fontSize: 32 }}>🛑</span>
+              </div>
+              <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>Entry Denied</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 28 }}>
+                The host has denied your request to join this meeting room.
+              </p>
+              <button
+                onClick={() => navigate(ROUTES.DASHBOARD)}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 12,
+                  background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
+                  color: '#fff', border: 'none', fontWeight: 600,
+                  fontSize: 14, cursor: 'pointer', transition: 'opacity 0.2s'
+                }}
+              >
+                Return to Dashboard
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Local Stream Preview */}
+              {localStream && (
+                <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: 16, overflow: 'hidden', background: '#000', marginBottom: 24, border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <video
+                    ref={el => { if (el) el.srcObject = localStream; }}
+                    autoPlay playsInline muted
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  <div style={{ position: 'absolute', bottom: 12, left: 12, fontSize: 11, background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,0.8)' }}>
+                    Self View Preview
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 99, background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.2)', color: '#c4b5fd', fontSize: 12, fontWeight: 500, marginBottom: 20 }}>
+                <span className="spinner" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#a78bfa', animation: 'wait-ping 1.5s infinite' }} />
+                Waiting Room Active
+              </div>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Waiting to be Admitted...</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, marginBottom: 10 }}>
+                Hi, <strong>{userName}</strong>. The host will let you in shortly.
+              </p>
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                Please keep this tab open and make sure your camera and microphone are ready.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ position:'fixed', inset:0, background:theme.bg, overflow:'hidden', fontFamily:'Inter, system-ui, sans-serif' }}>
+      
+      {/* Host Admission Toast Alerts */}
+      {isHost && joinRequests.length > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 90, right: 24, zIndex: 100,
+          display: 'flex', flexDirection: 'column', gap: 10,
+          maxWidth: 360, width: '100%'
+        }}>
+          {joinRequests.map(req => (
+            <div key={req.socketId} style={{
+              background: 'rgba(18, 18, 18, 0.85)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: 16, padding: '16px 20px',
+              display: 'flex', flexDirection: 'column', gap: 12,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            }}>
+              <div>
+                <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: '#fff' }}>Join Request</h4>
+                <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+                  <strong>{req.userName}</strong> wants to enter the room.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => admitUser(req.socketId)}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 8,
+                    background: '#22c55e', color: '#fff', border: 'none',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    transition: 'opacity 0.15s'
+                  }}
+                >
+                  Admit
+                </button>
+                <button
+                  onClick={() => denyUser(req.socketId)}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 8,
+                    background: '#ef4444', color: '#fff', border: 'none',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    transition: 'opacity 0.15s'
+                  }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Particles */}
       <ParticleLayer effect={particleEffect} />
