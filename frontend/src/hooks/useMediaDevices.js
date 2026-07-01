@@ -11,6 +11,11 @@ export function useMediaDevices() {
   const videoRef = useRef(null);
 
   const requestPermission = async () => {
+    if (!navigator.mediaDevices) {
+      setError('Media access requires a secure context (HTTPS). Please configure SSL or connect via localhost.');
+      setPermissions({ video: 'denied', audio: 'denied' });
+      return;
+    }
     try {
       const constraints = {
         video: selectedDevices.video ? { deviceId: { exact: selectedDevices.video } } : true,
@@ -44,6 +49,9 @@ export function useMediaDevices() {
   };
 
   const enumerateDevices = async () => {
+    if (!navigator.mediaDevices) {
+      return;
+    }
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const cameras = allDevices.filter(d => d.kind === 'videoinput');
