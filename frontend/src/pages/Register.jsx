@@ -6,7 +6,11 @@ import { persistAuthSession, isAuthenticated } from '../utils/auth'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS, AppleIcon, GoogleIcon, PersonIcon, MailIcon, LockIcon, EyeIcon } from './authShared'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const defaultBaseUrl = typeof window !== 'undefined'
+  ? window.location.origin
+  : 'http://localhost:5000';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
 
 function getStrength(pw) {
   if (!pw) return { score: 0, label: '', color: '' }
@@ -80,10 +84,18 @@ export default function Register() {
         <p className="auth-form-sub">Get started for free.</p>
 
         <div className="auth-social-group">
-          <button className="auth-social-btn" onClick={() => { window.location.href = `${API_BASE}/api/auth/apple` }}>
+          <button className="auth-social-btn" onClick={() => {
+            window.alert('Apple sign-in is not configured. Please use Email & Password.');
+          }}>
             <AppleIcon /> Apple
           </button>
-          <button className="auth-social-btn" onClick={() => { window.location.href = `${API_BASE}/api/auth/google` }}>
+          <button className="auth-social-btn" onClick={() => {
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+              window.alert('Google OAuth redirects require localhost. For mobile network testing, please register using your Email & Password.');
+              return;
+            }
+            window.location.href = `${API_BASE}/api/auth/google`;
+          }}>
             <GoogleIcon /> Google
           </button>
         </div>
