@@ -142,7 +142,10 @@ export default function TopBar({ showMeetingInfo = false }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-transparent bg-transparent font-inter">
-      <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4 px-4 py-3 md:px-6 xl:px-8">
+      <div 
+        className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4"
+        style={{ padding: '20px 24px' }}
+      >
         <button
           onClick={() => navigate(ROUTES.HOME)}
           className="flex min-w-0 items-center bg-transparent border-none p-0 cursor-pointer"
@@ -221,10 +224,11 @@ function EtherxMark() {
     <img
       src="/src/assets/etherx_transparent.png"
       alt="EtherX Meet"
-      style={{ height: '110px', width: 'auto', display: 'block' }}
+      style={{ width: '140px', height: 'auto', display: 'block' }}
     />
   );
 }
+
 
 function TopChip({ eyebrow, value, detail }) {
   return (
