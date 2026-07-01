@@ -80,6 +80,23 @@ function setupSignaling(httpServer, allowedOrigin) {
       io.to(roomCode).emit('room-locked', { locked });
     });
 
+    // ── Feature: Waiting Room / Admission ────────────────────────────────────
+    socket.on('request-join', ({ roomCode, userId, userName }) => {
+      socket.to(roomCode).emit('join-request', {
+        socketId: socket.id,
+        userId,
+        userName
+      });
+    });
+
+    socket.on('admit-user', ({ toSocketId }) => {
+      io.to(toSocketId).emit('admitted');
+    });
+
+    socket.on('deny-user', ({ toSocketId }) => {
+      io.to(toSocketId).emit('denied');
+    });
+
     // ── Feature 3: Reactions + Hand Queue ────────────────────────────────────
 
     /**
