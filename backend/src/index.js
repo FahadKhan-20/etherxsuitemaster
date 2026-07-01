@@ -1,5 +1,7 @@
 const path = require('path');
+const http = require('http');
 const express = require('express');
+const { setupSignaling, rooms } = require('./signaling');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -16,14 +18,24 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigin = process.env.CLIENT_URL;
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL_LAN,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://10.190.103.55:3000',
+].filter(Boolean);
 
 configurePassport();
 
 const corsOptions = {
-  origin: allowedOrigin,
+  origin: (origin, callback) => {
+    // Dynamically allow the requesting origin to support local network devices
+    callback(null, true);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 };
 
 app.use(cors(corsOptions));
@@ -40,6 +52,19 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/livekit', livekitRoutes);
+
+app.get('/api/rooms/:code/participants', (req, res) => {
+  const { code } = req.params;
+  const roomMap = rooms.get(code);
+  if (!roomMap) {
+    return res.json({ success: true, participants: [] });
+  }
+  const list = Array.from(roomMap.values()).map(p => ({
+    userName: p.userName
+  }));
+  res.json({ success: true, participants: list });
+});
+
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -63,8 +88,12 @@ app.on('error', (error) => {
 const startServer = async () => {
   await connectDB();
 
-  app.listen(PORT, () => {
+  const httpServer = http.createServer(app);
+  setupSignaling(httpServer, allowedOrigins);
+
+  httpServer.listen(PORT, () => {
     console.log(`EtherXMeet backend running on http://localhost:${PORT}`);
+    console.log(`EtherXMeet backend LAN:   http://10.190.103.55:${PORT}`);
   });
 };
 
