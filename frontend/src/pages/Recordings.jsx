@@ -15,7 +15,7 @@ const CARD = 'rgba(13,14,18,0.92)';
 const CARD2 = 'rgba(18,20,26,0.85)';
 const BORDER = 'rgba(255,255,255,0.07)';
 
-const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
 
 export default function Recordings() {
   const [query, setQuery] = useState('');
