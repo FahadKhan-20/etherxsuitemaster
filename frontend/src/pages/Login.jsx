@@ -6,7 +6,11 @@ import { persistAuthSession, isAuthenticated } from '../utils/auth'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS, AppleIcon, GoogleIcon, MailIcon, LockIcon, EyeIcon } from './authShared'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const defaultBaseUrl = typeof window !== 'undefined'
+  ? window.location.origin
+  : 'http://localhost:5000';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
 
 export default function Login() {
   const [email, setEmail]               = useState('')
@@ -99,11 +103,19 @@ export default function Login() {
               <h2 className="auth-form-title">Sign in</h2>
               <p className="auth-form-sub">Welcome back.</p>
 
-              <div className="auth-social-group">
-                <button className="auth-social-btn" onClick={() => { window.location.href = `${API_BASE}/api/auth/apple` }}>
+               <div className="auth-social-group">
+                <button className="auth-social-btn" onClick={() => {
+                  window.alert('Apple sign-in is not configured. Please use Email & Password.');
+                }}>
                   <AppleIcon /> Apple
                 </button>
-                <button className="auth-social-btn" onClick={() => { window.location.href = `${API_BASE}/api/auth/google` }}>
+                <button className="auth-social-btn" onClick={() => {
+                  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                    window.alert('Google OAuth redirects require localhost. For mobile network testing, please sign in with your Email & Password.');
+                    return;
+                  }
+                  window.location.href = `${API_BASE}/api/auth/google`;
+                }}>
                   <GoogleIcon /> Google
                 </button>
               </div>
