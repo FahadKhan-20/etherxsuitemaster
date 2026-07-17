@@ -31,7 +31,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const { account } = useWallet();
   const storedUser = getStoredUser();
   const userName = storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous');
-  const userId = storedUser?.id || account || crypto.randomUUID();
+  const fallbackIdRef = useRef(null);
+  if (!fallbackIdRef.current) fallbackIdRef.current = crypto.randomUUID();
+  const userId = storedUser?.id || account || fallbackIdRef.current;
 
   // ── Waiting Room State ──────────────────────────────────────────────────────
   const [admitted, setAdmitted]         = useState(!!isHost);
@@ -60,6 +62,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature 6: Collaborative Notes ─────────────────────────────────────────
   const [sharedNotes, setSharedNotes] = useState('');
+
+  // ── Feature: Media Share (YouTube / video URL) ─────────────────────────────
+  const [sharedMediaUrl, setSharedMediaUrl] = useState('');
 
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
@@ -143,6 +148,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setAdmitted(true);
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
+        socket.emit('get-media', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -244,6 +250,18 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setSharedNotes(notes);
       });
 
+      // ── Feature: Media Share ────────────────────────────────────────────────
+
+      // Receive current shared media state on connect
+      socket.on('media-state', ({ url }) => {
+        setSharedMediaUrl(url);
+      });
+
+      // Another participant shared a new media URL
+      socket.on('media-shared', ({ url }) => {
+        setSharedMediaUrl(url);
+      });
+
       // ── Feature 7: Polls ────────────────────────────────────────────────────
 
       // A new poll was created
@@ -260,6 +278,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       if (isHost) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
+        socket.emit('get-media', { roomCode });
       } else {
         socket.emit('request-join', { roomCode, userId, userName });
       }
@@ -310,10 +329,47 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     setMicMuted(m => !m);
   }, []);
 
-  const toggleCamera = useCallback(() => {
-    localStreamRef.current?.getVideoTracks().forEach(t => { t.enabled = !t.enabled; });
-    setCameraOff(c => !c);
-  }, []);
+  const toggleCamera = useCallback(async () => {
+    if (!cameraOff) {
+      // ── TURN OFF: stop track completely → kills hardware indicator light
+      localStreamRef.current?.getVideoTracks().forEach(t => {
+        t.stop();
+        localStreamRef.current.removeTrack(t);
+      });
+      // Tell all peers: send a null/black track so their UI updates
+      Object.values(pcsRef.current).forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(null).catch(() => {});
+      });
+      setCameraOff(true);
+    } else {
+      // ── TURN ON: re-acquire camera → light comes back on only now
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const newTrack = newStream.getVideoTracks()[0];
+        // Add new track to local stream
+        localStreamRef.current?.getVideoTracks().forEach(t => {
+          t.stop();
+          localStreamRef.current.removeTrack(t);
+        });
+        localStreamRef.current?.addTrack(newTrack);
+        // Replace track in all peer connections
+        Object.values(pcsRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
+          if (sender) sender.replaceTrack(newTrack).catch(() => {});
+        });
+        // Update the local stream state so VideoTile re-renders with new track
+        setLocalStream(prev => {
+          if (!prev) return prev;
+          // Return the same stream object (now with new track) to trigger re-render
+          return new MediaStream([...prev.getAudioTracks(), newTrack]);
+        });
+        setCameraOff(false);
+      } catch (err) {
+        console.error('Camera re-acquire failed:', err);
+      }
+    }
+  }, [cameraOff]);
 
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
@@ -389,6 +445,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socketRef.current?.emit('update-notes', { roomCode, notes: text });
   }, [roomCode]);
 
+  // ── Feature: Media Share emitter ────────────────────────────────────────────
+
+  /** Share a video URL with everyone in the room. */
+  const shareMedia = useCallback((url) => {
+    setSharedMediaUrl(url);
+    socketRef.current?.emit('share-media', { roomCode, url });
+  }, [roomCode]);
+
   // ── Feature 7: Poll emitters ────────────────────────────────────────────────
 
   /** Host: create a new poll. options is an array of option strings. */
@@ -439,6 +503,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     networkQuality,
     // Feature 6: Collaborative Notes
     sharedNotes, updateNotes,
+    // Feature: Media Share
+    sharedMediaUrl, shareMedia,
     // Feature 7: Polls
     polls, createPoll, votePoll, endPoll,
   };
