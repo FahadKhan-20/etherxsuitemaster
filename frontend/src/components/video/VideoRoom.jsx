@@ -379,11 +379,11 @@ export default function VideoRoom({ roomCode, isHost }) {
       </div>
 
       {/* MAIN BODY — fills full screen, header overlays on top */}
-      <div style={{ position:'absolute',inset:0,display:'flex',gap:16,padding:'0 16px 16px' }}>
+      <div style={{ position:'absolute',inset:0,display:'flex',gap:0 }}>
 
         {/* LEFT CHAT PANEL */}
         {chatOpen && (
-          <div style={{ width:320,flexShrink:0,background:'linear-gradient(160deg,#050505,#050505)',border:'1px solid rgba(212,175,55,.12)',borderRadius:22,display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out' }}>
+          <div style={{ width:320,flexShrink:0,background:'#050505',border:'none',borderRight:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 18px 10px' }}>
               <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:16 }}>✕</button>
@@ -466,7 +466,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         )}
 
         {/* MAIN VIDEO AREA */}
-        <div style={{ flex:1,position:'relative',borderRadius:22,overflow:'hidden',background:'linear-gradient(160deg,#050505,#050505)',border:'1px solid rgba(212,175,55,.12)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+        <div style={{ flex:1,position:'relative',borderRadius:0,overflow:'hidden',background:'#050505',display:'flex',alignItems:'center',justifyContent:'center' }}>
           <div style={{ position:'absolute',inset:0,opacity:.5,background:'radial-gradient(600px 400px at 50% 40%,rgba(212,175,55,.10),transparent 70%)',pointerEvents:'none' }}/>
 
           {showPeople && (
