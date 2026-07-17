@@ -83,6 +83,20 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['Yes','No','Maybe']);
   const [showPollForm, setShowPollForm] = useState(false);
+  const [navVisible, setNavVisible] = useState(true);
+  const navTimerRef = useRef(null);
+
+  // Auto-hide navbar after 3 s of no mouse movement
+  const resetNavTimer = useCallback(() => {
+    setNavVisible(true);
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    navTimerRef.current = setTimeout(() => setNavVisible(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    resetNavTimer();
+    return () => { if (navTimerRef.current) clearTimeout(navTimerRef.current); };
+  }, [resetNavTimer]);
 
   const moreRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
@@ -173,7 +187,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   }
 
   return (
-    <div style={{ position:'fixed',inset:0,background:"radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a",fontFamily:"'Sora',sans-serif",color:'#f0e6d3',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+    <div onMouseMove={resetNavTimer} onMouseEnter={resetNavTimer} style={{ position:'fixed',inset:0,background:"radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a",fontFamily:"'Sora',sans-serif",color:'#f0e6d3',display:'flex',flexDirection:'column',overflow:'hidden' }}>
       <style>{`
         :root {
           --gold:       #d4af37;
@@ -190,6 +204,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes slideDown{0%{transform:translate(-50%,-20px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}
         @keyframes fadeIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
         @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
+        .nav-bar{position:absolute;top:0;left:0;right:0;z-index:100;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s ease;}
+        .nav-bar.hidden{transform:translateY(-100%);opacity:0;pointer-events:none;}
         @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
         ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
         ::-webkit-scrollbar{width:8px;}
@@ -331,10 +347,10 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
-      {/* TOP BAR */}
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 32px 10px',position:'relative',minHeight:80,flexShrink:0 }}>
+      {/* TOP BAR — overlay, auto-hides after 3s */}
+      <div className={`nav-bar${navVisible ? '' : ' hidden'}`} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 24px',background:'linear-gradient(180deg,rgba(10,10,10,.85) 0%,rgba(10,10,10,0) 100%)',backdropFilter:'blur(12px)' }}>
         <div style={{ display:'flex',alignItems:'center',flexShrink:0,zIndex:1 }}>
-          <img src={etherxLogo} alt="EtherX Meet" style={{ height:100,width:'auto',objectFit:'contain' }}/>
+          <img src={etherxLogo} alt="EtherX Meet" style={{ height:52,width:'auto',objectFit:'contain' }}/>
         </div>
         <div style={{ position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex',alignItems:'center',gap:10,background:'rgba(212,175,55,.05)',padding:'7px 14px',borderRadius:20,whiteSpace:'nowrap' }}>
           <span style={{ fontSize:12.5,fontWeight:600 }}>{fmtTitle(roomCode)}</span>
@@ -362,8 +378,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       </div>
 
-      {/* MAIN BODY */}
-      <div style={{ flex:1,minHeight:0,padding:'6px 28px 20px',display:'flex',gap:16 }}>
+      {/* MAIN BODY — fills entire screen behind overlay nav */}
+      <div style={{ position:'absolute',inset:0,padding:'0 16px 16px',display:'flex',gap:16,paddingTop:8 }}>
 
         {/* LEFT CHAT PANEL */}
         {chatOpen && (
