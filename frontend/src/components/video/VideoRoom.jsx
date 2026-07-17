@@ -347,8 +347,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
-      {/* TOP BAR */}
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 32px 10px',position:'relative',flexShrink:0 }}>
+      {/* TOP BAR — floats over video, zero height cost */}
+      <div style={{ position:'absolute',top:0,left:0,right:0,zIndex:100,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 28px',background:'linear-gradient(180deg,rgba(10,10,10,.75) 0%,transparent 100%)',backdropFilter:'blur(0px)' }}>
         <div style={{ display:'flex',alignItems:'center',flexShrink:0,zIndex:1 }}>
           <img src={etherxLogo} alt="EtherX Meet" style={{ height:140,width:'auto',objectFit:'contain' }}/>
         </div>
@@ -378,8 +378,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       </div>
 
-      {/* MAIN BODY */}
-      <div style={{ flex:1,minHeight:0,padding:'0 16px 16px',display:'flex',gap:16 }}>
+      {/* MAIN BODY — fills full screen, header overlays on top */}
+      <div style={{ position:'absolute',inset:0,display:'flex',gap:16,padding:'0 16px 16px' }}>
 
         {/* LEFT CHAT PANEL */}
         {chatOpen && (
