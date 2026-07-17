@@ -56,7 +56,7 @@ export default function VideoTile({
         {hasVideo && !isCameraOff ? (
           <video ref={videoRef} autoPlay playsInline muted={isLocal}
             disablePictureInPicture disableRemotePlayback
-            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter }} />
+            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter, transform: isLocal ? 'scaleX(-1)' : 'none' }} />
         ) : (
           <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -108,7 +108,7 @@ export default function VideoTile({
       {hasVideo && !isCameraOff ? (
         <video ref={videoRef} autoPlay playsInline muted={isLocal}
           disablePictureInPicture disableRemotePlayback
-          style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter }} />
+          style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter, transform: isLocal ? 'scaleX(-1)' : 'none' }} />
       ) : (
         <div className="float-avatar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           {/* Pulse ring */}
