@@ -83,20 +83,20 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['Yes','No','Maybe']);
   const [showPollForm, setShowPollForm] = useState(false);
-  const [navVisible, setNavVisible] = useState(true);
-  const navTimerRef = useRef(null);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const toolbarTimerRef = useRef(null);
 
-  // Auto-hide navbar after 3 s of no mouse movement
-  const resetNavTimer = useCallback(() => {
-    setNavVisible(true);
-    if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    navTimerRef.current = setTimeout(() => setNavVisible(false), 3000);
+  // Auto-hide bottom toolbar after 3 s of no mouse movement
+  const resetToolbarTimer = useCallback(() => {
+    setToolbarVisible(true);
+    if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current);
+    toolbarTimerRef.current = setTimeout(() => setToolbarVisible(false), 3000);
   }, []);
 
   useEffect(() => {
-    resetNavTimer();
-    return () => { if (navTimerRef.current) clearTimeout(navTimerRef.current); };
-  }, [resetNavTimer]);
+    resetToolbarTimer();
+    return () => { if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current); };
+  }, [resetToolbarTimer]);
 
   const moreRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
@@ -187,7 +187,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   }
 
   return (
-    <div onMouseMove={resetNavTimer} onMouseEnter={resetNavTimer} style={{ position:'fixed',inset:0,background:"radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a",fontFamily:"'Sora',sans-serif",color:'#f0e6d3',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+    <div onMouseMove={resetToolbarTimer} onMouseEnter={resetToolbarTimer} style={{ position:'fixed',inset:0,background:"radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a",fontFamily:"'Sora',sans-serif",color:'#f0e6d3',display:'flex',flexDirection:'column',overflow:'hidden' }}>
       <style>{`
         :root {
           --gold:       #d4af37;
@@ -204,8 +204,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes slideDown{0%{transform:translate(-50%,-20px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}
         @keyframes fadeIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
         @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
-        .nav-bar{position:absolute;top:0;left:0;right:0;z-index:100;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s ease;}
-        .nav-bar.hidden{transform:translateY(-100%);opacity:0;pointer-events:none;}
+        .toolbar-wrap{transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
+        .toolbar-wrap.hidden{transform:translateY(110%);opacity:0;pointer-events:none;}
         @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
         ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
         ::-webkit-scrollbar{width:8px;}
@@ -347,10 +347,10 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
-      {/* TOP BAR — overlay, auto-hides after 3s */}
-      <div className={`nav-bar${navVisible ? '' : ' hidden'}`} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 24px',background:'linear-gradient(180deg,rgba(10,10,10,.85) 0%,rgba(10,10,10,0) 100%)',backdropFilter:'blur(12px)' }}>
+      {/* TOP BAR */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 32px 10px',position:'relative',flexShrink:0 }}>
         <div style={{ display:'flex',alignItems:'center',flexShrink:0,zIndex:1 }}>
-          <img src={etherxLogo} alt="EtherX Meet" style={{ height:52,width:'auto',objectFit:'contain' }}/>
+          <img src={etherxLogo} alt="EtherX Meet" style={{ height:140,width:'auto',objectFit:'contain' }}/>
         </div>
         <div style={{ position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex',alignItems:'center',gap:10,background:'rgba(212,175,55,.05)',padding:'7px 14px',borderRadius:20,whiteSpace:'nowrap' }}>
           <span style={{ fontSize:12.5,fontWeight:600 }}>{fmtTitle(roomCode)}</span>
@@ -378,8 +378,8 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       </div>
 
-      {/* MAIN BODY — fills entire screen behind overlay nav */}
-      <div style={{ position:'absolute',inset:0,padding:'0 16px 16px',display:'flex',gap:16,paddingTop:8 }}>
+      {/* MAIN BODY */}
+      <div style={{ flex:1,minHeight:0,padding:'0 16px 16px',display:'flex',gap:16 }}>
 
         {/* LEFT CHAT PANEL */}
         {chatOpen && (
@@ -546,19 +546,19 @@ export default function VideoRoom({ roomCode, isHost }) {
           </div>
 
           {/* BOTTOM TOOLBAR */}
-          <div style={{ position:'absolute',bottom:32,left:0,right:0,display:'flex',justifyContent:'center' }}>
+          <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position:'absolute',bottom:32,left:0,right:0,display:'flex',justifyContent:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:10,backdropFilter:'blur(16px)',padding:'14px 16px',borderRadius:1,boxShadow:'0 24px 60px -20px rgba(0,0,0,.65)',background:'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
 
               <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
                 <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:50,height:50,borderRadius:15,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:52,height:52,borderRadius:16,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
                   {micMuted ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
                 </button>
               </div>
 
               <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
                 <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:50,height:50,borderRadius:15,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:52,height:52,borderRadius:16,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
                   {cameraOff ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
                 </button>
               </div>
