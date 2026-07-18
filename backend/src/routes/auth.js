@@ -6,6 +6,11 @@ const { verifyWeb3AuthToken } = require('../utils/verifyWeb3AuthToken');
 
 const router = express.Router();
 
+const VALID_LOGIN_METHODS = ['google', 'email_passwordless', 'discord', 'wallet'];
+
+const resolveAuthProvider = (loginMethod) =>
+  VALID_LOGIN_METHODS.includes(loginMethod) ? loginMethod : 'wallet';
+
 const signToken = (user) =>
   jwt.sign(
     {
@@ -21,7 +26,7 @@ const signToken = (user) =>
 
 router.post('/web3auth', async (req, res, next) => {
   try {
-    const { idToken, walletAddress, avatar } = req.body;
+    const { idToken, walletAddress, avatar, loginMethod } = req.body;
 
     if (!idToken || !walletAddress) {
       return res.status(400).json({
@@ -44,6 +49,7 @@ router.post('/web3auth', async (req, res, next) => {
 
     const normalizedWallet = verified.walletAddress;
     const normalizedEmail = (verified.email || '').trim().toLowerCase();
+    const resolvedAuthProvider = resolveAuthProvider(loginMethod);
 
     let user = await User.findOne({ walletAddress: normalizedWallet });
 
@@ -54,6 +60,10 @@ router.post('/web3auth', async (req, res, next) => {
       if (user) {
         user.walletAddress = normalizedWallet;
         if (avatar && !user.avatar) user.avatar = avatar;
+        // Overwrite legacy/stale authProvider values (e.g. pre-migration 'local')
+        // with the current login's validated value so schema enum validation
+        // doesn't fail on save.
+        user.authProvider = resolvedAuthProvider;
         await user.save();
       }
     }
@@ -61,10 +71,10 @@ router.post('/web3auth', async (req, res, next) => {
     if (!user) {
       user = await User.create({
         name: verified.name || normalizedEmail.split('@')[0] || 'EtherXMeet User',
-        email: normalizedEmail,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         walletAddress: normalizedWallet,
         avatar: avatar || null,
-        authProvider: 'wallet',
+        authProvider: resolvedAuthProvider,
       });
     }
 
