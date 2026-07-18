@@ -15,9 +15,6 @@ import Recordings from './pages/Recordings';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
-import Register from './pages/Register';
-import AuthCallback from './pages/AuthCallback';
-import ResetPassword from './pages/ResetPassword';
 import CommandPalette from './components/layout/CommandPalette';
 import ToastSystem from './components/layout/ToastSystem';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -35,9 +32,6 @@ function AppRoutes() {
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path={ROUTES.LOGIN}           element={<Login />} />
-          <Route path={ROUTES.REGISTER}        element={<Register />} />
-          <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
-          <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
           <Route element={<ProtectedRoute />}>
             <Route path={ROUTES.HOME}        element={<Landing />} />
             <Route path={ROUTES.JOIN}        element={<Join />} />
