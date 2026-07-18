@@ -12,6 +12,9 @@ const roomNotes = new Map();
 // roomCode -> [{id, question, options:[{text,voters:[socketId]}], active}]
 const roomPolls = new Map();
 
+// roomCode -> string (currently shared media URL)
+const roomMedia = new Map();
+
 function setupSignaling(httpServer, allowedOrigin) {
   const io = new Server(httpServer, {
     cors: {
@@ -195,6 +198,34 @@ function setupSignaling(httpServer, allowedOrigin) {
       }
     });
 
+    // ── Feature: Media Share (YouTube / video URL) ───────────────────────────
+
+    /**
+     * Share a video URL with the room. Broadcasts to all other participants.
+     */
+    socket.on('share-media', ({ roomCode, url }) => {
+      roomMedia.set(roomCode, url);
+      socket.to(roomCode).emit('media-shared', { url });
+    });
+
+    /**
+     * Request the currently shared media URL for the room.
+     * Returns it only to the requesting socket.
+     */
+    socket.on('get-media', ({ roomCode }) => {
+      socket.emit('media-state', { url: roomMedia.get(roomCode) || '' });
+    });
+
+    // ── Camera State Sync ────────────────────────────────────────────────────
+
+    /**
+     * Notify all other participants that this user's camera turned on/off,
+     * so their tiles can show the avatar instead of a frozen last frame.
+     */
+    socket.on('camera-toggled', ({ roomCode, isOff }) => {
+      socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
+    });
+
     // ── Disconnect ────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
@@ -205,6 +236,7 @@ function setupSignaling(httpServer, allowedOrigin) {
           // Clean up room-level state when last participant leaves
           roomNotes.delete(currentRoom);
           roomPolls.delete(currentRoom);
+          roomMedia.delete(currentRoom);
           delete roomLocks[currentRoom];
         }
       }

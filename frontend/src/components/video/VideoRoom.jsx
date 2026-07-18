@@ -480,7 +480,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <input placeholder="Search participants" style={{ width:'100%',padding:'9px 12px',borderRadius:9,border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.05)',color:'#f0e6d3',fontSize:12.5,outline:'none',fontFamily:"'Sora',sans-serif",boxSizing:'border-box' }}/>
             </div>
             <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'0 14px 14px',display:'flex',flexDirection:'column',gap:2 }}>
-              {[{name:userName||'You',local:true,muted:micMuted,camOff:cameraOff},...peerList.map(([,p])=>({name:p.userName||'Guest',local:false,muted:false,camOff:!p.stream}))].map((u,i) => (
+              {[{name:userName||'You',local:true,muted:micMuted,camOff:cameraOff},...peerList.map(([,p])=>({name:p.userName||'Guest',local:false,muted:false,camOff:!p.stream||!!p.videoOff}))].map((u,i) => (
                 <div key={i} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 6px',borderRadius:10 }}>
                   <div style={{ width:32,height:32,borderRadius:'50%',background:`linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0 }}>{(u.name[0]||'?').toUpperCase()}</div>
                   <span style={{ fontSize:13,flex:1,color:'#f0e6d3' }}>{u.name}{u.local?' (you)':''}</span>
@@ -498,8 +498,8 @@ export default function VideoRoom({ roomCode, isHost }) {
 
 
           {gridView && (
-            <div style={{ position:'relative',width:'100%',height:'100%',display:'grid',gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)` }}>
-              <div style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',borderRight:'1px solid rgba(212,175,55,.12)' }}>
+            <div style={{ position:'relative',width:'100%',height:'100%',display:'grid',gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,gridAutoRows:'1fr',gap:1,background:'rgba(212,175,55,.12)' }}>
+              <div style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }}>
                 {localStream&&!cameraOff?<VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{initial}</div>}
                 <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>
                   {micMuted&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ color:'#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
@@ -507,8 +507,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                 </div>
               </div>
               {peerList.map(([id,p]) => (
-                <div key={id} style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center' }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                  {p.stream?<VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={false}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${avatarColor(p.userName||'G')},${avatarColor(p.userName||'G')}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{(p.userName||'G')[0].toUpperCase()}</div>}
+                <div key={id} style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
+                  {p.stream&&!p.videoOff?<VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={false}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${avatarColor(p.userName||'G')},${avatarColor(p.userName||'G')}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{(p.userName||'G')[0].toUpperCase()}</div>}
                   <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>{p.userName||'Guest'}</div>
                 </div>
               ))}
@@ -518,7 +518,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position:'relative',width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center' }}>
               {spotlight ? (
-                <div style={{ width:'100%',height:'100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName||'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream}/></div>
+                <div style={{ width:'100%',height:'100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName||'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream||!!spotlight[1].videoOff}/></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width:'100%',height:'100%' }}><VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/></div>
               ) : (
@@ -534,7 +534,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <div style={{ position:'absolute',bottom:12,right:12,display:'flex',flexDirection:'column',gap:8 }}>
                   {peerList.map(([id,p]) => (
                     <div key={id} onClick={() => setSpotlightId(spotlightId===id?null:id)} style={{ width:120,height:80,borderRadius:10,overflow:'hidden',cursor:'pointer',border:`1px solid ${spotlightId===id?'#d4af37':'rgba(212,175,55,.15)'}`,flexShrink:0 }}>
-                      <VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={!p.stream} isSmall/>
+                      <VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={!p.stream||!!p.videoOff} isSmall/>
                     </div>
                   ))}
                 </div>

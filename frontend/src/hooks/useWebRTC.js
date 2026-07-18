@@ -238,6 +238,16 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setHandQueue(q => q.filter(h => h.socketId !== socketId));
       });
 
+      // ── Camera State Sync ────────────────────────────────────────────────
+
+      // A remote participant turned their camera on/off — track it so their
+      // tile shows the avatar instead of freezing on the last video frame.
+      socket.on('camera-toggled', ({ socketId, isOff }) => {
+        setPeers(prev => prev[socketId]
+          ? { ...prev, [socketId]: { ...prev[socketId], videoOff: isOff } }
+          : prev);
+      });
+
       // ── Feature 6: Collaborative Notes ─────────────────────────────────────
 
       // Receive current notes state on connect
@@ -341,6 +351,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
         if (sender) sender.replaceTrack(null).catch(() => {});
       });
+      // Tell peers explicitly so they show the avatar instead of a frozen frame
+      socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
       setCameraOff(true);
     } else {
       // ── TURN ON: re-acquire camera → light comes back on only now
@@ -364,12 +376,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           // Return the same stream object (now with new track) to trigger re-render
           return new MediaStream([...prev.getAudioTracks(), newTrack]);
         });
+        socketRef.current?.emit('camera-toggled', { roomCode, isOff: false });
         setCameraOff(false);
       } catch (err) {
         console.error('Camera re-acquire failed:', err);
       }
     }
-  }, [cameraOff]);
+  }, [cameraOff, roomCode]);
 
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
