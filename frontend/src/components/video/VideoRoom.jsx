@@ -21,6 +21,22 @@ function avatarColor(n) { return AVATAR_COLORS[(n||'A').charCodeAt(0) % AVATAR_C
 function fmtTime(s) { return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
 function fmtTitle(code) { if (!code) return 'EtherX Meet'; return code.replace(/-/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
 
+const VIDEO_EXTS = ['mp4','webm','ogv','mov','m4v'];
+const AUDIO_EXTS = ['mp3','wav','ogg','m4a','aac','flac'];
+const IMAGE_EXTS = ['png','jpg','jpeg','gif','webp','svg','bmp'];
+
+/** Classify a shared URL/filename into how it should render: youtube embed, native video/audio/image, or a plain link fallback. */
+function classifyMedia(input) {
+  if (!input) return 'link';
+  const ytMatch = input.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
+  if (ytMatch) return { type: 'youtube', id: ytMatch[1] };
+  const ext = input.split('?')[0].split('.').pop().toLowerCase();
+  if (VIDEO_EXTS.includes(ext)) return { type: 'video' };
+  if (AUDIO_EXTS.includes(ext)) return { type: 'audio' };
+  if (IMAGE_EXTS.includes(ext)) return { type: 'image' };
+  return { type: 'link' };
+}
+
 const BG_OPTIONS = [
   { id:'none', type:'filter', label:'None' },
   { id:'half-blur', type:'filter', label:'Half Blur' },
@@ -118,6 +134,10 @@ export default function VideoRoom({ roomCode, isHost }) {
   }, [moreOpen]);
 
   useEffect(() => {
+    if (sharedMediaUrl) setMediaStageMinimized(false);
+  }, [sharedMediaUrl]);
+
+  useEffect(() => {
     if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
     const iv = setInterval(() => setActiveDashes(Math.floor(Math.random()*8)+1), 120);
     return () => clearInterval(iv);
@@ -141,6 +161,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
+  const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
@@ -254,22 +275,59 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {reactions?.map(r => (<div key={r.id} style={{ position:'fixed',bottom:120,left:`${30+(r.id%5)*10}%`,fontSize:32,animation:'floatReaction 3s ease-out forwards',pointerEvents:'none',zIndex:45 }}>{r.emoji}</div>))}
 
-      {/* Shared media banner — shown to everyone when someone uses Share video/audio */}
-      {sharedMediaUrl && (
-        <div style={{ position:'fixed',top:90,right:24,zIndex:210,display:'flex',alignItems:'center',gap:10,background:'rgba(5,5,5,.95)',border:'1px solid rgba(212,175,55,.25)',borderRadius:12,padding:'10px 14px',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',maxWidth:320 }}>
-          <span style={{ fontSize:12,color:'#a89878',flexShrink:0 }}>Shared media:</span>
-          <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:12,color:'#d4af37',textDecoration:'underline',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>
-            {sharedMediaUrl}
-          </a>
-        </div>
+      {/* Shared media stage — plays inline for everyone when someone uses Share video/audio */}
+      {sharedMediaUrl && !mediaStageMinimized && (() => {
+        const media = classifyMedia(sharedMediaUrl);
+        return (
+          <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:210,width:'min(720px, 80vw)',background:'rgba(5,5,5,.97)',border:'1px solid rgba(212,175,55,.25)',borderRadius:16,boxShadow:'0 30px 70px -20px rgba(0,0,0,.75)',overflow:'hidden' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
+              <span style={{ fontSize:12,color:'#a89878',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>Shared with everyone: {sharedMediaUrl}</span>
+              <button onClick={() => setMediaStageMinimized(true)} title="Minimize" style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:14,flexShrink:0,marginLeft:10 }}>✕</button>
+            </div>
+            <div style={{ background:'#000',display:'flex',alignItems:'center',justifyContent:'center',maxHeight:'60vh' }}>
+              {media.type === 'youtube' && (
+                <iframe
+                  src={`https://www.youtube.com/embed/${media.id}`}
+                  title="Shared video"
+                  style={{ width:'100%',aspectRatio:'16/9',border:'none' }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              )}
+              {media.type === 'video' && (
+                <video src={sharedMediaUrl} controls autoPlay style={{ width:'100%',maxHeight:'60vh' }} />
+              )}
+              {media.type === 'audio' && (
+                <div style={{ width:'100%',padding:'30px 20px' }}>
+                  <audio src={sharedMediaUrl} controls autoPlay style={{ width:'100%' }} />
+                </div>
+              )}
+              {media.type === 'image' && (
+                <img src={sharedMediaUrl} alt="Shared" style={{ width:'100%',maxHeight:'60vh',objectFit:'contain' }} />
+              )}
+              {media.type === 'link' && (
+                <div style={{ padding:'24px 20px',textAlign:'center' }}>
+                  <p style={{ color:'#a89878',fontSize:13,margin:'0 0 12px' }}>This link can't be embedded — open it directly:</p>
+                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color:'#d4af37',fontSize:13,textDecoration:'underline' }}>{sharedMediaUrl}</a>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Minimized pill — click to bring the shared media stage back */}
+      {sharedMediaUrl && mediaStageMinimized && (
+        <button onClick={() => setMediaStageMinimized(false)} style={{ position:'fixed',top:90,right:24,zIndex:210,display:'flex',alignItems:'center',gap:8,background:'rgba(5,5,5,.95)',border:'1px solid rgba(212,175,55,.25)',borderRadius:999,padding:'8px 14px',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',cursor:'pointer',color:'#d4af37',fontSize:12,fontFamily:"'Sora',sans-serif" }}>
+          ▶ Shared media
+        </button>
       )}
 
       {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
       {fileNotifications?.length > 0 && (
         <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:250,display:'flex',flexDirection:'column',gap:10,alignItems:'center',pointerEvents:'none' }}>
           {fileNotifications.map(file => {
-            const ext = file.name.split('.').pop().toLowerCase();
-            const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+            const media = classifyMedia(file.name);
             const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
             return (
               <div key={file.id} style={{ pointerEvents:'auto',width:280,background:'rgba(5,5,5,.95)',backdropFilter:'blur(20px)',border:'1px solid rgba(212,175,55,.25)',borderRadius:14,overflow:'hidden',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',animation:'fadeIn .2s ease-out' }}>
@@ -277,13 +335,19 @@ export default function VideoRoom({ roomCode, isHost }) {
                   <span style={{ fontSize:11,color:'#a89878',fontWeight:600 }}>{file.sharedBy} shared a file</span>
                   <button onClick={() => dismissFileNotification(file.id)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:14,padding:2,lineHeight:1 }}>✕</button>
                 </div>
-                {isImg && (
+                {media.type === 'image' && (
                   <img
                     src={file.url}
                     alt={file.name}
                     onClick={() => { setPreviewImageUrl(file.url); dismissFileNotification(file.id); }}
                     style={{ width:'100%',maxHeight:160,objectFit:'cover',display:'block',marginTop:8,cursor:'pointer' }}
                   />
+                )}
+                {media.type === 'video' && (
+                  <video src={file.url} controls style={{ width:'100%',maxHeight:200,display:'block',marginTop:8 }} />
+                )}
+                {media.type === 'audio' && (
+                  <audio src={file.url} controls style={{ width:'100%',display:'block',margin:'8px 0 0',padding:'0 10px',boxSizing:'border-box' }} />
                 )}
                 <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:8 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
@@ -612,12 +676,12 @@ export default function VideoRoom({ roomCode, isHost }) {
                   ) : (
                     [...(sharedFiles||[])].reverse().map(file => {
                       const ext = file.name.split('.').pop().toLowerCase();
-                      const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+                      const media = classifyMedia(file.name);
                       const isPdf = ext === 'pdf';
                       const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
                       return (
                         <div key={file.id} style={{ background:'rgba(212,175,55,.06)',border:'1px solid rgba(212,175,55,.14)',borderRadius:10,overflow:'hidden' }}>
-                          {isImg && (
+                          {media.type === 'image' && (
                             <img
                               src={file.url}
                               alt={file.name}
@@ -625,6 +689,12 @@ export default function VideoRoom({ roomCode, isHost }) {
                               title="Click to view full size"
                               style={{ width:'100%',maxHeight:120,objectFit:'cover',display:'block',cursor:'pointer' }}
                             />
+                          )}
+                          {media.type === 'video' && (
+                            <video src={file.url} controls style={{ width:'100%',maxHeight:160,display:'block' }} />
+                          )}
+                          {media.type === 'audio' && (
+                            <audio src={file.url} controls style={{ width:'100%',display:'block',padding:'8px 10px 0',boxSizing:'border-box' }} />
                           )}
                           <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:10 }}>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
