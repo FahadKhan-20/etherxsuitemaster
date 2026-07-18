@@ -71,6 +71,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature: File Sharing ──────────────────────────────────────────────────
   const [sharedFiles, setSharedFiles] = useState([]); // [{id, name, size, type, url, sharedBy, sharedAt}]
+  // fileNotifications: recently-shared files shown as an auto-dismissing
+  // popup for everyone in the room — populated only from the real-time
+  // 'file-shared' broadcast, never from the on-join 'files-state' history
+  // load, so joining a room with existing files doesn't spam popups.
+  const [fileNotifications, setFileNotifications] = useState([]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef      = useRef(null);
@@ -513,6 +518,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         if (prev.some(f => f.id === entry.id)) return prev;
         return [...prev, entry];
       });
+      // Pop up a dismissible notification for everyone (including the
+      // sharer, since the server echoes 'file-shared' back to them too).
+      // Auto-removed after 8s; the X button in the UI can dismiss it early.
+      setFileNotifications(prev => [...prev, entry]);
+      setTimeout(() => {
+        setFileNotifications(prev => prev.filter(f => f.id !== entry.id));
+      }, 8000);
     };
     const onFilesState = ({ files }) => {
       setSharedFiles(files || []);
@@ -532,6 +544,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     if (!socket || !roomCode) return;
     socket.emit('share-file', { roomCode, file });
   }, [roomCode]);
+
+  /** Dismiss a file-share popup notification before its 8s auto-timeout. */
+  const dismissFileNotification = useCallback((id) => {
+    setFileNotifications(prev => prev.filter(f => f.id !== id));
+  }, []);
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -559,5 +576,6 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     polls, createPoll, votePoll, endPoll,
     // Feature: File Sharing
     sharedFiles, shareFile,
+    fileNotifications, dismissFileNotification,
   };
 }

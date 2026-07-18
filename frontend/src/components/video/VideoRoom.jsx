@@ -133,7 +133,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
-    sharedFiles, shareFile,
+    sharedFiles, shareFile, fileNotifications, dismissFileNotification,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const { devices, switchDevice, selectedDevices } = useMediaDevices();
@@ -231,6 +231,43 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {reactions?.map(r => (<div key={r.id} style={{ position:'fixed',bottom:120,left:`${30+(r.id%5)*10}%`,fontSize:32,animation:'floatReaction 3s ease-out forwards',pointerEvents:'none',zIndex:45 }}>{r.emoji}</div>))}
+
+      {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
+      {fileNotifications?.length > 0 && (
+        <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:250,display:'flex',flexDirection:'column',gap:10,alignItems:'center',pointerEvents:'none' }}>
+          {fileNotifications.map(file => {
+            const ext = file.name.split('.').pop().toLowerCase();
+            const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+            const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
+            return (
+              <div key={file.id} style={{ pointerEvents:'auto',width:280,background:'rgba(5,5,5,.95)',backdropFilter:'blur(20px)',border:'1px solid rgba(212,175,55,.25)',borderRadius:14,overflow:'hidden',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',animation:'fadeIn .2s ease-out' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px 0' }}>
+                  <span style={{ fontSize:11,color:'#a89878',fontWeight:600 }}>{file.sharedBy} shared a file</span>
+                  <button onClick={() => dismissFileNotification(file.id)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:14,padding:2,lineHeight:1 }}>✕</button>
+                </div>
+                {isImg && (
+                  <img
+                    src={file.url}
+                    alt={file.name}
+                    onClick={() => { setPreviewImageUrl(file.url); dismissFileNotification(file.id); }}
+                    style={{ width:'100%',maxHeight:160,objectFit:'cover',display:'block',marginTop:8,cursor:'pointer' }}
+                  />
+                )}
+                <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <p style={{ margin:0,fontSize:12,fontWeight:600,color:'#f0e6d3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{file.name}</p>
+                    <p style={{ margin:'2px 0 0',fontSize:10.5,color:'#a89878' }}>{fmtSize}</p>
+                  </div>
+                  <a href={file.url} download={file.name} style={{ display:'flex',padding:'5px 9px',borderRadius:7,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11,fontWeight:600,flexShrink:0 }}>
+                    Save
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {confettiActive && (<div style={{ position:'fixed',inset:0,zIndex:60,pointerEvents:'none',overflow:'hidden' }}>{CONFETTI.map((p,i) => (<div key={i} style={{ position:'absolute',left:`${p.x}%`,top:'-20px',width:p.w,height:p.h,background:p.color,borderRadius:p.round?'50%':2,transform:`rotate(${p.rot}deg)`,animation:`confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
 
