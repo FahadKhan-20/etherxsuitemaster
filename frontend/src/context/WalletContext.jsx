@@ -68,7 +68,7 @@ const WalletContext = createContext(null);
 function WalletBridge({ children }) {
   const { connect, isConnected, loading: isConnecting, connectorName, error: connectRawError } = useWeb3AuthConnect();
   const { disconnect } = useWeb3AuthDisconnect();
-  const { userInfo } = useWeb3AuthUser();
+  const { userInfo, getUserInfo } = useWeb3AuthUser();
   const { getAuthTokenInfo } = useAuthTokenInfo();
   const { address, chainId } = useAccount();
   const { data: walletClient } = useWalletClient();
@@ -122,12 +122,45 @@ function WalletBridge({ children }) {
     const connectedAddress = Array.isArray(accounts) ? accounts[0] : undefined;
 
     if (!idToken || !connectedAddress) return null;
-    // connectorName carries which login method was used (e.g. 'google',
-    // 'email_passwordless', 'discord', or an external-wallet connector name
-    // like 'metamask') — Login.jsx maps it to authProvider's four valid
-    // values before sending it to POST /api/auth/web3auth.
-    return { idToken, walletAddress: connectedAddress, connectorName: connection.connectorName };
-  }, [connect, getAuthTokenInfo]);
+
+    // connectorName (e.g. 'auth' for every social/email login, or an
+    // external-wallet connector name like 'metamask') is too coarse to
+    // distinguish *which* social/email method was used — the SDK's AUTH
+    // connector reports the literal string 'auth' for all of google /
+    // email_passwordless / discord alike. The sub-method instead lives on
+    // AuthUserInfo.authConnection (see @web3auth/auth's UserInfo/AuthUserInfo
+    // types, and AUTH_CONNECTION in @toruslabs/customauth's enums, whose
+    // values are exactly 'google' / 'email_passwordless' / 'discord' / etc.
+    // — a 1:1 match with our authProvider enum). External-wallet connectors
+    // never go through the AUTH connector, so their getUserInfo() resolves
+    // to `{}` (no authConnection field at all) — Login.jsx's mapping falls
+    // back to 'wallet' in that case.
+    //
+    // We fetch it via the hook's getUserInfo() function (which calls
+    // web3Auth.getUserInfo() directly) rather than reading the hook's own
+    // `userInfo` state, for the same reason `connectedAddress` above isn't
+    // read from the wagmi store: that state is populated by a useEffect
+    // keyed on `isConnected` that this callback never awaits, so there's no
+    // happens-before guarantee it reflects *this* login by the time we get
+    // here.
+    let authConnection;
+    try {
+      const freshUserInfo = await getUserInfo();
+      authConnection = freshUserInfo?.authConnection;
+    } catch {
+      // External-wallet connectors and any other edge case that can't
+      // resolve user info — leave authConnection undefined so Login.jsx's
+      // mapping falls back to 'wallet'.
+      authConnection = undefined;
+    }
+
+    return {
+      idToken,
+      walletAddress: connectedAddress,
+      connectorName: connection.connectorName,
+      authConnection,
+    };
+  }, [connect, getAuthTokenInfo, getUserInfo]);
 
   const logout = useCallback(async () => {
     await disconnect();

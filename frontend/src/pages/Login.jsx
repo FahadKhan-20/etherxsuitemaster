@@ -7,15 +7,19 @@ import { useWallet } from '../context/WalletContext'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS } from './authShared'
 
-// Web3Auth's connectorName isn't guaranteed to be exactly one of our four
-// authProvider enum values (e.g. an external wallet connector might report
-// 'metamask' or 'injected') — map known values through, default anything
-// else to 'wallet'. This is a display label only (not a security boundary
-// — the backend independently verifies the idToken), so a generous mapping
-// here is safe.
+// Web3Auth's connectorName resolves to the literal string 'auth' for every
+// social/email login (google, email_passwordless, discord alike), so it
+// can't distinguish which sub-method was used. The sub-method instead lives
+// on userInfo.authConnection, whose values ('google', 'email_passwordless',
+// 'discord', etc. — see @toruslabs/customauth's AUTH_CONNECTION enum)
+// already match our authProvider enum 1:1. External-wallet connectors
+// (MetaMask etc.) never populate authConnection at all, so anything not in
+// the known list — including undefined — falls back to 'wallet'. This is a
+// display label only (not a security boundary — the backend independently
+// verifies the idToken), so a generous mapping here is safe.
 const VALID_AUTH_PROVIDERS = ['google', 'email_passwordless', 'discord', 'wallet'];
-function toAuthProvider(connectorName) {
-  return VALID_AUTH_PROVIDERS.includes(connectorName) ? connectorName : 'wallet';
+function toAuthProvider(authConnection) {
+  return VALID_AUTH_PROVIDERS.includes(authConnection) ? authConnection : 'wallet';
 }
 
 export default function Login() {
@@ -38,12 +42,12 @@ export default function Login() {
         setLoading(false)
         return
       }
-      const { idToken, walletAddress, connectorName } = result
+      const { idToken, walletAddress, authConnection } = result
       const res = await apiClient.post('/api/auth/web3auth', {
         idToken,
         walletAddress,
         avatar: userInfo?.profileImage || null,
-        loginMethod: toAuthProvider(connectorName),
+        loginMethod: toAuthProvider(authConnection),
       })
       if (res.data.success) {
         persistAuthSession({ token: res.data.data.token, user: res.data.data.user })
