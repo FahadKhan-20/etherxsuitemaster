@@ -14,7 +14,7 @@
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "jose": "^6.2.3",
+    "jose": "^5.10.0",
     "jsonwebtoken": "^9.0.3",
     "livekit-server-sdk": "^2.15.1",
     "mongoose": "^9.4.1",

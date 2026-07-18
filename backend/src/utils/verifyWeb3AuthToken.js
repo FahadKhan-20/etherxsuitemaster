@@ -1,10 +1,13 @@
 const { createRemoteJWKSet, jwtVerify } = require('jose');
 
 // Web3Auth issues from two different endpoints depending on login type.
-const JWKS_BY_ISSUER = {
-  'https://api-auth.web3auth.io': createRemoteJWKSet(new URL('https://api-auth.web3auth.io/jwks')),
-  'https://authjs.web3auth.io': createRemoteJWKSet(new URL('https://authjs.web3auth.io/jwks')),
-};
+// Uses a Map (rather than a plain object literal) so an attacker-controlled
+// `iss` claim can never resolve to an inherited Object.prototype property
+// (e.g. "constructor", "toString") and bypass the "unrecognized issuer" guard.
+const JWKS_BY_ISSUER = new Map([
+  ['https://api-auth.web3auth.io', createRemoteJWKSet(new URL('https://api-auth.web3auth.io/jwks'))],
+  ['https://authjs.web3auth.io', createRemoteJWKSet(new URL('https://authjs.web3auth.io/jwks'))],
+]);
 
 /**
  * Pure claim-checking logic, factored out so tests can exercise it without
@@ -49,7 +52,7 @@ async function verifyWeb3AuthToken(idToken, expectedWalletAddress, { clientId })
   // jose's jwtVerify needs the JWKS passed in up front.
   const [, payloadB64] = idToken.split('.');
   const unverifiedPayload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-  const jwks = JWKS_BY_ISSUER[unverifiedPayload.iss];
+  const jwks = JWKS_BY_ISSUER.get(unverifiedPayload.iss);
   if (!jwks) {
     throw new Error(`Unrecognized Web3Auth token issuer: ${unverifiedPayload.iss}`);
   }
