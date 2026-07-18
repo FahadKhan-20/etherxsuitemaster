@@ -6,7 +6,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+const passport = require('passport');
 const connectDB = require('./config/db');
+const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/auth');
 const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
@@ -23,6 +25,8 @@ const allowedOrigins = [
   'http://localhost:3001',
   'http://10.190.103.55:3000',
 ].filter(Boolean);
+
+configurePassport();
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -42,6 +46,7 @@ app.use(
 );
 app.use(morgan('dev'));
 app.use(express.json());
+app.use(passport.initialize());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRoutes);

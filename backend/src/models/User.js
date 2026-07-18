@@ -9,13 +9,6 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      unique: true,
-      sparse: true,
-      lowercase: true,
-      trim: true,
-    },
-    walletAddress: {
-      type: String,
       required: true,
       unique: true,
       lowercase: true,
@@ -23,11 +16,38 @@ const userSchema = new mongoose.Schema(
     },
     authProvider: {
       type: String,
-      enum: ['google', 'email_passwordless', 'discord', 'wallet'],
-      required: true,
+      enum: ['local', 'google', 'email_passwordless', 'discord', 'wallet'],
+      default: 'local',
+    },
+    googleId: {
+      type: String,
+      default: null,
+    },
+    password: {
+      type: String,
+      required() {
+        return this.authProvider === 'local';
+      },
+      select: false,
+      default: null,
+    },
+    walletAddress: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
     },
     avatar: {
       type: String,
+      default: null,
+    },
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
       default: null,
     },
     createdAt: {
@@ -39,5 +59,13 @@ const userSchema = new mongoose.Schema(
     versionKey: false,
   }
 );
+
+const removeSensitiveFields = (_doc, ret) => {
+  delete ret.password;
+  return ret;
+};
+
+userSchema.set('toJSON', { transform: removeSensitiveFields });
+userSchema.set('toObject', { transform: removeSensitiveFields });
 
 module.exports = mongoose.model('User', userSchema);

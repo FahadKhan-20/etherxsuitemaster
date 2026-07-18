@@ -15,7 +15,7 @@ import LiveTranscript from '../room/LiveTranscript';
 import { ROUTES } from '../../utils/constants';
 import etherxLogo from '../../assets/etherx_transparent.png';
 
-const AVATAR_COLORS = ['#d4af37','#b8860b','#e5c76b','#d4af37','#b8860b','#e5c76b','#d4af37','#b8860b'];
+const AVATAR_COLORS = ['#4a90d9','#7B2FBE','#00b5a0','#5BA4CF','#3a7bd5','#9B59B6','#1abc9c','#2980b9'];
 function avatarColor(n) { return AVATAR_COLORS[(n||'A').charCodeAt(0) % AVATAR_COLORS.length]; }
 function fmtTime(s) { return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
 function fmtTitle(code) { if (!code) return 'EtherX Meet'; return code.replace(/-/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
@@ -628,20 +628,92 @@ export default function VideoRoom({ roomCode, isHost }) {
 
 
           {gridView && (
-            <div style={{ position:'relative',width:'100%',height:'100%',display:'grid',gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,gridAutoRows:'1fr',gap:1,background:'rgba(212,175,55,.12)' }}>
-              <div style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }}>
-                {localStream&&!cameraOff?<VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{initial}</div>}
-                <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>
-                  {micMuted&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ color:'#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-                  {userName||'You'}
+            <div style={{
+              position:'relative',width:'100%',height:'100%',
+              display:'grid',
+              gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,
+              gridAutoRows:'1fr',
+              gap:2,
+              background:'#3a3a3a',
+            }}>
+              {/* Local tile */}
+              <div style={{
+                position:'relative',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                background:'#1e1e1e',
+                overflow:'hidden',
+              }}>
+                {localStream && !cameraOff ? (
+                  <VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>
+                ) : (
+                  <div style={{
+                    width:130,height:130,borderRadius:'50%',
+                    background:userColor,
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:54,fontWeight:600,color:'#fff',
+                    fontFamily:'Inter,sans-serif',
+                    userSelect:'none',
+                    flexShrink:0,
+                  }}>{initial}</div>
+                )}
+                {/* Name label */}
+                <div style={{
+                  position:'absolute',bottom:14,left:12,
+                  display:'flex',alignItems:'center',gap:5,
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity:.85 }}>
+                    {micMuted
+                      ? <><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/></>
+                      : <><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round"/></>}
+                  </svg>
+                  <span style={{ fontSize:12,color:'#e0e0e0',fontFamily:'Inter,sans-serif',fontWeight:500,letterSpacing:'.01em' }}>
+                    {userName||'You'}
+                  </span>
                 </div>
               </div>
-              {peerList.map(([id,p]) => (
-                <div key={id} style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                  {p.stream&&!p.videoOff?<VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={false}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${avatarColor(p.userName||'G')},${avatarColor(p.userName||'G')}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{(p.userName||'G')[0].toUpperCase()}</div>}
-                  <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>{p.userName||'Guest'}</div>
-                </div>
-              ))}
+
+              {/* Peer tiles */}
+              {peerList.map(([id,p]) => {
+                const pName = p.userName||'Guest';
+                const pColor = avatarColor(pName);
+                const pInitial = pName.charAt(0).toUpperCase();
+                return (
+                  <div key={id} style={{
+                    position:'relative',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    background:'#1e1e1e',
+                    overflow:'hidden',
+                    cursor:'pointer',
+                  }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
+                    {p.stream && !p.videoOff ? (
+                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false}/>
+                    ) : (
+                      <div style={{
+                        width:130,height:130,borderRadius:'50%',
+                        background:pColor,
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:54,fontWeight:600,color:'#fff',
+                        fontFamily:'Inter,sans-serif',
+                        userSelect:'none',
+                        flexShrink:0,
+                      }}>{pInitial}</div>
+                    )}
+                    {/* Name label */}
+                    <div style={{
+                      position:'absolute',bottom:14,left:12,
+                      display:'flex',alignItems:'center',gap:5,
+                    }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity:.85 }}>
+                        <path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2"/>
+                        <path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      <span style={{ fontSize:12,color:'#e0e0e0',fontFamily:'Inter,sans-serif',fontWeight:500,letterSpacing:'.01em' }}>
+                        {pName}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 

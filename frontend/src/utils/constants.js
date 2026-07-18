@@ -1,6 +1,9 @@
 export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
+  REGISTER: '/register',
+  AUTH_CALLBACK: '/auth/callback',
+  RESET_PASSWORD: '/reset-password/:token',
   JOIN: '/join',
   ROOM: '/room/:code',
   DASHBOARD: '/dashboard',

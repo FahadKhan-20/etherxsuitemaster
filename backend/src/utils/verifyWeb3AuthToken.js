@@ -65,8 +65,11 @@ async function __testOnlyCheckClaims(verified, expectedWalletAddress, clientId) 
 async function verifyWeb3AuthToken(idToken, expectedWalletAddress, { clientId }) {
   // Decode the issuer first (without verifying) to pick the right JWKS —
   // jose's jwtVerify needs the JWKS passed in up front.
-  const [, payloadB64] = idToken.split('.');
+  const [headerB64, payloadB64] = idToken.split('.');
+  const unverifiedHeader = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8'));
   const unverifiedPayload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  console.log('TEMP DEBUG idToken header:', unverifiedHeader);
+  console.log('TEMP DEBUG idToken iss/aud:', unverifiedPayload.iss, unverifiedPayload.aud);
   const jwks = JWKS_BY_ISSUER.get(unverifiedPayload.iss);
   if (!jwks) {
     throw new Error(`Unrecognized Web3Auth token issuer: ${unverifiedPayload.iss}`);
