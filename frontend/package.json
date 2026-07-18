@@ -21,15 +21,17 @@
     "@livekit/components-react": "^2.9.20",
     "@livekit/components-styles": "^1.2.0",
     "@tailwindcss/postcss": "^4.2.2",
+    "@tanstack/react-query": "^5.101.2",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "@web3auth/modal": "^11.3.0",
     "autoprefixer": "^10.4.27",
     "axios": "^0.27.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
+    "ethers": "^6.16.0",
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
-    "ethers": "^6.16.0",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
     "livekit-client": "^2.18.4",
@@ -45,6 +47,7 @@
     "three": "^0.183.2",
     "tone": "^15.1.22",
     "vanta": "^0.5.24",
-    "vite": "^8.0.7"
+    "vite": "^8.0.7",
+    "wagmi": "^3.7.3"
   }
 }
