@@ -39,9 +39,14 @@ const web3AuthContextConfig = {
             kakao: { showOnModal: false },
             linkedin: { showOnModal: false },
             wechat: { showOnModal: false },
-            farcaster: { showOnModal: false },
-            // NOTE: 'weibo' was in the original plan but is not a valid
-            // AUTH_CONNECTION_TYPE in the installed SDK (11.3.0) — omitted.
+            // NOTE: 'weibo' and 'farcaster' were in the original plan but
+            // are not valid AUTH_CONNECTION_TYPEs in the installed SDK
+            // (11.3.0) — farcaster support was removed entirely, and any
+            // entry for it (even showOnModal: false) makes
+            // Web3Auth.filterConnectors() throw a WalletInitializationError
+            // during initConnectors(), which silently kills the whole AUTH
+            // connector's init and leaves the modal permanently blank with
+            // no visible error in the app's own console. Both omitted.
           },
         },
       },
