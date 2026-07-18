@@ -27,7 +27,7 @@ const IMAGE_EXTS = ['png','jpg','jpeg','gif','webp','svg','bmp'];
 
 /** Classify a shared URL/filename into how it should render: youtube embed, native video/audio/image, or a plain link fallback. */
 function classifyMedia(input) {
-  if (!input) return 'link';
+  if (!input) return { type: 'link' };
   const ytMatch = input.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
   if (ytMatch) return { type: 'youtube', id: ytMatch[1] };
   const ext = input.split('?')[0].split('.').pop().toLowerCase();
