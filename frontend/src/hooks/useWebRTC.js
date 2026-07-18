@@ -69,6 +69,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
 
+  // ── Feature: File Sharing ──────────────────────────────────────────────────
+  const [sharedFiles, setSharedFiles] = useState([]); // [{id, name, size, type, url, sharedBy, sharedAt}]
+
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef      = useRef(null);
   const pcsRef         = useRef({});           // socketId → RTCPeerConnection
@@ -149,6 +152,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
+        socket.emit('get-files', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -289,6 +293,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
+        socket.emit('get-files', { roomCode });
       } else {
         socket.emit('request-join', { roomCode, userId, userName });
       }
@@ -496,6 +501,38 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
   }, [isHost]);
 
+  // ── Feature: File Sharing callbacks ─────────────────────────────────────────
+
+  // Listen for file-shared and files-state events (wired on socket connect)
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const onFileShared = (entry) => {
+      setSharedFiles(prev => {
+        if (prev.some(f => f.id === entry.id)) return prev;
+        return [...prev, entry];
+      });
+    };
+    const onFilesState = ({ files }) => {
+      setSharedFiles(files || []);
+    };
+
+    socket.on('file-shared', onFileShared);
+    socket.on('files-state', onFilesState);
+
+    return () => {
+      socket.off('file-shared', onFileShared);
+      socket.off('files-state', onFilesState);
+    };
+  }, [socketRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shareFile = useCallback((file) => {
+    const socket = socketRef.current;
+    if (!socket || !roomCode) return;
+    socket.emit('share-file', { roomCode, file });
+  }, [roomCode]);
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   return {
@@ -520,5 +557,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     sharedMediaUrl, shareMedia,
     // Feature 7: Polls
     polls, createPoll, votePoll, endPoll,
+    // Feature: File Sharing
+    sharedFiles, shareFile,
   };
 }

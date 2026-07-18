@@ -15,6 +15,9 @@ const roomPolls = new Map();
 // roomCode -> string (currently shared media URL)
 const roomMedia = new Map();
 
+// roomCode -> [{id, name, size, type, url, sharedBy, sharedAt}]
+const roomFiles = new Map();
+
 function setupSignaling(httpServer, allowedOrigin) {
   const io = new Server(httpServer, {
     cors: {
@@ -219,6 +222,36 @@ function setupSignaling(httpServer, allowedOrigin) {
     // ── Camera State Sync ────────────────────────────────────────────────────
 
     /**
+     * Share a file with all participants in the room.
+     * The file payload contains base64 data URL, name, size, type.
+     */
+    socket.on('share-file', ({ roomCode, file }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      const entry = {
+        id: Date.now() + '_' + socket.id,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: file.url, // base64 data URL
+        sharedBy: user?.userName || 'Someone',
+        sharedAt: Date.now(),
+      };
+      if (!roomFiles.has(roomCode)) roomFiles.set(roomCode, []);
+      roomFiles.get(roomCode).push(entry);
+      // Broadcast to all (including sender) so everyone's Files panel updates
+      io.to(roomCode).emit('file-shared', entry);
+    });
+
+    /**
+     * Request the current list of shared files for the room.
+     * Returns to the requesting socket only.
+     */
+    socket.on('get-files', ({ roomCode }) => {
+      socket.emit('files-state', { files: roomFiles.get(roomCode) || [] });
+    });
+
+
+    /**
      * Notify all other participants that this user's camera turned on/off,
      * so their tiles can show the avatar instead of a frozen last frame.
      */
@@ -237,6 +270,7 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomNotes.delete(currentRoom);
           roomPolls.delete(currentRoom);
           roomMedia.delete(currentRoom);
+          roomFiles.delete(currentRoom);
           delete roomLocks[currentRoom];
         }
       }

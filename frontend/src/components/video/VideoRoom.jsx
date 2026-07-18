@@ -132,6 +132,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
+    sharedFiles, shareFile,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const { devices, switchDevice, selectedDevices } = useMediaDevices();
@@ -456,10 +457,74 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab==='files' && (
-              <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:16 }}>
-                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" style={{ color:'rgba(212,175,55,.25)' }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                <div style={{ textAlign:'center',color:'#a89878',fontSize:12.5 }}>No files shared yet.</div>
-                <button onClick={() => showToast('Drag and drop files into Chat to share.')} style={{ width:'100%',padding:12,borderRadius:12,border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.07)',color:'#f0e6d3',fontWeight:600,fontSize:13.5,cursor:'pointer',fontFamily:"'Sora',sans-serif" }}>Share file</button>
+              <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
+                {/* Drop zone / upload button */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor='#d4af37'; e.currentTarget.style.background='rgba(212,175,55,.12)'; }}
+                  onDragLeave={(e) => { e.currentTarget.style.borderColor='rgba(212,175,55,.2)'; e.currentTarget.style.background='rgba(212,175,55,.04)'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor='rgba(212,175,55,.2)';
+                    e.currentTarget.style.background='rgba(212,175,55,.04)';
+                    const files = Array.from(e.dataTransfer.files);
+                    files.forEach(file => {
+                      if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); return; }
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        shareFile({ name: file.name, size: file.size, type: file.type, url: ev.target.result });
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                  }}
+                  style={{ margin:'12px 12px 8px',borderRadius:12,border:'2px dashed rgba(212,175,55,.2)',background:'rgba(212,175,55,.04)',padding:'18px 12px',textAlign:'center',cursor:'pointer',transition:'all .2s',flexShrink:0 }}
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type='file'; input.multiple=true;
+                    input.onchange = () => {
+                      Array.from(input.files).forEach(file => {
+                        if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          shareFile({ name: file.name, size: file.size, type: file.type, url: ev.target.result });
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                    };
+                    input.click();
+                  }}
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ color:'rgba(212,175,55,.5)',margin:'0 auto 8px',display:'block' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  <p style={{ margin:0,fontSize:12.5,color:'#a89878',fontWeight:500 }}>Click or drag files here</p>
+                  <p style={{ margin:'4px 0 0',fontSize:11,color:'rgba(168,152,120,.6)' }}>Max 10 MB per file</p>
+                </div>
+                {/* File list */}
+                <div style={{ flex:1,overflowY:'auto',padding:'0 12px 12px',display:'flex',flexDirection:'column',gap:8 }}>
+                  {(sharedFiles||[]).length === 0 ? (
+                    <div style={{ textAlign:'center',color:'rgba(168,152,120,.5)',fontSize:12,marginTop:20 }}>No files shared yet</div>
+                  ) : (
+                    [...(sharedFiles||[])].reverse().map(file => {
+                      const ext = file.name.split('.').pop().toLowerCase();
+                      const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+                      const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
+                      return (
+                        <div key={file.id} style={{ background:'rgba(212,175,55,.06)',border:'1px solid rgba(212,175,55,.14)',borderRadius:10,overflow:'hidden' }}>
+                          {isImg && <img src={file.url} alt={file.name} style={{ width:'100%',maxHeight:120,objectFit:'cover',display:'block' }} />}
+                          <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:10 }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                            <div style={{ flex:1,minWidth:0 }}>
+                              <p style={{ margin:0,fontSize:12.5,fontWeight:600,color:'#f0e6d3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{file.name}</p>
+                              <p style={{ margin:'2px 0 0',fontSize:11,color:'#a89878' }}>{fmtSize} · {file.sharedBy}</p>
+                            </div>
+                            <a href={file.url} download={file.name} style={{ display:'flex',padding:'6px 10px',borderRadius:8,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11.5,fontWeight:600,flexShrink:0,alignItems:'center',gap:4 }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                              Save
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>
