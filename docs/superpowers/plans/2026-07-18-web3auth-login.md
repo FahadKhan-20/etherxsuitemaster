@@ -633,7 +633,7 @@ git commit -m "chore(frontend): add @web3auth/modal + wagmi dependencies and Cli
 - Modify: `frontend/src/context/WalletContext.jsx`
 
 **Interfaces:**
-- Produces: `useWallet()` → `{ account, chainId, balance, provider, signer, isConnecting, connectError, isReady, userInfo, login, logout }`. `account`/`signer`/`provider`/`chainId`/`balance` types match what the 9 consumer files already expect (string address, ethers v6 `JsonRpcSigner`, ethers v6 `BrowserProvider`, number, string). `login()` returns `Promise<{ idToken, walletAddress } | null>` — null if the user cancels. Task 7 (Login.jsx) depends on this `login()` return shape.
+- Produces: `useWallet()` → `{ account, chainId, balance, provider, signer, isConnecting, connectError, isReady, userInfo, login, logout }`. `account`/`signer`/`provider`/`chainId`/`balance` types match what the 9 consumer files already expect (string address, ethers v6 `JsonRpcSigner`, ethers v6 `BrowserProvider`, number, string). `login()` returns `Promise<{ idToken, walletAddress, connectorName } | null>` — null if the user cancels. Task 7 (Login.jsx) depends on this `login()` return shape, including `connectorName` (used to determine which `authProvider` value to send to the backend).
 - Also exports: `WalletProvider` (composes `Web3AuthProvider` + `QueryClientProvider` + `WagmiProvider`) — `App.jsx` needs no changes since it already wraps the tree in `<WalletProvider>`.
 
 - [ ] **Step 1: Replace `frontend/src/context/WalletContext.jsx` in full**
@@ -730,8 +730,12 @@ function WalletBridge({ children }) {
     await connect();
     const { idToken } = await getAuthTokenInfo();
     if (!idToken || !address) return null;
-    return { idToken, walletAddress: address };
-  }, [connect, getAuthTokenInfo, address]);
+    // connectorName carries which login method was used (e.g. 'google',
+    // 'email_passwordless', 'discord', or an external-wallet connector name
+    // like 'metamask') — Login.jsx maps it to authProvider's four valid
+    // values before sending it to POST /api/auth/web3auth.
+    return { idToken, walletAddress: address, connectorName };
+  }, [connect, getAuthTokenInfo, address, connectorName]);
 
   const logout = useCallback(async () => {
     await disconnect();
@@ -803,7 +807,7 @@ git commit -m "feat(frontend): rewrite WalletContext on Web3Auth + wagmi, same u
 - Modify: `frontend/src/pages/Login.jsx`
 
 **Interfaces:**
-- Consumes: `useWallet().login()` from Task 6 (returns `{ idToken, walletAddress } | null`).
+- Consumes: `useWallet().login()` from Task 6 (returns `{ idToken, walletAddress, connectorName } | null`).
 
 - [ ] **Step 1: Replace `frontend/src/pages/Login.jsx` in full**
 
@@ -816,6 +820,17 @@ import { persistAuthSession, isAuthenticated } from '../utils/auth'
 import { useWallet } from '../context/WalletContext'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS } from './authShared'
+
+// Web3Auth's connectorName isn't guaranteed to be exactly one of our four
+// authProvider enum values (e.g. an external wallet connector might report
+// 'metamask' or 'injected') — map known values through, default anything
+// else to 'wallet'. This is a display label only (not a security boundary
+// — the backend independently verifies the idToken), so a generous mapping
+// here is safe.
+const VALID_AUTH_PROVIDERS = ['google', 'email_passwordless', 'discord', 'wallet'];
+function toAuthProvider(connectorName) {
+  return VALID_AUTH_PROVIDERS.includes(connectorName) ? connectorName : 'wallet';
+}
 
 export default function Login() {
   const [error, setError]     = useState('')
@@ -837,11 +852,12 @@ export default function Login() {
         setLoading(false)
         return
       }
-      const { idToken, walletAddress } = result
+      const { idToken, walletAddress, connectorName } = result
       const res = await apiClient.post('/api/auth/web3auth', {
         idToken,
         walletAddress,
         avatar: userInfo?.profileImage || null,
+        loginMethod: toAuthProvider(connectorName),
       })
       if (res.data.success) {
         persistAuthSession({ token: res.data.data.token, user: res.data.data.user })
