@@ -22,7 +22,7 @@ export default function Login() {
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const { login, userInfo, account } = useWallet()
+  const { login, userInfo } = useWallet()
 
   useEffect(() => {
     if (isAuthenticated()) { navigate('/', { replace: true }) }
@@ -84,9 +84,9 @@ export default function Login() {
             type="button"
             className="auth-cta-btn"
             onClick={handleSignIn}
-            disabled={loading || !!account}
+            disabled={loading || isAuthenticated()}
           >
-            {loading ? 'Signing in…' : account ? 'Signed in' : 'Sign in'}
+            {loading ? 'Signing in…' : isAuthenticated() ? 'Signed in' : 'Sign in'}
           </button>
         </motion.div>
       </AnimatePresence>

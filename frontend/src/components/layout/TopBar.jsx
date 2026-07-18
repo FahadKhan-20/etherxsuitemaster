@@ -103,8 +103,13 @@ export default function TopBar({ showMeetingInfo = false }) {
     navigator.clipboard?.writeText(`${window.location.origin}/room/${meetingId || 'etherx'}`);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Await the Web3Auth SDK teardown before clearing the app session and
+    // navigating away — otherwise the full-page navigation below can race
+    // the in-flight async disconnect, leaving a lingering Web3Auth session
+    // that re-hydrates on the next /login visit and strands the user behind
+    // a permanently-disabled sign-in button.
+    await logout();
     clearAuthSession();
     window.location.replace(ROUTES.LOGIN);
   };

@@ -144,8 +144,13 @@ export default function Join() {
     }, 500);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Await the Web3Auth SDK teardown before clearing the app session and
+    // navigating away, for consistency with Landing.jsx/TopBar.jsx — this
+    // uses SPA navigate() rather than a full page reload so it's less
+    // exposed to the unload race, but an un-awaited logout() still risks a
+    // stale account lingering in the wallet context.
+    await logout();
     localStorage.removeItem('nexmeet_token');
     localStorage.removeItem('nexmeet_user');
     navigate('/login');
