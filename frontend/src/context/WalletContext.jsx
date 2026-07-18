@@ -1,171 +1,154 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserProvider, JsonRpcProvider, Wallet, ethers, formatEther } from 'ethers';
-import { getStoredUser } from '../utils/auth';
+import { createContext, useCallback, useContext, useMemo } from 'react';
+import { BrowserProvider, JsonRpcSigner, formatUnits } from 'ethers';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  Web3AuthProvider,
+  useWeb3AuthConnect,
+  useWeb3AuthDisconnect,
+  useWeb3AuthUser,
+  useAuthTokenInfo,
+} from '@web3auth/modal/react';
+import { WagmiProvider as Web3AuthWagmiProvider } from '@web3auth/modal/react/wagmi';
+import { WEB3AUTH_NETWORK, WALLET_CONNECTORS } from '@web3auth/modal';
+import { useAccount, useBalance, useConfig, useWalletClient } from 'wagmi';
+import { getConnection } from 'wagmi/actions';
 
-const AMOY_RPC = import.meta.env.VITE_AMOY_RPC_URL || 'https://rpc-amoy.polygon.technology';
 const AMOY_CHAIN_ID = 80002;
-const WALLET_KEY = 'etherx_wallet';
 
-function derivePassword(userId) {
-  return ethers.id(userId + 'etherx');
+const web3AuthContextConfig = {
+  web3AuthOptions: {
+    clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
+    web3AuthNetwork:
+      import.meta.env.VITE_NETWORK === 'mainnet'
+        ? WEB3AUTH_NETWORK.SAPPHIRE_MAINNET
+        : WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
+    modalConfig: {
+      connectors: {
+        [WALLET_CONNECTORS.AUTH]: {
+          showOnModal: true,
+          loginMethods: {
+            google: { showOnModal: true },
+            email_passwordless: { showOnModal: true },
+            discord: { showOnModal: true },
+            facebook: { showOnModal: false },
+            twitter: { showOnModal: false },
+            reddit: { showOnModal: false },
+            twitch: { showOnModal: false },
+            apple: { showOnModal: false },
+            line: { showOnModal: false },
+            github: { showOnModal: false },
+            kakao: { showOnModal: false },
+            linkedin: { showOnModal: false },
+            wechat: { showOnModal: false },
+            farcaster: { showOnModal: false },
+            // NOTE: 'weibo' was in the original plan but is not a valid
+            // AUTH_CONNECTION_TYPE in the installed SDK (11.3.0) — omitted.
+          },
+        },
+      },
+      // Wallet-first login (MetaMask etc.) stays visible — only the AUTH
+      // (social/email) connector's method list is restricted above.
+    },
+  },
+};
+
+const queryClient = new QueryClient();
+
+// Converts wagmi's viem WalletClient into an ethers v6 JsonRpcSigner, so the
+// rest of the app (useMeetingContract, useMeetingNFT, VerifiedChat) keeps
+// using ethers exactly as it did with the old MetaMask/embedded-wallet flow.
+function walletClientToSigner(walletClient) {
+  const { account, chain, transport } = walletClient;
+  const network = { chainId: chain.id, name: chain.name };
+  const provider = new BrowserProvider(transport, network);
+  return new JsonRpcSigner(provider, account.address);
 }
 
 const WalletContext = createContext(null);
 
-export function WalletProvider({ children }) {
-  const [account, setAccount]           = useState(null);
-  const [chainId, setChainId]           = useState(null);
-  const [balance, setBalance]           = useState('');
-  const [provider, setProvider]         = useState(null);
-  const [signer, setSigner]             = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectError, setConnectError] = useState(null);
-  const [walletSource, setWalletSource] = useState(null);
-  const [isReady, setIsReady]           = useState(false);
-  const initialized = useRef(false);
+function WalletBridge({ children }) {
+  const { connect, isConnected, loading: isConnecting, connectorName, error: connectRawError } = useWeb3AuthConnect();
+  const { disconnect } = useWeb3AuthDisconnect();
+  const { userInfo } = useWeb3AuthUser();
+  const { getAuthTokenInfo } = useAuthTokenInfo();
+  const { address, chainId } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const { data: balanceData } = useBalance({ address, query: { enabled: Boolean(address) } });
+  const wagmiConfig = useConfig();
 
-  const amoyProvider = useMemo(() => new JsonRpcProvider(AMOY_RPC), []);
+  const connectError = connectRawError?.message || null;
 
-  const refreshBalance = useCallback(async (ethProvider, addr) => {
-    try {
-      const raw = await ethProvider.getBalance(addr);
-      setBalance(parseFloat(formatEther(raw)).toFixed(3));
-    } catch {
-      setBalance('—');
-    }
-  }, []);
+  const provider = useMemo(() => {
+    if (!walletClient) return null;
+    return new BrowserProvider(walletClient.transport, { chainId: walletClient.chain.id, name: walletClient.chain.name });
+  }, [walletClient]);
 
-  const initWallet = useCallback(async () => {
-    const user = getStoredUser();
-    if (!user?.id) return;
-    if (initialized.current) return;
-    initialized.current = true;
+  const signer = useMemo(() => {
+    if (!walletClient) return null;
+    return walletClientToSigner(walletClient);
+  }, [walletClient]);
 
-    setIsConnecting(true);
-    setConnectError(null);
-    try {
-      const password = derivePassword(user.id);
-      const stored = localStorage.getItem(WALLET_KEY);
+  const login = useCallback(async () => {
+    // connect() resolves to a Connection object (or null if the user cancels
+    // the modal) that carries connectorName directly — reading it from the
+    // resolved value (rather than the useWeb3AuthConnect() hook's state)
+    // avoids a stale-closure read, since this callback's own closure was
+    // captured on the render *before* the connection happened.
+    const connection = await connect();
+    if (!connection) return null;
 
-      let wallet;
-      let isNew = false;
+    // getAuthTokenInfo() resolves the idToken string itself (not an
+    // { idToken } wrapper — see @web3auth/no-modal/react's useAuthTokenInfo).
+    const idToken = await getAuthTokenInfo();
 
-      if (stored) {
-        try {
-          wallet = await Wallet.fromEncryptedJson(stored, password);
-        } catch {
-          localStorage.removeItem(WALLET_KEY);
-          wallet = Wallet.createRandom();
-          isNew = true;
-        }
-      } else {
-        wallet = Wallet.createRandom();
-        isNew = true;
-      }
+    // Read the freshly-connected address directly from the wagmi config
+    // store rather than the `address` destructured above, which is a
+    // snapshot from the render that created this callback and would still
+    // be null immediately after a first-time connect.
+    const { address: connectedAddress } = getConnection(wagmiConfig);
 
-      if (isNew) {
-        const encrypted = await wallet.encrypt(password);
-        localStorage.setItem(WALLET_KEY, encrypted);
-      }
+    if (!idToken || !connectedAddress) return null;
+    // connectorName carries which login method was used (e.g. 'google',
+    // 'email_passwordless', 'discord', or an external-wallet connector name
+    // like 'metamask') — Login.jsx maps it to authProvider's four valid
+    // values before sending it to POST /api/auth/web3auth.
+    return { idToken, walletAddress: connectedAddress, connectorName: connection.connectorName };
+  }, [connect, getAuthTokenInfo, wagmiConfig]);
 
-      const connectedWallet = wallet.connect(amoyProvider);
-      const address = await connectedWallet.getAddress();
-
-      setProvider(amoyProvider);
-      setSigner(connectedWallet);
-      setAccount(address);
-      setChainId(AMOY_CHAIN_ID);
-      setWalletSource('embedded');
-      setIsReady(true);
-
-      await refreshBalance(amoyProvider, address);
-
-    } catch (err) {
-      setConnectError(err.message || 'Failed to initialize wallet');
-      initialized.current = false;
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [amoyProvider, refreshBalance]);
-
-  useEffect(() => {
-    initWallet();
-  }, [initWallet]);
-
-  const connectMetaMask = useCallback(async () => {
-    if (!window.ethereum) { setConnectError('MetaMask not detected.'); return; }
-    setIsConnecting(true);
-    setConnectError(null);
-    try {
-      const ethProvider = new BrowserProvider(window.ethereum);
-      await ethProvider.send('eth_requestAccounts', []);
-      try {
-        await ethProvider.send('wallet_switchEthereumChain', [{ chainId: '0x13882' }]);
-      } catch (switchErr) {
-        if ((switchErr.code ?? switchErr.error?.code) === 4902) {
-          await ethProvider.send('wallet_addEthereumChain', [{
-            chainId: '0x13882',
-            chainName: 'Polygon Amoy',
-            rpcUrls: [AMOY_RPC],
-            nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
-          }]);
-          await ethProvider.send('wallet_switchEthereumChain', [{ chainId: '0x13882' }]);
-        } else throw switchErr;
-      }
-      const finalProvider = new BrowserProvider(window.ethereum);
-      const ethSigner = await finalProvider.getSigner();
-      const network = await finalProvider.getNetwork();
-      setProvider(finalProvider);
-      setSigner(ethSigner);
-      setAccount(await ethSigner.getAddress());
-      setChainId(Number(network.chainId));
-      setWalletSource('metamask');
-      setIsReady(true);
-      await refreshBalance(finalProvider, await ethSigner.getAddress());
-    } catch (err) {
-      const code = err.code ?? err.error?.code;
-      setConnectError(
-        code === 4001   ? 'Connection rejected.' :
-        code === -32002 ? 'MetaMask popup already open.' :
-        err?.shortMessage ?? err?.message ?? 'Connection failed'
-      );
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [refreshBalance]);
-
-  const disconnect = useCallback(() => {
-    setAccount(null); setChainId(null); setBalance('');
-    setProvider(null); setSigner(null);
-    setWalletSource(null); setIsReady(false);
-    initialized.current = false;
-  }, []);
-
-  useEffect(() => {
-    if (walletSource !== 'metamask' || !window.ethereum) return;
-    const onAccountsChanged = (accounts) => {
-      if (accounts.length === 0) disconnect();
-      else { setAccount(accounts[0]); if (provider) refreshBalance(provider, accounts[0]); }
-    };
-    const onChainChanged = () => window.location.reload();
-    window.ethereum.on('accountsChanged', onAccountsChanged);
-    window.ethereum.on('chainChanged', onChainChanged);
-    return () => {
-      window.ethereum.removeListener('accountsChanged', onAccountsChanged);
-      window.ethereum.removeListener('chainChanged', onChainChanged);
-    };
-  }, [walletSource, provider, disconnect, refreshBalance]);
+  const logout = useCallback(async () => {
+    await disconnect();
+  }, [disconnect]);
 
   const value = useMemo(() => ({
-    account, chainId, balance, provider, signer,
-    isConnecting, connectError,
-    walletSource, isReady,
-    initWallet, connectMetaMask, disconnect,
-    connect: connectMetaMask,
-  }), [account, chainId, balance, provider, signer, isConnecting, connectError,
-      walletSource, isReady, initWallet, connectMetaMask, disconnect]);
+    account: address || null,
+    chainId: chainId || AMOY_CHAIN_ID,
+    // wagmi v3's useBalance() data has no `.formatted` field (just
+    // { decimals, symbol, value: bigint }) — format it via ethers.
+    balance: balanceData ? formatUnits(balanceData.value, balanceData.decimals) : '',
+    provider,
+    signer,
+    isConnecting,
+    connectError,
+    isReady: isConnected,
+    userInfo: userInfo || null,
+    connectorName,
+    login,
+    logout,
+  }), [address, chainId, balanceData, provider, signer, isConnecting, connectError, isConnected, userInfo, connectorName, login, logout]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+}
+
+export function WalletProvider({ children }) {
+  return (
+    <Web3AuthProvider config={web3AuthContextConfig}>
+      <QueryClientProvider client={queryClient}>
+        <Web3AuthWagmiProvider>
+          <WalletBridge>{children}</WalletBridge>
+        </Web3AuthWagmiProvider>
+      </QueryClientProvider>
+    </Web3AuthProvider>
+  );
 }
 
 export function useWallet() {
