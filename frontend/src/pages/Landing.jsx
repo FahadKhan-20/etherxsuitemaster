@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import etherxLogo from '../assets/etherx_transparent.png';
 import { clearAuthSession, getStoredUser, getUserInitials } from '../utils/auth';
+import { useWallet } from '../context/WalletContext';
 import { ROUTES } from '../utils/constants';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
@@ -85,6 +86,7 @@ function MoreIcon() {
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const storedUser = getStoredUser();
@@ -302,6 +304,7 @@ export default function Landing() {
   };
 
   const handleLogout = () => {
+    logout();
     clearAuthSession();
     window.location.replace(ROUTES.LOGIN);
   };

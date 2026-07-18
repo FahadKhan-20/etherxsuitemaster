@@ -12,6 +12,7 @@ import {
 import Dropdown from '../ui/Dropdown';
 import { useMeeting } from '../../context/MeetingContext';
 import { useUser } from '../../context/UserContext';
+import { useWallet } from '../../context/WalletContext';
 import { ROUTES } from '../../utils/constants';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
 import etherxLogo from '../../assets/etherx_transparent.png';
@@ -43,6 +44,7 @@ function buildWeatherLabel(hour) {
 
 export default function TopBar({ showMeetingInfo = false }) {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const { user } = useUser();
   const { meetingId, meetingTitle, startTime } = useMeeting();
   const [now, setNow] = useState(Date.now());
@@ -102,6 +104,7 @@ export default function TopBar({ showMeetingInfo = false }) {
   };
 
   const handleLogout = () => {
+    logout();
     clearAuthSession();
     window.location.replace(ROUTES.LOGIN);
   };

@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useUI } from '../context/UIContext';
 import { useUserContext } from '../context/UserContext';
+import { useWallet } from '../context/WalletContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import AudioVisualizer from '../components/meeting/AudioVisualizer';
 import etherxLogo from '../assets/etherx_transparent.png';
@@ -25,6 +26,7 @@ const AVATAR_COLORS = [
 
 export default function Join() {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const [searchParams] = useSearchParams();
   const { addToast } = useUI();
   const { user, updateUser } = useUserContext();
@@ -143,6 +145,7 @@ export default function Join() {
   };
 
   const handleLogout = () => {
+    logout();
     localStorage.removeItem('nexmeet_token');
     localStorage.removeItem('nexmeet_user');
     navigate('/login');
