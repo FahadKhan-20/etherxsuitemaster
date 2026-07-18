@@ -1,12 +1,30 @@
 const { createRemoteJWKSet, jwtVerify } = require('jose');
 
-// Web3Auth issues from two different endpoints depending on login type.
+// Web3Auth/MetaMask Embedded Wallet issues tokens from different endpoints
+// depending on the network environment (devnet vs. mainnet) and connector type.
+//
 // Uses a Map (rather than a plain object literal) so an attacker-controlled
 // `iss` claim can never resolve to an inherited Object.prototype property
 // (e.g. "constructor", "toString") and bypass the "unrecognized issuer" guard.
+//
+// Issuer → JWKS mapping:
+//   SAPPHIRE_MAINNET  →  https://api-auth.web3auth.io
+//   SAPPHIRE_DEVNET   →  https://web3auth.io  (iss emitted by devnet SDK)
+//   authjs connector  →  https://authjs.web3auth.io
+//   dev-api (legacy)  →  https://dev-api.web3auth.io
 const JWKS_BY_ISSUER = new Map([
-  ['https://api-auth.web3auth.io', createRemoteJWKSet(new URL('https://api-auth.web3auth.io/jwks'))],
-  ['https://authjs.web3auth.io', createRemoteJWKSet(new URL('https://authjs.web3auth.io/jwks'))],
+  // ── Production / Mainnet ─────────────────────────────────────────────────
+  ['https://api-auth.web3auth.io',  createRemoteJWKSet(new URL('https://api-auth.web3auth.io/jwks'))],
+  ['https://authjs.web3auth.io',    createRemoteJWKSet(new URL('https://authjs.web3auth.io/jwks'))],
+  // ── Devnet / Sapphire Devnet ─────────────────────────────────────────────
+  // SAPPHIRE_DEVNET tokens observed carrying iss as the bare domain string
+  // "web3auth.io" (no scheme) — confirmed against a real devnet-issued
+  // token, which does NOT match "https://web3auth.io". Keep both forms
+  // mapped to the same JWKS endpoint in case a future SDK version emits
+  // the scheme-prefixed form instead.
+  ['web3auth.io',                   createRemoteJWKSet(new URL('https://web3auth.io/.well-known/jwks.json'))],
+  ['https://web3auth.io',           createRemoteJWKSet(new URL('https://web3auth.io/.well-known/jwks.json'))],
+  ['https://dev-api.web3auth.io',   createRemoteJWKSet(new URL('https://dev-api.web3auth.io/jwks'))],
 ]);
 
 /**
