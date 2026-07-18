@@ -7,24 +7,21 @@ const { createRemoteJWKSet, jwtVerify } = require('jose');
 // `iss` claim can never resolve to an inherited Object.prototype property
 // (e.g. "constructor", "toString") and bypass the "unrecognized issuer" guard.
 //
-// Issuer → JWKS mapping:
-//   SAPPHIRE_MAINNET  →  https://api-auth.web3auth.io
-//   SAPPHIRE_DEVNET   →  https://web3auth.io  (iss emitted by devnet SDK)
-//   authjs connector  →  https://authjs.web3auth.io
-//   dev-api (legacy)  →  https://dev-api.web3auth.io
+// The dashboard's own Project Settings page (developer.metamask.io) states
+// the real JWKS endpoint for this project directly:
+//   https://api-auth.web3auth.io/.well-known/jwks.json
+// A real devnet-issued idToken's `iss` claim was observed to be the bare
+// string "web3auth.io" (no scheme) — that value, and its scheme-prefixed
+// form, both resolve to the confirmed JWKS endpoint above (NOT a guessed
+// endpoint at the web3auth.io domain itself, which returned an unparseable
+// non-JSON response and broke verification on the first attempt).
+const CONFIRMED_JWKS = createRemoteJWKSet(new URL('https://api-auth.web3auth.io/.well-known/jwks.json'));
 const JWKS_BY_ISSUER = new Map([
-  // ── Production / Mainnet ─────────────────────────────────────────────────
-  ['https://api-auth.web3auth.io',  createRemoteJWKSet(new URL('https://api-auth.web3auth.io/jwks'))],
-  ['https://authjs.web3auth.io',    createRemoteJWKSet(new URL('https://authjs.web3auth.io/jwks'))],
-  // ── Devnet / Sapphire Devnet ─────────────────────────────────────────────
-  // SAPPHIRE_DEVNET tokens observed carrying iss as the bare domain string
-  // "web3auth.io" (no scheme) — confirmed against a real devnet-issued
-  // token, which does NOT match "https://web3auth.io". Keep both forms
-  // mapped to the same JWKS endpoint in case a future SDK version emits
-  // the scheme-prefixed form instead.
-  ['web3auth.io',                   createRemoteJWKSet(new URL('https://web3auth.io/.well-known/jwks.json'))],
-  ['https://web3auth.io',           createRemoteJWKSet(new URL('https://web3auth.io/.well-known/jwks.json'))],
-  ['https://dev-api.web3auth.io',   createRemoteJWKSet(new URL('https://dev-api.web3auth.io/jwks'))],
+  ['web3auth.io',                   CONFIRMED_JWKS],
+  ['https://web3auth.io',           CONFIRMED_JWKS],
+  ['https://api-auth.web3auth.io',  CONFIRMED_JWKS],
+  ['https://authjs.web3auth.io',    createRemoteJWKSet(new URL('https://authjs.web3auth.io/.well-known/jwks.json'))],
+  ['https://dev-api.web3auth.io',   createRemoteJWKSet(new URL('https://dev-api.web3auth.io/.well-known/jwks.json'))],
 ]);
 
 /**
