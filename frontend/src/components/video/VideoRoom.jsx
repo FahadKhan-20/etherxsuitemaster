@@ -83,6 +83,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['Yes','No','Maybe']);
   const [showPollForm, setShowPollForm] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const toolbarTimerRef = useRef(null);
 
@@ -269,6 +270,19 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} />}
+
+      {previewImageUrl && (
+        <div
+          onClick={() => setPreviewImageUrl(null)}
+          style={{ position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.85)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out',padding:32 }}
+        >
+          <button
+            onClick={() => setPreviewImageUrl(null)}
+            style={{ position:'absolute',top:20,right:24,background:'none',border:'none',color:'#f0e6d3',cursor:'pointer',fontSize:22 }}
+          >✕</button>
+          <img src={previewImageUrl} alt="Preview" style={{ maxWidth:'100%',maxHeight:'100%',objectFit:'contain',borderRadius:8 }} onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       {showSettingsModal && (
         <div style={{ position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.65)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center' }}>
@@ -505,16 +519,30 @@ export default function VideoRoom({ roomCode, isHost }) {
                     [...(sharedFiles||[])].reverse().map(file => {
                       const ext = file.name.split('.').pop().toLowerCase();
                       const isImg = ['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext);
+                      const isPdf = ext === 'pdf';
                       const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
                       return (
                         <div key={file.id} style={{ background:'rgba(212,175,55,.06)',border:'1px solid rgba(212,175,55,.14)',borderRadius:10,overflow:'hidden' }}>
-                          {isImg && <img src={file.url} alt={file.name} style={{ width:'100%',maxHeight:120,objectFit:'cover',display:'block' }} />}
+                          {isImg && (
+                            <img
+                              src={file.url}
+                              alt={file.name}
+                              onClick={() => setPreviewImageUrl(file.url)}
+                              title="Click to view full size"
+                              style={{ width:'100%',maxHeight:120,objectFit:'cover',display:'block',cursor:'pointer' }}
+                            />
+                          )}
                           <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:10 }}>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
                             <div style={{ flex:1,minWidth:0 }}>
                               <p style={{ margin:0,fontSize:12.5,fontWeight:600,color:'#f0e6d3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{file.name}</p>
                               <p style={{ margin:'2px 0 0',fontSize:11,color:'#a89878' }}>{fmtSize} · {file.sharedBy}</p>
                             </div>
+                            {isPdf && (
+                              <a href={file.url} target="_blank" rel="noopener noreferrer" style={{ display:'flex',padding:'6px 10px',borderRadius:8,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11.5,fontWeight:600,flexShrink:0,alignItems:'center',gap:4 }}>
+                                Open
+                              </a>
+                            )}
                             <a href={file.url} download={file.name} style={{ display:'flex',padding:'6px 10px',borderRadius:8,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11.5,fontWeight:600,flexShrink:0,alignItems:'center',gap:4 }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                               Save
