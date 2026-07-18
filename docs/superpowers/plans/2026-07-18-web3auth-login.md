@@ -496,7 +496,7 @@ Note: `email` is no longer accepted from the request body — it comes only from
 
 - [ ] **Step 2: Add `WEB3AUTH_CLIENT_ID` to backend env**
 
-Add to `backend/.env` (create the line if the file exists; if it doesn't, note this for Task 9's manual verification setup):
+Add to `backend/.env` (create the line if the file exists; if it doesn't, note this for Task 10's manual verification setup):
 
 ```env
 WEB3AUTH_CLIENT_ID=<same Client ID as VITE_WEB3AUTH_CLIENT_ID>
