@@ -10,8 +10,7 @@ import {
 } from '@web3auth/modal/react';
 import { WagmiProvider as Web3AuthWagmiProvider } from '@web3auth/modal/react/wagmi';
 import { WEB3AUTH_NETWORK, WALLET_CONNECTORS } from '@web3auth/modal';
-import { useAccount, useBalance, useConfig, useWalletClient } from 'wagmi';
-import { getConnection } from 'wagmi/actions';
+import { useAccount, useBalance, useWalletClient } from 'wagmi';
 
 const AMOY_CHAIN_ID = 80002;
 
@@ -74,7 +73,6 @@ function WalletBridge({ children }) {
   const { address, chainId } = useAccount();
   const { data: walletClient } = useWalletClient();
   const { data: balanceData } = useBalance({ address, query: { enabled: Boolean(address) } });
-  const wagmiConfig = useConfig();
 
   const connectError = connectRawError?.message || null;
 
@@ -101,11 +99,27 @@ function WalletBridge({ children }) {
     // { idToken } wrapper — see @web3auth/no-modal/react's useAuthTokenInfo).
     const idToken = await getAuthTokenInfo();
 
-    // Read the freshly-connected address directly from the wagmi config
-    // store rather than the `address` destructured above, which is a
-    // snapshot from the render that created this callback and would still
-    // be null immediately after a first-time connect.
-    const { address: connectedAddress } = getConnection(wagmiConfig);
+    // Read the freshly-connected address directly off the Connection object
+    // connect() itself resolved, via its EIP-1193 `ethereumProvider`
+    // (@web3auth/no-modal's `Connection` interface:
+    // `{ ethereumProvider, solanaWallet, connectorName, connectorNamespace }`,
+    // where `ethereumProvider: IProvider` exposes `.request()`).
+    //
+    // We deliberately do NOT read this via wagmi's `getConnection(wagmiConfig)`
+    // store. That store is populated by `Web3AuthWagmiProvider`'s own
+    // unawaited `useEffect` (see @web3auth/no-modal/react/wagmi's
+    // provider.js), which — on a *later* render commit, after this effect
+    // notices `connection` changed — calls `connector.getChainId()` then
+    // `connector.getAccounts()` (which itself just calls
+    // `ethereumProvider.request({ method: 'eth_accounts' })`, the same call
+    // made below) before finally calling `wagmiConfig.setState(...)`.
+    // login() never awaits that effect, so there is no happens-before
+    // relationship between it completing and a read of the wagmi store —
+    // on the very first connect in a session the store can still be empty.
+    // Calling eth_accounts directly on the Connection's own provider gets
+    // the same data without depending on that effect's timing at all.
+    const accounts = await connection.ethereumProvider?.request({ method: 'eth_accounts' });
+    const connectedAddress = Array.isArray(accounts) ? accounts[0] : undefined;
 
     if (!idToken || !connectedAddress) return null;
     // connectorName carries which login method was used (e.g. 'google',
@@ -113,7 +127,7 @@ function WalletBridge({ children }) {
     // like 'metamask') — Login.jsx maps it to authProvider's four valid
     // values before sending it to POST /api/auth/web3auth.
     return { idToken, walletAddress: connectedAddress, connectorName: connection.connectorName };
-  }, [connect, getAuthTokenInfo, wagmiConfig]);
+  }, [connect, getAuthTokenInfo]);
 
   const logout = useCallback(async () => {
     await disconnect();
