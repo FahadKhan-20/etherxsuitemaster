@@ -13,6 +13,7 @@ import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
 import LiveTranscript from '../room/LiveTranscript';
 import { ROUTES } from '../../utils/constants';
+import apiClient from '../../utils/apiClient';
 import etherxLogo from '../../assets/etherx_transparent.png';
 
 const AVATAR_COLORS = ['#4a90d9','#7B2FBE','#00b5a0','#5BA4CF','#3a7bd5','#9B59B6','#1abc9c','#2980b9'];
@@ -130,11 +131,19 @@ export default function VideoRoom({ roomCode, isHost }) {
   const {
     localStream, peers, micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
+    toggleNoiseSuppression, noiseSuppressed,
+    setRoomLocked, roomLocked,
+    sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+
+  const [selfViewHidden, setSelfViewHidden] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
   const { devices, switchDevice, selectedDevices } = useMediaDevices();
 
@@ -152,6 +161,19 @@ export default function VideoRoom({ roomCode, isHost }) {
   const handleCopyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => { setCopied(true); setTimeout(()=>setCopied(false),2000); }); };
   const handleCopyCode = () => { navigator.clipboard.writeText(roomCode||'').then(() => { setCodeCopied(true); setTimeout(()=>setCodeCopied(false),2000); }); };
   const handleRaiseHand = () => { if (raised) { setRaised(false); sendHandLower?.(); } else { setRaised(true); setHandToastDismissed(false); sendHandRaise?.(); } };
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackText.trim() || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      await apiClient.post('/api/feedback', { text: feedbackText.trim(), roomCode });
+      setFeedbackOpen(false);
+      setFeedbackText('');
+      showToast('Thank you for your feedback!');
+    } catch {
+      showToast('Failed to send feedback — please try again.');
+    }
+    setFeedbackSubmitting(false);
+  };
 
   const peerList = Object.entries(peers);
   const totalP = 1 + peerList.length;
@@ -232,6 +254,16 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {reactions?.map(r => (<div key={r.id} style={{ position:'fixed',bottom:120,left:`${30+(r.id%5)*10}%`,fontSize:32,animation:'floatReaction 3s ease-out forwards',pointerEvents:'none',zIndex:45 }}>{r.emoji}</div>))}
 
+      {/* Shared media banner — shown to everyone when someone uses Share video/audio */}
+      {sharedMediaUrl && (
+        <div style={{ position:'fixed',top:90,right:24,zIndex:210,display:'flex',alignItems:'center',gap:10,background:'rgba(5,5,5,.95)',border:'1px solid rgba(212,175,55,.25)',borderRadius:12,padding:'10px 14px',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',maxWidth:320 }}>
+          <span style={{ fontSize:12,color:'#a89878',flexShrink:0 }}>Shared media:</span>
+          <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:12,color:'#d4af37',textDecoration:'underline',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>
+            {sharedMediaUrl}
+          </a>
+        </div>
+      )}
+
       {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
       {fileNotifications?.length > 0 && (
         <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:250,display:'flex',flexDirection:'column',gap:10,alignItems:'center',pointerEvents:'none' }}>
@@ -307,6 +339,31 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} />}
+
+      {feedbackOpen && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:400 }}>
+          <div style={{ width:380,background:'#0a0a0a',border:'1px solid rgba(212,175,55,.15)',borderRadius:16,padding:22,boxShadow:'0 30px 70px -20px rgba(0,0,0,.7)' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14 }}>
+              <span style={{ fontSize:16,fontWeight:700 }}>Leave feedback</span>
+              <button onClick={() => setFeedbackOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:18 }}>✕</button>
+            </div>
+            <textarea
+              value={feedbackText}
+              onChange={e => setFeedbackText(e.target.value)}
+              placeholder="What's working, what isn't — tell us."
+              rows={5}
+              style={{ width:'100%',boxSizing:'border-box',background:'rgba(0,0,0,.5)',color:'#f0e6d3',border:'1px solid rgba(212,175,55,.15)',borderRadius:10,padding:12,fontSize:13,outline:'none',fontFamily:"'Sora',sans-serif",resize:'vertical',marginBottom:14 }}
+            />
+            <button
+              onClick={handleFeedbackSubmit}
+              disabled={!feedbackText.trim() || feedbackSubmitting}
+              style={{ width:'100%',padding:12,borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#050505',fontWeight:700,fontSize:13.5,cursor:'pointer',fontFamily:"'Sora',sans-serif",opacity:(!feedbackText.trim()||feedbackSubmitting)?0.5:1 }}
+            >
+              {feedbackSubmitting ? 'Sending…' : 'Send feedback'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {previewImageUrl && (
         <div
@@ -634,16 +691,16 @@ export default function VideoRoom({ roomCode, isHost }) {
               gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,
               gridAutoRows:'1fr',
               gap:2,
-              background:'#3a3a3a',
+              background:'#000',
             }}>
               {/* Local tile */}
               <div style={{
                 position:'relative',
                 display:'flex',alignItems:'center',justifyContent:'center',
-                background:'#1e1e1e',
+                background:'#0a0a0a',
                 overflow:'hidden',
               }}>
-                {localStream && !cameraOff ? (
+                {localStream && !cameraOff && !selfViewHidden ? (
                   <VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>
                 ) : (
                   <div style={{
@@ -681,7 +738,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                   <div key={id} style={{
                     position:'relative',
                     display:'flex',alignItems:'center',justifyContent:'center',
-                    background:'#1e1e1e',
+                    background:'#0a0a0a',
                     overflow:'hidden',
                     cursor:'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
@@ -806,20 +863,20 @@ export default function VideoRoom({ roomCode, isHost }) {
                       <span style={{ fontSize:13,fontWeight:600 }}>{userName||'You'}</span>
                     </div>
                     {[
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Performance settings', divider:false, action:() => { setMoreOpen(false); showToast('Performance optimized.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Performance settings', divider:false, action:() => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'View full screen', divider:false, action:() => { if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen().catch(()=>{}); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); showToast('Room: end-to-end encrypted.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, label:'Closed captions', divider:false, action:() => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Polls', divider:false, action:() => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'File sharing', divider:true, action:() => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Share video', divider:false, action:() => { setMoreOpen(false); showToast('Video sharing initialized.'); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6"/></svg>, label:'Share audio', divider:false, action:() => { setMoreOpen(false); showToast('Audio sharing initialized.'); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5"/><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Noise suppression', divider:false, action:() => { setMoreOpen(false); showToast('Noise suppression toggled.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Share video', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6"/></svg>, label:'Share audio', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5"/><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Noise suppression', divider:false, action:() => { setMoreOpen(false); toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.4"/></svg>, label:'Select background', divider:false, action:() => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Participant stats', divider:true, action:() => { setShowPeople(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5"/></svg>, label:'Settings', divider:false, action:() => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>, label:'View shortcuts', divider:false, action:() => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'Leave feedback', divider:false, action:() => { setMoreOpen(false); showToast('Thank you for your feedback!'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'Leave feedback', divider:false, action:() => { setMoreOpen(false); setFeedbackOpen(true); } },
                     ].map((item,idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:9,border:'none',background:'none',color:'#f0e6d3',fontSize:12.5,cursor:'pointer',textAlign:'left',width:'100%',fontFamily:"'Sora',sans-serif",transition:'background .15s' }}

@@ -46,6 +46,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [micMuted, setMicMuted]             = useState(false);
   const [cameraOff, setCameraOff]           = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [noiseSuppressed, setNoiseSuppressed] = useState(false);
+  const [roomLocked, setRoomLockedState]    = useState(false);
   const [spotlightId, setSpotlightId]       = useState('local');
   const [connectionError, setConnectionError] = useState('');
 
@@ -82,6 +84,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const pcsRef         = useRef({});           // socketId → RTCPeerConnection
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
+  const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
 
   // ── Peer connection factory ─────────────────────────────────────────────────
   const createPC = useCallback((socketId, onStream) => {
@@ -220,6 +224,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Host has kicked us — invoke the caller-supplied callback
       socket.on('removed-from-room', () => {
         if (typeof onKicked === 'function') onKicked();
+      });
+
+      // Room lock state changed (by host) — broadcast to everyone including sender
+      socket.on('room-locked', ({ locked }) => {
+        setRoomLockedState(locked);
       });
 
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
@@ -394,6 +403,63 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     }
   }, [cameraOff, roomCode]);
 
+  /**
+   * Basic noise suppression: routes the mic track through a Web Audio
+   * highpass + lowpass filter pair (cuts low-frequency rumble and
+   * high-frequency hiss outside the human-voice band, ~200Hz-3.5kHz) and
+   * sends the filtered track instead. This is a simple band-pass filter,
+   * not full ML-based noise cancellation (e.g. RNNoise) — it reduces
+   * steady background hum/hiss but won't remove other voices or
+   * non-stationary noise.
+   */
+  const toggleNoiseSuppression = useCallback(() => {
+    const currentTrack = localStreamRef.current?.getAudioTracks()[0];
+    if (!currentTrack) return;
+
+    if (!noiseAudioCtxRef.current) {
+      // ── Turn ON: build the filter chain ────────────────────────────────
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = ctx.createMediaStreamSource(new MediaStream([currentTrack]));
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 200;
+        const lowpass = ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 3500;
+        const destination = ctx.createMediaStreamDestination();
+        source.connect(highpass).connect(lowpass).connect(destination);
+
+        const filteredTrack = destination.stream.getAudioTracks()[0];
+        rawMicTrackRef.current = currentTrack;
+        noiseAudioCtxRef.current = ctx;
+
+        localStreamRef.current.removeTrack(currentTrack);
+        localStreamRef.current.addTrack(filteredTrack);
+        Object.values(pcsRef.current).forEach(pc => {
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(filteredTrack).catch(() => {});
+        });
+        setNoiseSuppressed(true);
+      } catch (err) {
+        console.error('Noise suppression setup failed:', err);
+      }
+    } else {
+      // ── Turn OFF: revert to the raw mic track, tear down the filter chain ──
+      const rawTrack = rawMicTrackRef.current;
+      if (rawTrack) {
+        localStreamRef.current.removeTrack(currentTrack);
+        localStreamRef.current.addTrack(rawTrack);
+        Object.values(pcsRef.current).forEach(pc => {
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(rawTrack).catch(() => {});
+        });
+      }
+      noiseAudioCtxRef.current.close().catch(() => {});
+      noiseAudioCtxRef.current = null;
+      rawMicTrackRef.current = null;
+      setNoiseSuppressed(false);
+    }
+  }, []);
+
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -558,11 +624,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
+    toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
     // Waiting Room / Admission
     admitted, denied, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls
-    muteParticipant, kickParticipant, setRoomLocked,
+    muteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,
