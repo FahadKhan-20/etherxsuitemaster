@@ -14,6 +14,7 @@ import { useMeeting } from '../../context/MeetingContext';
 import { useUser } from '../../context/UserContext';
 import { ROUTES } from '../../utils/constants';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
+import etherxLogo from '../../assets/etherx_transparent.png';
 
 function buildMeetingCode(meetingId) {
   if (!meetingId) {
@@ -141,14 +142,13 @@ export default function TopBar({ showMeetingInfo = false }) {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-transparent bg-transparent font-inter">
+    <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(212,175,55,0.08)', background: 'rgba(10,10,15,0.8)', backdropFilter: 'blur(16px)', fontFamily: "'Inter', sans-serif" }}>
       <div 
-        className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4"
-        style={{ padding: '20px 24px' }}
+        style={{ margin: '0 auto', display: 'flex', maxWidth: '1680px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '14px 24px' }}
       >
         <button
           onClick={() => navigate(ROUTES.HOME)}
-          className="flex min-w-0 items-center bg-transparent border-none p-0 cursor-pointer"
+          style={{ display: 'flex', minWidth: 0, alignItems: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
         >
           <EtherxMark />
         </button>
@@ -192,26 +192,47 @@ export default function TopBar({ showMeetingInfo = false }) {
             {logoutButton}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="hidden md:block text-left px-2">
-              <p className="text-sm font-medium text-white">{user.name}</p>
-              <p className="text-xs text-white/45">{user.plan}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'block', textAlign: 'right', paddingRight: '8px' }}>
+              <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: '#f0e6d3' }}>{user.name}</p>
+              <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: '#a89878', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>{user.plan}</p>
             </div>
 
             <Dropdown
               position="bottom-right"
               trigger={
-                <button className="flex items-center gap-2 px-2 py-1 transition-all duration-300 hover:text-[#d4af37] bg-transparent border-none cursor-pointer">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#d4af37,#b8860b)] text-sm font-semibold text-black">
+                <button 
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#f0e6d3', transition: 'color 0.2s' }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#d4af37'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#f0e6d3'}
+                >
+                  <div style={{ display: 'flex', height: '36px', width: '36px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'linear-gradient(135deg,#d4af37,#b8860b)', fontSize: '13px', fontWeight: 700, color: '#0a0a0a' }}>
                     {userInitials}
                   </div>
-                  <UserRound className="h-4 w-4 text-white/65" />
+                  <UserRound size={15} style={{ opacity: 0.7 }} />
                 </button>
               }
               items={userOptions}
             />
 
-            {logoutButton}
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, color: '#f0e6d3', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)', cursor: 'pointer', transition: 'all 0.2s', fontFamily: "'Sora', sans-serif" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#d4af37';
+                e.currentTarget.style.color = '#0a0a0a';
+                e.currentTarget.style.borderColor = '#d4af37';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(212,175,55,0.06)';
+                e.currentTarget.style.color = '#f0e6d3';
+                e.currentTarget.style.borderColor = 'rgba(212,175,55,0.15)';
+              }}
+            >
+              <LogOut size={14} />
+              <span>Logout</span>
+            </button>
           </div>
         )}
       </div>
@@ -222,7 +243,7 @@ export default function TopBar({ showMeetingInfo = false }) {
 function EtherxMark() {
   return (
     <img
-      src="/src/assets/etherx_transparent.png"
+      src={etherxLogo}
       alt="EtherX Meet"
       style={{ width: '140px', height: 'auto', display: 'block' }}
     />
