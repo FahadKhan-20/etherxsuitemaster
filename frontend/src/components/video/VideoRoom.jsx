@@ -133,16 +133,6 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => document.removeEventListener('mousedown', fn);
   }, [moreOpen]);
 
-  useEffect(() => {
-    if (sharedMediaUrl) setMediaStageMinimized(false);
-  }, [sharedMediaUrl]);
-
-  useEffect(() => {
-    if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
-    const iv = setInterval(() => setActiveDashes(Math.floor(Math.random()*8)+1), 120);
-    return () => clearInterval(iv);
-  }, [modalTab, showSettingsModal]);
-
   const handleKicked = useCallback(() => {
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
@@ -162,6 +152,17 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
+
+  useEffect(() => {
+    if (sharedMediaUrl) setMediaStageMinimized(false);
+  }, [sharedMediaUrl]);
+
+  useEffect(() => {
+    if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
+    const iv = setInterval(() => setActiveDashes(Math.floor(Math.random()*8)+1), 120);
+    return () => clearInterval(iv);
+  }, [modalTab, showSettingsModal]);
+
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
@@ -275,40 +276,55 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {reactions?.map(r => (<div key={r.id} style={{ position:'fixed',bottom:120,left:`${30+(r.id%5)*10}%`,fontSize:32,animation:'floatReaction 3s ease-out forwards',pointerEvents:'none',zIndex:45 }}>{r.emoji}</div>))}
 
-      {/* Shared media stage — plays inline for everyone when someone uses Share video/audio */}
+      {/* Shared media stage — FULLSCREEN layout covering the entire room */}
       {sharedMediaUrl && !mediaStageMinimized && (() => {
         const media = classifyMedia(sharedMediaUrl);
         return (
-          <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:210,width:'min(720px, 80vw)',background:'rgba(5,5,5,.97)',border:'1px solid rgba(212,175,55,.25)',borderRadius:16,boxShadow:'0 30px 70px -20px rgba(0,0,0,.75)',overflow:'hidden' }}>
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
-              <span style={{ fontSize:12,color:'#a89878',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>Shared with everyone: {sharedMediaUrl}</span>
-              <button onClick={() => setMediaStageMinimized(true)} title="Minimize" style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:14,flexShrink:0,marginLeft:10 }}>✕</button>
+          <div style={{ position:'fixed',inset:0,zIndex:210,background:'#000',display:'flex',flexDirection:'column' }}>
+            {/* Slim top bar */}
+            <div style={{ flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 18px',background:'rgba(0,0,0,.65)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10,minWidth:0 }}>
+                <span style={{ fontSize:11,background:'rgba(212,175,55,.15)',border:'1px solid rgba(212,175,55,.3)',color:'#e5c76b',borderRadius:6,padding:'2px 8px',fontWeight:600,flexShrink:0 }}>LIVE</span>
+                <span style={{ fontSize:12,color:'#a89878',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{sharedMediaUrl}</span>
+              </div>
+              <button
+                onClick={() => setMediaStageMinimized(true)}
+                title="Minimize"
+                style={{ flexShrink:0,marginLeft:12,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.12)',color:'#f0e6d3',cursor:'pointer',fontSize:13,borderRadius:8,padding:'5px 12px',fontFamily:"'Sora',sans-serif",display:'flex',alignItems:'center',gap:6 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="2" rx="1" fill="currentColor"/></svg>
+                Minimize
+              </button>
             </div>
-            <div style={{ background:'#000',display:'flex',alignItems:'center',justifyContent:'center',maxHeight:'60vh' }}>
+
+            {/* Main media area — takes all remaining height */}
+            <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',background:'#000' }}>
               {media.type === 'youtube' && (
                 <iframe
-                  src={`https://www.youtube.com/embed/${media.id}`}
+                  src={`https://www.youtube.com/embed/${media.id}?autoplay=1`}
                   title="Shared video"
-                  style={{ width:'100%',aspectRatio:'16/9',border:'none' }}
+                  style={{ width:'100%',height:'100%',border:'none' }}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />
               )}
               {media.type === 'video' && (
-                <video src={sharedMediaUrl} controls autoPlay style={{ width:'100%',maxHeight:'60vh' }} />
+                <video src={sharedMediaUrl} controls autoPlay style={{ width:'100%',height:'100%',objectFit:'contain' }} />
               )}
               {media.type === 'audio' && (
-                <div style={{ width:'100%',padding:'30px 20px' }}>
-                  <audio src={sharedMediaUrl} controls autoPlay style={{ width:'100%' }} />
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24,padding:40 }}>
+                  <div style={{ width:120,height:120,borderRadius:'50%',background:'rgba(212,175,55,.1)',border:'2px solid rgba(212,175,55,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:48 }}>🎵</div>
+                  <audio src={sharedMediaUrl} controls autoPlay style={{ width:'min(480px,90vw)' }} />
                 </div>
               )}
               {media.type === 'image' && (
-                <img src={sharedMediaUrl} alt="Shared" style={{ width:'100%',maxHeight:'60vh',objectFit:'contain' }} />
+                <img src={sharedMediaUrl} alt="Shared" style={{ maxWidth:'100%',maxHeight:'100%',objectFit:'contain' }} />
               )}
               {media.type === 'link' && (
-                <div style={{ padding:'24px 20px',textAlign:'center' }}>
-                  <p style={{ color:'#a89878',fontSize:13,margin:'0 0 12px' }}>This link can't be embedded — open it directly:</p>
-                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color:'#d4af37',fontSize:13,textDecoration:'underline' }}>{sharedMediaUrl}</a>
+                <div style={{ textAlign:'center',padding:40 }}>
+                  <div style={{ fontSize:48,marginBottom:20 }}>🔗</div>
+                  <p style={{ color:'#a89878',fontSize:14,margin:'0 0 16px' }}>This link can't be embedded — open it directly:</p>
+                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color:'#d4af37',fontSize:14,textDecoration:'underline',wordBreak:'break-all' }}>{sharedMediaUrl}</a>
                 </div>
               )}
             </div>
@@ -880,26 +896,36 @@ export default function VideoRoom({ roomCode, isHost }) {
 
           {/* BOTTOM TOOLBAR */}
           <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position:'absolute',bottom:32,left:0,right:0,display:'flex',justifyContent:'center' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:10,backdropFilter:'blur(16px)',padding:'14px 16px',borderRadius:1,boxShadow:'0 24px 60px -20px rgba(0,0,0,.65)',background:'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:10,backdropFilter:'blur(16px)',padding:'14px 16px',borderRadius:15,border:'1px solid rgba(212,175,55,.35)',boxShadow:'0 24px 60px -20px rgba(0,0,0,.65)',background:'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
 
-              <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
-                <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:52,height:52,borderRadius:16,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
-                  {micMuted ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-                </button>
+              {/* Group 1 — A/V controls: Mic + Camera */}
+              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
+                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:52,height:52,borderRadius:16,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                    {micMuted ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
+                  </button>
+                </div>
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
+                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:52,height:52,borderRadius:16,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                    {cameraOff ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
-                <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:52,height:52,borderRadius:16,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
-                  {cameraOff ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
-                </button>
-              </div>
+              {/* Divider */}
+              <div style={{ width:1,height:20,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
 
+              {/* Group 2 — Screen share */}
               <button onClick={toggleScreenShare} title={isScreenSharing?'Stop sharing':'Share screen'} style={{ width:52,height:52,borderRadius:16,border:'none',background:isScreenSharing?'rgba(212,175,55,.25)':'transparent',color:isScreenSharing?'#e5c76b':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
                 {isScreenSharing ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </button>
 
+              {/* Divider */}
+              <div style={{ width:1,height:20,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
+
+              {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
               <button onClick={() => { setChatOpen(v=>!v); if(!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width:52,height:52,borderRadius:16,border:'none',background:chatOpen?'rgba(212,175,55,.15)':'transparent',color:chatOpen?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
               </button>
@@ -914,6 +940,10 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <span style={{ position:'absolute',top:6,right:6,minWidth:15,height:15,padding:'0 3px',borderRadius:8,background:'#d4af37',color:'#0a0a0a',fontSize:9.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{totalP}</span>
               </button>
 
+              {/* Divider */}
+              <div style={{ width:1,height:20,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
+
+              {/* Group 4 — Layout / Utility: Grid + Invite + More */}
               <button onClick={() => setGridView(v=>!v)} title="Grid view" style={{ width:52,height:52,borderRadius:16,border:'none',background:gridView?'rgba(212,175,55,.15)':'transparent',color:gridView?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg>
               </button>
@@ -963,8 +993,10 @@ export default function VideoRoom({ roomCode, isHost }) {
                 )}
               </div>
 
-              <div style={{ width:1,height:30,background:'rgba(212,175,55,.15)',margin:'0 6px' }}/>
+              {/* Divider */}
+              <div style={{ width:1,height:20,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
 
+              {/* Group 5 — Leave */}
               <button onClick={handleEnd} title="Leave call" style={{ padding:'0 24px',height:50,borderRadius:15,border:'none',background:'linear-gradient(135deg,#ef4444,#b91c1c)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8,fontWeight:600,fontSize:14,marginLeft:2,fontFamily:"'Sora',sans-serif" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12c3-4 6-6 9-6s6 2 9 6c-1 1.3-2 2.4-3.1 3.3a1 1 0 01-1.3-.1l-1.7-1.7a1 1 0 00-1-.25 8 8 0 01-3.8 0 1 1 0 00-1 .25l-1.7 1.7a1 1 0 01-1.3.1C5 14.4 4 13.3 3 12z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
                 Leave

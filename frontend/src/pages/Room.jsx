@@ -246,8 +246,9 @@ export default function Room() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          borderRight: "1px solid rgba(212,175,55,0.12)",
-          background: "#090B0B",
+          borderRight: "1px solid rgba(212,175,55,0.22)",
+          background: "linear-gradient(160deg, rgba(212,175,55,0.04) 0%, #000 30%, #000 100%)",
+          boxShadow: "inset -1px 0 40px rgba(0,0,0,0.6), 4px 0 24px rgba(0,0,0,0.4)",
         }}
       >
         {/* Top: brand */}

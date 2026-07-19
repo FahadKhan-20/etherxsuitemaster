@@ -43,7 +43,7 @@ export default function Login() {
   const [web3authLoading, setWeb3authLoading] = useState(false)
 
   const navigate = useNavigate()
-  const { login, userInfo } = useWallet()
+  const { login, userInfo, signMessage } = useWallet()
 
   useEffect(() => {
     if (isAuthenticated()) { navigate('/', { replace: true }); return }
@@ -102,10 +102,24 @@ export default function Login() {
         setWeb3authLoading(false)
         return
       }
-      const { idToken, walletAddress, authConnection } = result
+      const { walletAddress, authConnection } = result
+
+      // Prove wallet ownership: fetch a one-time nonce, sign it with the
+      // Web3Auth-embedded wallet, and let the backend recover + verify the
+      // signer address. (The idToken's own signature can't be verified —
+      // sapphire_devnet's signing key isn't published at any JWKS endpoint.)
+      const nonceRes = await apiClient.post('/api/auth/web3auth/nonce', { walletAddress })
+      const nonce = nonceRes.data?.data?.nonce
+      if (!nonce) { setError('Could not start wallet verification. Please try again.'); setWeb3authLoading(false); return }
+
+      const signature = await signMessage(nonce, walletAddress)
+
       const res = await apiClient.post('/api/auth/web3auth', {
-        idToken,
         walletAddress,
+        nonce,
+        signature,
+        email: userInfo?.email || null,
+        name: userInfo?.name || null,
         avatar: userInfo?.profileImage || null,
         loginMethod: toAuthProvider(authConnection),
       })

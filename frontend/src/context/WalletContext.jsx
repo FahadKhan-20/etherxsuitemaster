@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo } from 'react';
-import { BrowserProvider, JsonRpcSigner, formatUnits } from 'ethers';
+import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import { BrowserProvider, JsonRpcSigner, formatUnits, hexlify, toUtf8Bytes } from 'ethers';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   Web3AuthProvider,
@@ -81,6 +81,11 @@ function WalletBridge({ children }) {
 
   const connectError = connectRawError?.message || null;
 
+  // The Web3Auth Connection's own EIP-1193 provider, captured at login time so
+  // signMessage() can personal_sign without depending on the wagmi bridge
+  // being populated (same race we avoid for the address read in login()).
+  const w3aProviderRef = useRef(null);
+
   const provider = useMemo(() => {
     if (!walletClient) return null;
     return new BrowserProvider(walletClient.transport, { chainId: walletClient.chain.id, name: walletClient.chain.name });
@@ -123,6 +128,7 @@ function WalletBridge({ children }) {
     // on the very first connect in a session the store can still be empty.
     // Calling eth_accounts directly on the Connection's own provider gets
     // the same data without depending on that effect's timing at all.
+    w3aProviderRef.current = connection.ethereumProvider || null;
     const accounts = await connection.ethereumProvider?.request({ method: 'eth_accounts' });
     const connectedAddress = Array.isArray(accounts) ? accounts[0] : undefined;
 
@@ -169,7 +175,21 @@ function WalletBridge({ children }) {
 
   const logout = useCallback(async () => {
     await disconnect();
+    w3aProviderRef.current = null;
   }, [disconnect]);
+
+  // Sign a message (the backend's login nonce) with the Web3Auth-embedded
+  // wallet via personal_sign. Uses the provider captured at login so it works
+  // race-free right after login() resolves. Returns the 0x signature.
+  const signMessage = useCallback(async (message, addressForSigning) => {
+    const provider = w3aProviderRef.current;
+    if (!provider) throw new Error('Wallet provider not ready — please sign in again.');
+    const addr = addressForSigning || address;
+    return provider.request({
+      method: 'personal_sign',
+      params: [hexlify(toUtf8Bytes(message)), addr],
+    });
+  }, [address]);
 
   const value = useMemo(() => ({
     account: address || null,
@@ -186,7 +206,8 @@ function WalletBridge({ children }) {
     connectorName,
     login,
     logout,
-  }), [address, chainId, balanceData, provider, signer, isConnecting, connectError, isConnected, userInfo, connectorName, login, logout]);
+    signMessage,
+  }), [address, chainId, balanceData, provider, signer, isConnecting, connectError, isConnected, userInfo, connectorName, login, logout, signMessage]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
