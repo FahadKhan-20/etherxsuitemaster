@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import etherxLogo from '../assets/etherx_transparent.png';
 import { clearAuthSession, getStoredUser, getUserInitials } from '../utils/auth';
+import { useWallet } from '../context/WalletContext';
 import { ROUTES } from '../utils/constants';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
@@ -85,6 +86,7 @@ function MoreIcon() {
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const storedUser = getStoredUser();
@@ -301,7 +303,13 @@ export default function Landing() {
     navigate(`/room/${createdQrCode.code}`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Await the Web3Auth SDK teardown before clearing the app session and
+    // navigating away — otherwise the full-page navigation below can race
+    // the in-flight async disconnect, leaving a lingering Web3Auth session
+    // that re-hydrates on the next /login visit and strands the user behind
+    // a permanently-disabled sign-in button.
+    await logout();
     clearAuthSession();
     window.location.replace(ROUTES.LOGIN);
   };

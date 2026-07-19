@@ -12,6 +12,7 @@ const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/auth');
 const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
+const feedbackRoutes = require('./routes/feedback');
 const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config();
@@ -52,6 +53,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/livekit', livekitRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 app.get('/api/rooms/:code/participants', (req, res) => {
   const { code } = req.params;

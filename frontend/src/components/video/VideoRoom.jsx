@@ -13,12 +13,29 @@ import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
 import LiveTranscript from '../room/LiveTranscript';
 import { ROUTES } from '../../utils/constants';
+import apiClient from '../../utils/apiClient';
 import etherxLogo from '../../assets/etherx_transparent.png';
 
-const AVATAR_COLORS = ['#d4af37','#b8860b','#e5c76b','#d4af37','#b8860b','#e5c76b','#d4af37','#b8860b'];
+const AVATAR_COLORS = ['#4a90d9','#7B2FBE','#00b5a0','#5BA4CF','#3a7bd5','#9B59B6','#1abc9c','#2980b9'];
 function avatarColor(n) { return AVATAR_COLORS[(n||'A').charCodeAt(0) % AVATAR_COLORS.length]; }
 function fmtTime(s) { return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
 function fmtTitle(code) { if (!code) return 'EtherX Meet'; return code.replace(/-/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
+
+const VIDEO_EXTS = ['mp4','webm','ogv','mov','m4v'];
+const AUDIO_EXTS = ['mp3','wav','ogg','m4a','aac','flac'];
+const IMAGE_EXTS = ['png','jpg','jpeg','gif','webp','svg','bmp'];
+
+/** Classify a shared URL/filename into how it should render: youtube embed, native video/audio/image, or a plain link fallback. */
+function classifyMedia(input) {
+  if (!input) return { type: 'link' };
+  const ytMatch = input.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
+  if (ytMatch) return { type: 'youtube', id: ytMatch[1] };
+  const ext = input.split('?')[0].split('.').pop().toLowerCase();
+  if (VIDEO_EXTS.includes(ext)) return { type: 'video' };
+  if (AUDIO_EXTS.includes(ext)) return { type: 'audio' };
+  if (IMAGE_EXTS.includes(ext)) return { type: 'image' };
+  return { type: 'link' };
+}
 
 const BG_OPTIONS = [
   { id:'none', type:'filter', label:'None' },
@@ -83,6 +100,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['Yes','No','Maybe']);
   const [showPollForm, setShowPollForm] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const toolbarTimerRef = useRef(null);
 
@@ -115,12 +133,6 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => document.removeEventListener('mousedown', fn);
   }, [moreOpen]);
 
-  useEffect(() => {
-    if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
-    const iv = setInterval(() => setActiveDashes(Math.floor(Math.random()*8)+1), 120);
-    return () => clearInterval(iv);
-  }, [modalTab, showSettingsModal]);
-
   const handleKicked = useCallback(() => {
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
@@ -129,10 +141,31 @@ export default function VideoRoom({ roomCode, isHost }) {
   const {
     localStream, peers, micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
+    toggleNoiseSuppression, noiseSuppressed,
+    setRoomLocked, roomLocked,
+    sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
+    sharedFiles, shareFile, fileNotifications, dismissFileNotification,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+
+  const [selfViewHidden, setSelfViewHidden] = useState(false);
+  const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
+
+  useEffect(() => {
+    if (sharedMediaUrl) setMediaStageMinimized(false);
+  }, [sharedMediaUrl]);
+
+  useEffect(() => {
+    if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
+    const iv = setInterval(() => setActiveDashes(Math.floor(Math.random()*8)+1), 120);
+    return () => clearInterval(iv);
+  }, [modalTab, showSettingsModal]);
+
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
   const { devices, switchDevice, selectedDevices } = useMediaDevices();
 
@@ -150,6 +183,19 @@ export default function VideoRoom({ roomCode, isHost }) {
   const handleCopyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => { setCopied(true); setTimeout(()=>setCopied(false),2000); }); };
   const handleCopyCode = () => { navigator.clipboard.writeText(roomCode||'').then(() => { setCodeCopied(true); setTimeout(()=>setCodeCopied(false),2000); }); };
   const handleRaiseHand = () => { if (raised) { setRaised(false); sendHandLower?.(); } else { setRaised(true); setHandToastDismissed(false); sendHandRaise?.(); } };
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackText.trim() || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      await apiClient.post('/api/feedback', { text: feedbackText.trim(), roomCode });
+      setFeedbackOpen(false);
+      setFeedbackText('');
+      showToast('Thank you for your feedback!');
+    } catch {
+      showToast('Failed to send feedback — please try again.');
+    }
+    setFeedbackSubmitting(false);
+  };
 
   const peerList = Object.entries(peers);
   const totalP = 1 + peerList.length;
@@ -230,6 +276,111 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {reactions?.map(r => (<div key={r.id} style={{ position:'fixed',bottom:120,left:`${30+(r.id%5)*10}%`,fontSize:32,animation:'floatReaction 3s ease-out forwards',pointerEvents:'none',zIndex:45 }}>{r.emoji}</div>))}
 
+      {/* Shared media stage — FULLSCREEN layout covering the entire room */}
+      {sharedMediaUrl && !mediaStageMinimized && (() => {
+        const media = classifyMedia(sharedMediaUrl);
+        return (
+          <div style={{ position:'fixed',inset:0,zIndex:210,background:'#000',display:'flex',flexDirection:'column' }}>
+            {/* Slim top bar */}
+            <div style={{ flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 18px',background:'rgba(0,0,0,.65)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10,minWidth:0 }}>
+                <span style={{ fontSize:11,background:'rgba(212,175,55,.15)',border:'1px solid rgba(212,175,55,.3)',color:'#e5c76b',borderRadius:6,padding:'2px 8px',fontWeight:600,flexShrink:0 }}>LIVE</span>
+                <span style={{ fontSize:12,color:'#a89878',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{sharedMediaUrl}</span>
+              </div>
+              <button
+                onClick={() => setMediaStageMinimized(true)}
+                title="Minimize"
+                style={{ flexShrink:0,marginLeft:12,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.12)',color:'#f0e6d3',cursor:'pointer',fontSize:13,borderRadius:8,padding:'5px 12px',fontFamily:"'Sora',sans-serif",display:'flex',alignItems:'center',gap:6 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="2" rx="1" fill="currentColor"/></svg>
+                Minimize
+              </button>
+            </div>
+
+            {/* Main media area — takes all remaining height */}
+            <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',background:'#000' }}>
+              {media.type === 'youtube' && (
+                <iframe
+                  src={`https://www.youtube.com/embed/${media.id}?autoplay=1`}
+                  title="Shared video"
+                  style={{ width:'100%',height:'100%',border:'none' }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              )}
+              {media.type === 'video' && (
+                <video src={sharedMediaUrl} controls autoPlay style={{ width:'100%',height:'100%',objectFit:'contain' }} />
+              )}
+              {media.type === 'audio' && (
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24,padding:40 }}>
+                  <div style={{ width:120,height:120,borderRadius:'50%',background:'rgba(212,175,55,.1)',border:'2px solid rgba(212,175,55,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:48 }}>🎵</div>
+                  <audio src={sharedMediaUrl} controls autoPlay style={{ width:'min(480px,90vw)' }} />
+                </div>
+              )}
+              {media.type === 'image' && (
+                <img src={sharedMediaUrl} alt="Shared" style={{ maxWidth:'100%',maxHeight:'100%',objectFit:'contain' }} />
+              )}
+              {media.type === 'link' && (
+                <div style={{ textAlign:'center',padding:40 }}>
+                  <div style={{ fontSize:48,marginBottom:20 }}>🔗</div>
+                  <p style={{ color:'#a89878',fontSize:14,margin:'0 0 16px' }}>This link can't be embedded — open it directly:</p>
+                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color:'#d4af37',fontSize:14,textDecoration:'underline',wordBreak:'break-all' }}>{sharedMediaUrl}</a>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Minimized pill — click to bring the shared media stage back */}
+      {sharedMediaUrl && mediaStageMinimized && (
+        <button onClick={() => setMediaStageMinimized(false)} style={{ position:'fixed',top:90,right:24,zIndex:210,display:'flex',alignItems:'center',gap:8,background:'rgba(5,5,5,.95)',border:'1px solid rgba(212,175,55,.25)',borderRadius:999,padding:'8px 14px',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',cursor:'pointer',color:'#d4af37',fontSize:12,fontFamily:"'Sora',sans-serif" }}>
+          ▶ Shared media
+        </button>
+      )}
+
+      {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
+      {fileNotifications?.length > 0 && (
+        <div style={{ position:'fixed',top:90,left:'50%',transform:'translateX(-50%)',zIndex:250,display:'flex',flexDirection:'column',gap:10,alignItems:'center',pointerEvents:'none' }}>
+          {fileNotifications.map(file => {
+            const media = classifyMedia(file.name);
+            const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
+            return (
+              <div key={file.id} style={{ pointerEvents:'auto',width:280,background:'rgba(5,5,5,.95)',backdropFilter:'blur(20px)',border:'1px solid rgba(212,175,55,.25)',borderRadius:14,overflow:'hidden',boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',animation:'fadeIn .2s ease-out' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px 0' }}>
+                  <span style={{ fontSize:11,color:'#a89878',fontWeight:600 }}>{file.sharedBy} shared a file</span>
+                  <button onClick={() => dismissFileNotification(file.id)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:14,padding:2,lineHeight:1 }}>✕</button>
+                </div>
+                {media.type === 'image' && (
+                  <img
+                    src={file.url}
+                    alt={file.name}
+                    onClick={() => { setPreviewImageUrl(file.url); dismissFileNotification(file.id); }}
+                    style={{ width:'100%',maxHeight:160,objectFit:'cover',display:'block',marginTop:8,cursor:'pointer' }}
+                  />
+                )}
+                {media.type === 'video' && (
+                  <video src={file.url} controls style={{ width:'100%',maxHeight:200,display:'block',marginTop:8 }} />
+                )}
+                {media.type === 'audio' && (
+                  <audio src={file.url} controls style={{ width:'100%',display:'block',margin:'8px 0 0',padding:'0 10px',boxSizing:'border-box' }} />
+                )}
+                <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <p style={{ margin:0,fontSize:12,fontWeight:600,color:'#f0e6d3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{file.name}</p>
+                    <p style={{ margin:'2px 0 0',fontSize:10.5,color:'#a89878' }}>{fmtSize}</p>
+                  </div>
+                  <a href={file.url} download={file.name} style={{ display:'flex',padding:'5px 9px',borderRadius:7,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11,fontWeight:600,flexShrink:0 }}>
+                    Save
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {confettiActive && (<div style={{ position:'fixed',inset:0,zIndex:60,pointerEvents:'none',overflow:'hidden' }}>{CONFETTI.map((p,i) => (<div key={i} style={{ position:'absolute',left:`${p.x}%`,top:'-20px',width:p.w,height:p.h,background:p.color,borderRadius:p.round?'50%':2,transform:`rotate(${p.rot}deg)`,animation:`confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
 
       {inviteOpen && (
@@ -268,6 +419,44 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} />}
+
+      {feedbackOpen && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:400 }}>
+          <div style={{ width:380,background:'#0a0a0a',border:'1px solid rgba(212,175,55,.15)',borderRadius:16,padding:22,boxShadow:'0 30px 70px -20px rgba(0,0,0,.7)' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14 }}>
+              <span style={{ fontSize:16,fontWeight:700 }}>Leave feedback</span>
+              <button onClick={() => setFeedbackOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:18 }}>✕</button>
+            </div>
+            <textarea
+              value={feedbackText}
+              onChange={e => setFeedbackText(e.target.value)}
+              placeholder="What's working, what isn't — tell us."
+              rows={5}
+              style={{ width:'100%',boxSizing:'border-box',background:'rgba(0,0,0,.5)',color:'#f0e6d3',border:'1px solid rgba(212,175,55,.15)',borderRadius:10,padding:12,fontSize:13,outline:'none',fontFamily:"'Sora',sans-serif",resize:'vertical',marginBottom:14 }}
+            />
+            <button
+              onClick={handleFeedbackSubmit}
+              disabled={!feedbackText.trim() || feedbackSubmitting}
+              style={{ width:'100%',padding:12,borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4af37,#b8860b)',color:'#050505',fontWeight:700,fontSize:13.5,cursor:'pointer',fontFamily:"'Sora',sans-serif",opacity:(!feedbackText.trim()||feedbackSubmitting)?0.5:1 }}
+            >
+              {feedbackSubmitting ? 'Sending…' : 'Send feedback'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {previewImageUrl && (
+        <div
+          onClick={() => setPreviewImageUrl(null)}
+          style={{ position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.85)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out',padding:32 }}
+        >
+          <button
+            onClick={() => setPreviewImageUrl(null)}
+            style={{ position:'absolute',top:20,right:24,background:'none',border:'none',color:'#f0e6d3',cursor:'pointer',fontSize:22 }}
+          >✕</button>
+          <img src={previewImageUrl} alt="Preview" style={{ maxWidth:'100%',maxHeight:'100%',objectFit:'contain',borderRadius:8 }} onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       {showSettingsModal && (
         <div style={{ position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.65)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center' }}>
@@ -352,16 +541,16 @@ export default function VideoRoom({ roomCode, isHost }) {
         <div style={{ display:'flex',alignItems:'center',flexShrink:0,zIndex:1 }}>
           <img src={etherxLogo} alt="EtherX Meet" style={{ height:140,width:'auto',objectFit:'contain' }}/>
         </div>
-        <div style={{ position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex',alignItems:'center',gap:10,background:'rgba(212,175,55,.05)',padding:'7px 14px',borderRadius:20,whiteSpace:'nowrap' }}>
-          <span style={{ fontSize:12.5,fontWeight:600 }}>{fmtTitle(roomCode)}</span>
-          <span style={{ width:1,height:12,background:'rgba(212,175,55,.18)' }}/>
-          <span style={{ fontFamily:"'IBM Plex Mono',monospace",fontSize:11,color:'#a89878' }}>{roomCode}</span>
-          <button onClick={handleCopyCode} title="Copy room code" style={{ background:'none',border:'none',color:codeCopied?'#d4af37':'rgba(255,255,255,.4)',cursor:'pointer',display:'flex',padding:1 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8"/></svg>
+        <div style={{ position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex',alignItems:'center',gap:12,background:'rgba(212,175,55,.07)',padding:'10px 20px',borderRadius:24,whiteSpace:'nowrap',border:'1px solid rgba(212,175,55,.15)' }}>
+          <span style={{ fontSize:14.5,fontWeight:600,letterSpacing:'0.02em' }}>{fmtTitle(roomCode)}</span>
+          <span style={{ width:1,height:16,background:'rgba(212,175,55,.22)' }}/>
+          <span style={{ fontFamily:"'IBM Plex Mono',monospace",fontSize:12.5,color:'#c9bda2' }}>{roomCode}</span>
+          <button onClick={handleCopyCode} title="Copy room code" style={{ background:'none',border:'none',color:codeCopied?'#d4af37':'rgba(255,255,255,.5)',cursor:'pointer',display:'flex',padding:2 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8"/></svg>
           </button>
-          <span style={{ width:1,height:12,background:'rgba(212,175,55,.18)' }}/>
-          <span style={{ display:'flex',alignItems:'center',gap:5,fontFamily:"'IBM Plex Mono',monospace",fontSize:11,color:'#a89878' }}>
-            <span style={{ width:5,height:5,borderRadius:'50%',background:'#ef4444',animation:isRecording?'chainPulse 1.5s infinite':undefined,display:'inline-block' }}/>
+          <span style={{ width:1,height:16,background:'rgba(212,175,55,.22)' }}/>
+          <span style={{ display:'flex',alignItems:'center',gap:6,fontFamily:"'IBM Plex Mono',monospace",fontSize:12.5,color:'#c9bda2' }}>
+            <span style={{ width:7,height:7,borderRadius:'50%',background:'#ef4444',animation:isRecording?'chainPulse 1.5s infinite':undefined,display:'inline-block' }}/>
             {fmtTime(elapsed)}
           </span>
         </div>
@@ -456,10 +645,94 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab==='files' && (
-              <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:16 }}>
-                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" style={{ color:'rgba(212,175,55,.25)' }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                <div style={{ textAlign:'center',color:'#a89878',fontSize:12.5 }}>No files shared yet.</div>
-                <button onClick={() => showToast('Drag and drop files into Chat to share.')} style={{ width:'100%',padding:12,borderRadius:12,border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.07)',color:'#f0e6d3',fontWeight:600,fontSize:13.5,cursor:'pointer',fontFamily:"'Sora',sans-serif" }}>Share file</button>
+              <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
+                {/* Drop zone / upload button */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor='#d4af37'; e.currentTarget.style.background='rgba(212,175,55,.12)'; }}
+                  onDragLeave={(e) => { e.currentTarget.style.borderColor='rgba(212,175,55,.2)'; e.currentTarget.style.background='rgba(212,175,55,.04)'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor='rgba(212,175,55,.2)';
+                    e.currentTarget.style.background='rgba(212,175,55,.04)';
+                    const files = Array.from(e.dataTransfer.files);
+                    files.forEach(file => {
+                      if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); return; }
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        shareFile({ name: file.name, size: file.size, type: file.type, url: ev.target.result });
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                  }}
+                  style={{ margin:'12px 12px 8px',borderRadius:12,border:'2px dashed rgba(212,175,55,.2)',background:'rgba(212,175,55,.04)',padding:'18px 12px',textAlign:'center',cursor:'pointer',transition:'all .2s',flexShrink:0 }}
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type='file'; input.multiple=true;
+                    input.onchange = () => {
+                      Array.from(input.files).forEach(file => {
+                        if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          shareFile({ name: file.name, size: file.size, type: file.type, url: ev.target.result });
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                    };
+                    input.click();
+                  }}
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ color:'rgba(212,175,55,.5)',margin:'0 auto 8px',display:'block' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  <p style={{ margin:0,fontSize:12.5,color:'#a89878',fontWeight:500 }}>Click or drag files here</p>
+                  <p style={{ margin:'4px 0 0',fontSize:11,color:'rgba(168,152,120,.6)' }}>Max 10 MB per file</p>
+                </div>
+                {/* File list */}
+                <div style={{ flex:1,overflowY:'auto',padding:'0 12px 12px',display:'flex',flexDirection:'column',gap:8 }}>
+                  {(sharedFiles||[]).length === 0 ? (
+                    <div style={{ textAlign:'center',color:'rgba(168,152,120,.5)',fontSize:12,marginTop:20 }}>No files shared yet</div>
+                  ) : (
+                    [...(sharedFiles||[])].reverse().map(file => {
+                      const ext = file.name.split('.').pop().toLowerCase();
+                      const media = classifyMedia(file.name);
+                      const isPdf = ext === 'pdf';
+                      const fmtSize = file.size > 1024*1024 ? `${(file.size/1024/1024).toFixed(1)} MB` : `${Math.round(file.size/1024)} KB`;
+                      return (
+                        <div key={file.id} style={{ background:'rgba(212,175,55,.06)',border:'1px solid rgba(212,175,55,.14)',borderRadius:10,overflow:'hidden' }}>
+                          {media.type === 'image' && (
+                            <img
+                              src={file.url}
+                              alt={file.name}
+                              onClick={() => setPreviewImageUrl(file.url)}
+                              title="Click to view full size"
+                              style={{ width:'100%',maxHeight:120,objectFit:'cover',display:'block',cursor:'pointer' }}
+                            />
+                          )}
+                          {media.type === 'video' && (
+                            <video src={file.url} controls style={{ width:'100%',maxHeight:160,display:'block' }} />
+                          )}
+                          {media.type === 'audio' && (
+                            <audio src={file.url} controls style={{ width:'100%',display:'block',padding:'8px 10px 0',boxSizing:'border-box' }} />
+                          )}
+                          <div style={{ padding:'10px 12px',display:'flex',alignItems:'center',gap:10 }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color:'#d4af37',flexShrink:0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                            <div style={{ flex:1,minWidth:0 }}>
+                              <p style={{ margin:0,fontSize:12.5,fontWeight:600,color:'#f0e6d3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{file.name}</p>
+                              <p style={{ margin:'2px 0 0',fontSize:11,color:'#a89878' }}>{fmtSize} · {file.sharedBy}</p>
+                            </div>
+                            {isPdf && (
+                              <a href={file.url} target="_blank" rel="noopener noreferrer" style={{ display:'flex',padding:'6px 10px',borderRadius:8,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11.5,fontWeight:600,flexShrink:0,alignItems:'center',gap:4 }}>
+                                Open
+                              </a>
+                            )}
+                            <a href={file.url} download={file.name} style={{ display:'flex',padding:'6px 10px',borderRadius:8,background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.2)',color:'#d4af37',textDecoration:'none',fontSize:11.5,fontWeight:600,flexShrink:0,alignItems:'center',gap:4 }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                              Save
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -498,20 +771,92 @@ export default function VideoRoom({ roomCode, isHost }) {
 
 
           {gridView && (
-            <div style={{ position:'relative',width:'100%',height:'100%',display:'grid',gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,gridAutoRows:'1fr',gap:1,background:'rgba(212,175,55,.12)' }}>
-              <div style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }}>
-                {localStream&&!cameraOff?<VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{initial}</div>}
-                <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>
-                  {micMuted&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ color:'#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-                  {userName||'You'}
+            <div style={{
+              position:'relative',width:'100%',height:'100%',
+              display:'grid',
+              gridTemplateColumns:`repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,
+              gridAutoRows:'1fr',
+              gap:2,
+              background:'#000',
+            }}>
+              {/* Local tile */}
+              <div style={{
+                position:'relative',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                background:'#0a0a0a',
+                overflow:'hidden',
+              }}>
+                {localStream && !cameraOff && !selfViewHidden ? (
+                  <VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>
+                ) : (
+                  <div style={{
+                    width:130,height:130,borderRadius:'50%',
+                    background:userColor,
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:54,fontWeight:600,color:'#fff',
+                    fontFamily:'Inter,sans-serif',
+                    userSelect:'none',
+                    flexShrink:0,
+                  }}>{initial}</div>
+                )}
+                {/* Name label */}
+                <div style={{
+                  position:'absolute',bottom:14,left:12,
+                  display:'flex',alignItems:'center',gap:5,
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity:.85 }}>
+                    {micMuted
+                      ? <><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/></>
+                      : <><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round"/></>}
+                  </svg>
+                  <span style={{ fontSize:12,color:'#e0e0e0',fontFamily:'Inter,sans-serif',fontWeight:500,letterSpacing:'.01em' }}>
+                    {userName||'You'}
+                  </span>
                 </div>
               </div>
-              {peerList.map(([id,p]) => (
-                <div key={id} style={{ position:'relative',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                  {p.stream&&!p.videoOff?<VideoTile stream={p.stream} userName={p.userName||'Guest'} isMuted={false} isCameraOff={false}/>:<div style={{ width:120,height:120,borderRadius:'50%',background:`linear-gradient(160deg,${avatarColor(p.userName||'G')},${avatarColor(p.userName||'G')}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,fontWeight:700 }}>{(p.userName||'G')[0].toUpperCase()}</div>}
-                  <div style={{ position:'absolute',bottom:14,left:14,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.5)',padding:'5px 10px',borderRadius:16,fontSize:12 }}>{p.userName||'Guest'}</div>
-                </div>
-              ))}
+
+              {/* Peer tiles */}
+              {peerList.map(([id,p]) => {
+                const pName = p.userName||'Guest';
+                const pColor = avatarColor(pName);
+                const pInitial = pName.charAt(0).toUpperCase();
+                return (
+                  <div key={id} style={{
+                    position:'relative',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    background:'#0a0a0a',
+                    overflow:'hidden',
+                    cursor:'pointer',
+                  }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
+                    {p.stream && !p.videoOff ? (
+                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false}/>
+                    ) : (
+                      <div style={{
+                        width:130,height:130,borderRadius:'50%',
+                        background:pColor,
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:54,fontWeight:600,color:'#fff',
+                        fontFamily:'Inter,sans-serif',
+                        userSelect:'none',
+                        flexShrink:0,
+                      }}>{pInitial}</div>
+                    )}
+                    {/* Name label */}
+                    <div style={{
+                      position:'absolute',bottom:14,left:12,
+                      display:'flex',alignItems:'center',gap:5,
+                    }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity:.85 }}>
+                        <path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2"/>
+                        <path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      <span style={{ fontSize:12,color:'#e0e0e0',fontFamily:'Inter,sans-serif',fontWeight:500,letterSpacing:'.01em' }}>
+                        {pName}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -550,74 +895,88 @@ export default function VideoRoom({ roomCode, isHost }) {
           </div>
 
           {/* BOTTOM TOOLBAR */}
-          <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position:'absolute',bottom:32,left:0,right:0,display:'flex',justifyContent:'center' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:10,backdropFilter:'blur(16px)',padding:'14px 16px',borderRadius:1,boxShadow:'0 24px 60px -20px rgba(0,0,0,.65)',background:'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
+          <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position:'absolute',bottom:24,left:0,right:0,display:'flex',justifyContent:'center' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:6,backdropFilter:'blur(16px)',padding:'10px 12px',borderRadius:12,border:'1px solid rgba(212,175,55,.35)',boxShadow:'0 20px 48px -16px rgba(0,0,0,.65)',background:'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
 
-              <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
-                <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:52,height:52,borderRadius:16,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
-                  {micMuted ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-                </button>
+              {/* Group 1 — A/V controls: Mic + Camera */}
+              <div style={{ display:'flex',alignItems:'center',gap:6 }}>
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:2 }}>
+                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:40,height:40,borderRadius:10,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                    {micMuted ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
+                  </button>
+                </div>
+                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:2 }}>
+                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:40,height:40,borderRadius:10,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
+                    {cameraOff ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:4 }}>
-                <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:52,height:52,borderRadius:16,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
-                  {cameraOff ? <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
-                </button>
-              </div>
+              {/* Divider */}
+              <div style={{ width:1,height:16,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
 
-              <button onClick={toggleScreenShare} title={isScreenSharing?'Stop sharing':'Share screen'} style={{ width:52,height:52,borderRadius:16,border:'none',background:isScreenSharing?'rgba(212,175,55,.25)':'transparent',color:isScreenSharing?'#e5c76b':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                {isScreenSharing ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              {/* Group 2 — Screen share */}
+              <button onClick={toggleScreenShare} title={isScreenSharing?'Stop sharing':'Share screen'} style={{ width:40,height:40,borderRadius:10,border:'none',background:isScreenSharing?'rgba(212,175,55,.25)':'transparent',color:isScreenSharing?'#e5c76b':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                {isScreenSharing ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </button>
 
-              <button onClick={() => { setChatOpen(v=>!v); if(!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width:52,height:52,borderRadius:16,border:'none',background:chatOpen?'rgba(212,175,55,.15)':'transparent',color:chatOpen?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+              {/* Divider */}
+              <div style={{ width:1,height:16,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
+
+              {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
+              <button onClick={() => { setChatOpen(v=>!v); if(!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width:40,height:40,borderRadius:10,border:'none',background:chatOpen?'rgba(212,175,55,.15)':'transparent',color:chatOpen?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
               </button>
 
-              <button onClick={handleRaiseHand} title={raised?'Lower hand':'Raise hand'} style={{ width:52,height:52,borderRadius:16,border:'none',background:raised?'rgba(212,175,55,.22)':'transparent',color:raised?'#e8c789':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                {raised && <span style={{ position:'absolute',top:6,right:6,minWidth:15,height:15,padding:'0 3px',borderRadius:8,background:'#d4af37',color:'#050505',fontSize:9.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>1</span>}
+              <button onClick={handleRaiseHand} title={raised?'Lower hand':'Raise hand'} style={{ width:40,height:40,borderRadius:10,border:'none',background:raised?'rgba(212,175,55,.22)':'transparent',color:raised?'#e8c789':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {raised && <span style={{ position:'absolute',top:2,right:2,minWidth:14,height:14,padding:'0 2px',borderRadius:7,background:'#d4af37',color:'#050505',fontSize:8.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>1</span>}
               </button>
 
-              <button onClick={() => setShowPeople(v=>!v)} title="Participants" style={{ width:52,height:52,borderRadius:16,border:'none',background:showPeople?'rgba(212,175,55,.15)':'transparent',color:showPeople?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                <span style={{ position:'absolute',top:6,right:6,minWidth:15,height:15,padding:'0 3px',borderRadius:8,background:'#d4af37',color:'#0a0a0a',fontSize:9.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{totalP}</span>
+              <button onClick={() => setShowPeople(v=>!v)} title="Participants" style={{ width:40,height:40,borderRadius:10,border:'none',background:showPeople?'rgba(212,175,55,.15)':'transparent',color:showPeople?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                <span style={{ position:'absolute',top:2,right:2,minWidth:14,height:14,padding:'0 2px',borderRadius:7,background:'#d4af37',color:'#0a0a0a',fontSize:8.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{totalP}</span>
               </button>
 
-              <button onClick={() => setGridView(v=>!v)} title="Grid view" style={{ width:52,height:52,borderRadius:16,border:'none',background:gridView?'rgba(212,175,55,.15)':'transparent',color:gridView?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg>
+              {/* Divider */}
+              <div style={{ width:1,height:16,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
+
+              {/* Group 4 — Layout / Utility: Grid + Invite + More */}
+              <button onClick={() => setGridView(v=>!v)} title="Grid view" style={{ width:40,height:40,borderRadius:10,border:'none',background:gridView?'rgba(212,175,55,.15)':'transparent',color:gridView?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg>
               </button>
 
-              <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width:52,height:52,borderRadius:16,border:'none',background:'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width:40,height:40,borderRadius:10,border:'none',background:'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" stroke-width="1.6" strokeLinecap="round"/><path d="M18 8v6M15 11h6" stroke="currentColor" stroke-width="1.7" strokeLinecap="round"/></svg>
               </button>
 
               <div style={{ position:'relative' }} ref={moreRef}>
-                <button onClick={() => setMoreOpen(v=>!v)} title="More" style={{ width:52,height:52,borderRadius:16,border:'none',background:moreOpen?'rgba(212,175,55,.15)':'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+                <button onClick={() => setMoreOpen(v=>!v)} title="More" style={{ width:40,height:40,borderRadius:10,border:'none',background:moreOpen?'rgba(212,175,55,.15)':'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
                 </button>
                 {moreOpen && (
-                  <div style={{ position:'absolute',bottom:64,left:'50%',transform:'translateX(-50%)',width:250,background:'#0a0a0a',border:'1px solid rgba(212,175,55,.12)',borderRadius:14,boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',padding:8,display:'flex',flexDirection:'column',zIndex:200,animation:'fadeIn .15s ease-out' }}>
+                  <div style={{ position:'absolute',bottom:50,left:'50%',transform:'translateX(-50%)',width:250,background:'#0a0a0a',border:'1px solid rgba(212,175,55,.12)',borderRadius:14,boxShadow:'0 20px 50px -20px rgba(0,0,0,.7)',padding:8,display:'flex',flexDirection:'column',zIndex:200,animation:'fadeIn .15s ease-out' }}>
                     <div style={{ display:'flex',alignItems:'center',gap:10,padding:'10px 10px',borderBottom:'1px solid rgba(212,175,55,.12)',marginBottom:6 }}>
                       <div style={{ width:26,height:26,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700 }}>{initial}</div>
                       <span style={{ fontSize:13,fontWeight:600 }}>{userName||'You'}</span>
                     </div>
                     {[
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Performance settings', divider:false, action:() => { setMoreOpen(false); showToast('Performance optimized.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Performance settings', divider:false, action:() => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'View full screen', divider:false, action:() => { if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen().catch(()=>{}); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); showToast('Room: end-to-end encrypted.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, label:'Closed captions', divider:false, action:() => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Polls', divider:false, action:() => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'File sharing', divider:true, action:() => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Share video', divider:false, action:() => { setMoreOpen(false); showToast('Video sharing initialized.'); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6"/></svg>, label:'Share audio', divider:false, action:() => { setMoreOpen(false); showToast('Audio sharing initialized.'); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5"/><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Noise suppression', divider:false, action:() => { setMoreOpen(false); showToast('Noise suppression toggled.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Share video', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6"/></svg>, label:'Share audio', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5"/><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Noise suppression', divider:false, action:() => { setMoreOpen(false); toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.4"/></svg>, label:'Select background', divider:false, action:() => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>, label:'Participant stats', divider:true, action:() => { setShowPeople(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5"/></svg>, label:'Settings', divider:false, action:() => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>, label:'View shortcuts', divider:false, action:() => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
-                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'Leave feedback', divider:false, action:() => { setMoreOpen(false); showToast('Thank you for your feedback!'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'Leave feedback', divider:false, action:() => { setMoreOpen(false); setFeedbackOpen(true); } },
                     ].map((item,idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:9,border:'none',background:'none',color:'#f0e6d3',fontSize:12.5,cursor:'pointer',textAlign:'left',width:'100%',fontFamily:"'Sora',sans-serif",transition:'background .15s' }}
@@ -634,10 +993,12 @@ export default function VideoRoom({ roomCode, isHost }) {
                 )}
               </div>
 
-              <div style={{ width:1,height:30,background:'rgba(212,175,55,.15)',margin:'0 6px' }}/>
+              {/* Divider */}
+              <div style={{ width:1,height:16,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
 
-              <button onClick={handleEnd} title="Leave call" style={{ padding:'0 24px',height:50,borderRadius:15,border:'none',background:'linear-gradient(135deg,#ef4444,#b91c1c)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8,fontWeight:600,fontSize:14,marginLeft:2,fontFamily:"'Sora',sans-serif" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12c3-4 6-6 9-6s6 2 9 6c-1 1.3-2 2.4-3.1 3.3a1 1 0 01-1.3-.1l-1.7-1.7a1 1 0 00-1-.25 8 8 0 01-3.8 0 1 1 0 00-1 .25l-1.7 1.7a1 1 0 01-1.3.1C5 14.4 4 13.3 3 12z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+              {/* Group 5 — Leave */}
+              <button onClick={handleEnd} title="Leave call" style={{ padding:'0 16px',height:38,borderRadius:10,border:'none',background:'linear-gradient(135deg,#ef4444,#b91c1c)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6,fontWeight:600,fontSize:13,marginLeft:2,fontFamily:"'Sora',sans-serif" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12c3-4 6-6 9-6s6 2 9 6c-1 1.3-2 2.4-3.1 3.3a1 1 0 01-1.3-.1l-1.7-1.7a1 1 0 00-1-.25 8 8 0 01-3.8 0 1 1 0 00-1 .25l-1.7 1.7a1 1 0 01-1.3.1C5 14.4 4 13.3 3 12z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
                 Leave
               </button>
             </div>

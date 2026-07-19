@@ -6,6 +6,7 @@ const emailjs = require('@emailjs/nodejs');
 const passport = require('passport');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const { issueNonce, verifyNonceSignature } = require('../utils/web3authNonce');
 
 const sendResetEmail = async (toEmail, toName, resetUrl) => {
   await emailjs.send(
@@ -44,6 +45,8 @@ const sanitizeUser = (user) => {
   return plainUser;
 };
 
+// ── Password auth ────────────────────────────────────────────────────────────
+
 router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
@@ -70,6 +73,7 @@ router.post('/register', async (req, res, next) => {
       name: name.trim(),
       email: normalizedEmail,
       password: hashedPassword,
+      authProvider: 'local',
     });
 
     const token = signToken(user);
@@ -110,7 +114,7 @@ router.post('/login', async (req, res, next) => {
     if (!user.password) {
       return res.status(400).json({
         success: false,
-        message: 'This account uses Google sign-in. Continue with Google to log in.',
+        message: 'This account uses Google or Web3Auth sign-in. Continue with that method to log in.',
       });
     }
 
@@ -201,6 +205,8 @@ router.post('/reset-password/:token', async (req, res, next) => {
   }
 });
 
+// ── Google OAuth (Passport) ──────────────────────────────────────────────────
+
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 
 router.get(
@@ -216,6 +222,87 @@ router.get(
     return res.redirect(callbackUrl.toString());
   }
 );
+
+// ── Web3Auth (MetaMask Embedded Wallets) — wallet-signature verification ──────
+//
+// Identity is proven by having the user's Web3Auth-embedded wallet sign a
+// server-issued nonce; the backend recovers the signer address (ethers) and
+// confirms it matches the claimed wallet. Trust is anchored on wallet
+// ownership (the app's user identity) rather than the Web3Auth idToken's
+// signature — the sapphire_devnet signing key is not published at either
+// documented JWKS endpoint, so verifying that signature is not possible.
+// email/name/avatar are treated as unverified profile data, so accounts are
+// keyed strictly by wallet address (no auto-linking to existing accounts by
+// email, which would be a takeover vector with an unverified email).
+
+const VALID_LOGIN_METHODS = ['google', 'email_passwordless', 'discord', 'wallet'];
+
+// Step 1: client requests a one-time challenge to sign.
+router.post('/web3auth/nonce', async (req, res) => {
+  const { walletAddress } = req.body;
+  if (!walletAddress || typeof walletAddress !== 'string') {
+    return res.status(400).json({ success: false, message: 'walletAddress is required.' });
+  }
+  const nonce = issueNonce(walletAddress);
+  return res.json({ success: true, data: { nonce } });
+});
+
+// Step 2: client returns the signed nonce; backend verifies and issues a session.
+router.post('/web3auth', async (req, res, next) => {
+  try {
+    const { walletAddress, nonce, signature, email, name, avatar, loginMethod } = req.body;
+
+    if (!walletAddress || !nonce || !signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'walletAddress, nonce, and signature are required.',
+      });
+    }
+
+    let normalizedWallet;
+    try {
+      normalizedWallet = verifyNonceSignature(walletAddress, nonce, signature);
+    } catch (verifyError) {
+      return res.status(401).json({
+        success: false,
+        message: verifyError.message || 'Wallet signature verification failed.',
+      });
+    }
+
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : '';
+    const normalizedAuthProvider = VALID_LOGIN_METHODS.includes(loginMethod) ? loginMethod : 'wallet';
+
+    // Identity is the (cryptographically proven) wallet address.
+    let user = await User.findOne({ walletAddress: normalizedWallet });
+
+    if (!user) {
+      // New wallet user. Only attach the (unverified) email as profile data if
+      // no other account already uses it — never link/take-over by email.
+      const emailFree = normalizedEmail
+        ? !(await User.findOne({ email: normalizedEmail }))
+        : false;
+
+      user = await User.create({
+        name: name || (normalizedEmail ? normalizedEmail.split('@')[0] : null) || 'EtherXMeet User',
+        ...(emailFree ? { email: normalizedEmail } : {}),
+        walletAddress: normalizedWallet,
+        avatar: avatar || null,
+        authProvider: normalizedAuthProvider,
+      });
+    }
+
+    const token = signToken(user);
+
+    return res.json({
+      success: true,
+      data: { token, user },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ── Shared ────────────────────────────────────────────────────────────────────
 
 router.get('/me', auth, async (req, res, next) => {
   try {
@@ -265,7 +352,7 @@ const os = require('os');
 router.get('/local-ip', (req, res) => {
   const interfaces = os.networkInterfaces();
   let localIp = 'localhost';
-  
+
   // 1. Prioritize Wi-Fi/wlan/ethernet physical adapters
   for (const name of Object.keys(interfaces)) {
     const lowerName = name.toLowerCase();
@@ -279,7 +366,7 @@ router.get('/local-ip', (req, res) => {
     }
     if (localIp !== 'localhost') break;
   }
-  
+
   // 2. Fallback to any other IPv4 (excluding link-local)
   if (localIp === 'localhost') {
     for (const name of Object.keys(interfaces)) {
@@ -292,7 +379,7 @@ router.get('/local-ip', (req, res) => {
       if (localIp !== 'localhost') break;
     }
   }
-  
+
   res.json({ success: true, localIp });
 });
 

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiClient, { getApiErrorMessage } from '../utils/apiClient'
 import { persistAuthSession, isAuthenticated } from '../utils/auth'
+import { useWallet } from '../context/WalletContext'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS, AppleIcon, GoogleIcon, MailIcon, LockIcon, EyeIcon } from './authShared'
 
@@ -11,6 +12,21 @@ const defaultBaseUrl = typeof window !== 'undefined'
   : 'http://localhost:5000';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
+
+// Web3Auth's connectorName resolves to the literal string 'auth' for every
+// social/email login (google, email_passwordless, discord alike), so it
+// can't distinguish which sub-method was used. The sub-method instead lives
+// on userInfo.authConnection, whose values ('google', 'email_passwordless',
+// 'discord', etc. — see @toruslabs/customauth's AUTH_CONNECTION enum)
+// already match our authProvider enum 1:1. External-wallet connectors
+// (MetaMask etc.) never populate authConnection at all, so anything not in
+// the known list — including undefined — falls back to 'wallet'. This is a
+// display label only (not a security boundary — the backend independently
+// verifies the idToken), so a generous mapping here is safe.
+const VALID_AUTH_PROVIDERS = ['google', 'email_passwordless', 'discord', 'wallet'];
+function toAuthProvider(authConnection) {
+  return VALID_AUTH_PROVIDERS.includes(authConnection) ? authConnection : 'wallet';
+}
 
 export default function Login() {
   const [email, setEmail]               = useState('')
@@ -24,8 +40,10 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotSuccess, setForgotSuccess] = useState('')
   const [forgotError, setForgotError]     = useState('')
+  const [web3authLoading, setWeb3authLoading] = useState(false)
 
   const navigate = useNavigate()
+  const { login, userInfo, signMessage } = useWallet()
 
   useEffect(() => {
     if (isAuthenticated()) { navigate('/', { replace: true }); return }
@@ -74,6 +92,49 @@ export default function Login() {
     setForgotLoading(false)
   }
 
+  const handleWeb3AuthSignIn = async () => {
+    setError('')
+    setWeb3authLoading(true)
+    try {
+      const result = await login()
+      if (!result) {
+        // User closed the modal without completing login — not an error.
+        setWeb3authLoading(false)
+        return
+      }
+      const { walletAddress, authConnection } = result
+
+      // Prove wallet ownership: fetch a one-time nonce, sign it with the
+      // Web3Auth-embedded wallet, and let the backend recover + verify the
+      // signer address. (The idToken's own signature can't be verified —
+      // sapphire_devnet's signing key isn't published at any JWKS endpoint.)
+      const nonceRes = await apiClient.post('/api/auth/web3auth/nonce', { walletAddress })
+      const nonce = nonceRes.data?.data?.nonce
+      if (!nonce) { setError('Could not start wallet verification. Please try again.'); setWeb3authLoading(false); return }
+
+      const signature = await signMessage(nonce, walletAddress)
+
+      const res = await apiClient.post('/api/auth/web3auth', {
+        walletAddress,
+        nonce,
+        signature,
+        email: userInfo?.email || null,
+        name: userInfo?.name || null,
+        avatar: userInfo?.profileImage || null,
+        loginMethod: toAuthProvider(authConnection),
+      })
+      if (res.data.success) {
+        persistAuthSession({ token: res.data.data.token, user: res.data.data.user })
+        navigate('/', { replace: true })
+        return
+      }
+      setError('Sign-in failed. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Sign-in failed. Please try again.'))
+    }
+    setWeb3authLoading(false)
+  }
+
   return (
     <div className="auth-page">
       <style>{AUTH_CSS}</style>
@@ -119,6 +180,16 @@ export default function Login() {
                   <GoogleIcon /> Google
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={handleWeb3AuthSignIn}
+                disabled={web3authLoading}
+                className="auth-social-btn"
+                style={{ width: '100%', marginTop: 10 }}
+              >
+                {web3authLoading ? 'Connecting…' : 'Continue with Web3Auth (Google / Discord / Wallet)'}
+              </button>
 
               <div className="auth-divider">or</div>
 

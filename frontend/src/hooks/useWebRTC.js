@@ -46,6 +46,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [micMuted, setMicMuted]             = useState(false);
   const [cameraOff, setCameraOff]           = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [noiseSuppressed, setNoiseSuppressed] = useState(false);
+  const [roomLocked, setRoomLockedState]    = useState(false);
   const [spotlightId, setSpotlightId]       = useState('local');
   const [connectionError, setConnectionError] = useState('');
 
@@ -69,11 +71,21 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
 
+  // ── Feature: File Sharing ──────────────────────────────────────────────────
+  const [sharedFiles, setSharedFiles] = useState([]); // [{id, name, size, type, url, sharedBy, sharedAt}]
+  // fileNotifications: recently-shared files shown as an auto-dismissing
+  // popup for everyone in the room — populated only from the real-time
+  // 'file-shared' broadcast, never from the on-join 'files-state' history
+  // load, so joining a room with existing files doesn't spam popups.
+  const [fileNotifications, setFileNotifications] = useState([]);
+
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef      = useRef(null);
   const pcsRef         = useRef({});           // socketId → RTCPeerConnection
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
+  const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
 
   // ── Peer connection factory ─────────────────────────────────────────────────
   const createPC = useCallback((socketId, onStream) => {
@@ -149,6 +161,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
+        socket.emit('get-files', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -211,6 +224,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Host has kicked us — invoke the caller-supplied callback
       socket.on('removed-from-room', () => {
         if (typeof onKicked === 'function') onKicked();
+      });
+
+      // Room lock state changed (by host) — broadcast to everyone including sender
+      socket.on('room-locked', ({ locked }) => {
+        setRoomLockedState(locked);
       });
 
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
@@ -289,6 +307,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
+        socket.emit('get-files', { roomCode });
       } else {
         socket.emit('request-join', { roomCode, userId, userName });
       }
@@ -383,6 +402,63 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       }
     }
   }, [cameraOff, roomCode]);
+
+  /**
+   * Basic noise suppression: routes the mic track through a Web Audio
+   * highpass + lowpass filter pair (cuts low-frequency rumble and
+   * high-frequency hiss outside the human-voice band, ~200Hz-3.5kHz) and
+   * sends the filtered track instead. This is a simple band-pass filter,
+   * not full ML-based noise cancellation (e.g. RNNoise) — it reduces
+   * steady background hum/hiss but won't remove other voices or
+   * non-stationary noise.
+   */
+  const toggleNoiseSuppression = useCallback(() => {
+    const currentTrack = localStreamRef.current?.getAudioTracks()[0];
+    if (!currentTrack) return;
+
+    if (!noiseAudioCtxRef.current) {
+      // ── Turn ON: build the filter chain ────────────────────────────────
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = ctx.createMediaStreamSource(new MediaStream([currentTrack]));
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 200;
+        const lowpass = ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 3500;
+        const destination = ctx.createMediaStreamDestination();
+        source.connect(highpass).connect(lowpass).connect(destination);
+
+        const filteredTrack = destination.stream.getAudioTracks()[0];
+        rawMicTrackRef.current = currentTrack;
+        noiseAudioCtxRef.current = ctx;
+
+        localStreamRef.current.removeTrack(currentTrack);
+        localStreamRef.current.addTrack(filteredTrack);
+        Object.values(pcsRef.current).forEach(pc => {
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(filteredTrack).catch(() => {});
+        });
+        setNoiseSuppressed(true);
+      } catch (err) {
+        console.error('Noise suppression setup failed:', err);
+      }
+    } else {
+      // ── Turn OFF: revert to the raw mic track, tear down the filter chain ──
+      const rawTrack = rawMicTrackRef.current;
+      if (rawTrack) {
+        localStreamRef.current.removeTrack(currentTrack);
+        localStreamRef.current.addTrack(rawTrack);
+        Object.values(pcsRef.current).forEach(pc => {
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(rawTrack).catch(() => {});
+        });
+      }
+      noiseAudioCtxRef.current.close().catch(() => {});
+      noiseAudioCtxRef.current = null;
+      rawMicTrackRef.current = null;
+      setNoiseSuppressed(false);
+    }
+  }, []);
 
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
@@ -496,6 +572,50 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
   }, [isHost]);
 
+  // ── Feature: File Sharing callbacks ─────────────────────────────────────────
+
+  // Listen for file-shared and files-state events (wired on socket connect)
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const onFileShared = (entry) => {
+      setSharedFiles(prev => {
+        if (prev.some(f => f.id === entry.id)) return prev;
+        return [...prev, entry];
+      });
+      // Pop up a dismissible notification for everyone (including the
+      // sharer, since the server echoes 'file-shared' back to them too).
+      // Auto-removed after 8s; the X button in the UI can dismiss it early.
+      setFileNotifications(prev => [...prev, entry]);
+      setTimeout(() => {
+        setFileNotifications(prev => prev.filter(f => f.id !== entry.id));
+      }, 8000);
+    };
+    const onFilesState = ({ files }) => {
+      setSharedFiles(files || []);
+    };
+
+    socket.on('file-shared', onFileShared);
+    socket.on('files-state', onFilesState);
+
+    return () => {
+      socket.off('file-shared', onFileShared);
+      socket.off('files-state', onFilesState);
+    };
+  }, [socketRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shareFile = useCallback((file) => {
+    const socket = socketRef.current;
+    if (!socket || !roomCode) return;
+    socket.emit('share-file', { roomCode, file });
+  }, [roomCode]);
+
+  /** Dismiss a file-share popup notification before its 8s auto-timeout. */
+  const dismissFileNotification = useCallback((id) => {
+    setFileNotifications(prev => prev.filter(f => f.id !== id));
+  }, []);
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   return {
@@ -504,11 +624,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
+    toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
     // Waiting Room / Admission
     admitted, denied, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls
-    muteParticipant, kickParticipant, setRoomLocked,
+    muteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,
@@ -520,5 +641,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     sharedMediaUrl, shareMedia,
     // Feature 7: Polls
     polls, createPoll, votePoll, endPoll,
+    // Feature: File Sharing
+    sharedFiles, shareFile,
+    fileNotifications, dismissFileNotification,
   };
 }

@@ -12,6 +12,7 @@ import {
 import Dropdown from '../ui/Dropdown';
 import { useMeeting } from '../../context/MeetingContext';
 import { useUser } from '../../context/UserContext';
+import { useWallet } from '../../context/WalletContext';
 import { ROUTES } from '../../utils/constants';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
 import etherxLogo from '../../assets/etherx_transparent.png';
@@ -43,6 +44,7 @@ function buildWeatherLabel(hour) {
 
 export default function TopBar({ showMeetingInfo = false }) {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const { user } = useUser();
   const { meetingId, meetingTitle, startTime } = useMeeting();
   const [now, setNow] = useState(Date.now());
@@ -101,7 +103,13 @@ export default function TopBar({ showMeetingInfo = false }) {
     navigator.clipboard?.writeText(`${window.location.origin}/room/${meetingId || 'etherx'}`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Await the Web3Auth SDK teardown before clearing the app session and
+    // navigating away — otherwise the full-page navigation below can race
+    // the in-flight async disconnect, leaving a lingering Web3Auth session
+    // that re-hydrates on the next /login visit and strands the user behind
+    // a permanently-disabled sign-in button.
+    await logout();
     clearAuthSession();
     window.location.replace(ROUTES.LOGIN);
   };

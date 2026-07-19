@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useUI } from '../context/UIContext';
 import { useUserContext } from '../context/UserContext';
+import { useWallet } from '../context/WalletContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import AudioVisualizer from '../components/meeting/AudioVisualizer';
 import etherxLogo from '../assets/etherx_transparent.png';
@@ -25,6 +26,7 @@ const AVATAR_COLORS = [
 
 export default function Join() {
   const navigate = useNavigate();
+  const { logout } = useWallet();
   const [searchParams] = useSearchParams();
   const { addToast } = useUI();
   const { user, updateUser } = useUserContext();
@@ -142,7 +144,13 @@ export default function Join() {
     }, 500);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Await the Web3Auth SDK teardown before clearing the app session and
+    // navigating away, for consistency with Landing.jsx/TopBar.jsx — this
+    // uses SPA navigate() rather than a full page reload so it's less
+    // exposed to the unload race, but an un-awaited logout() still risks a
+    // stale account lingering in the wallet context.
+    await logout();
     localStorage.removeItem('nexmeet_token');
     localStorage.removeItem('nexmeet_user');
     navigate('/login');
