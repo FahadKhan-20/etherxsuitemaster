@@ -1,6 +1,5 @@
 // frontend/src/App.jsx
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import { AnimationProvider } from './context/AnimationContext';
 import { MeetingProvider } from './context/MeetingContext';
 import { UserProvider } from './context/UserContext';
@@ -32,23 +31,21 @@ function AppRoutes() {
       <CommandPalette />
       <ToastSystem />
 
-      <AnimatePresence mode="wait">
-        <Routes location={location} key={location.pathname}>
-          <Route path={ROUTES.LOGIN}           element={<Login />} />
-          <Route path={ROUTES.REGISTER}        element={<Register />} />
-          <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
-          <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path={ROUTES.HOME}        element={<Landing />} />
-            <Route path={ROUTES.JOIN}        element={<Join />} />
-            <Route path={ROUTES.ROOM}        element={<Room />} />
-            <Route path={ROUTES.DASHBOARD}   element={<Dashboard />} />
-            <Route path={ROUTES.RECORDINGS}  element={<Recordings />} />
-            <Route path={ROUTES.ANALYTICS}   element={<Analytics />} />
-            <Route path={ROUTES.SETTINGS}    element={<Settings />} />
-          </Route>
-        </Routes>
-      </AnimatePresence>
+      <Routes location={location}>
+        <Route path={ROUTES.LOGIN}           element={<Login />} />
+        <Route path={ROUTES.REGISTER}        element={<Register />} />
+        <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
+        <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path={ROUTES.HOME}        element={<Landing />} />
+          <Route path={ROUTES.JOIN}        element={<Join />} />
+          <Route path={ROUTES.ROOM}        element={<Room />} />
+          <Route path={ROUTES.DASHBOARD}   element={<Dashboard />} />
+          <Route path={ROUTES.RECORDINGS}  element={<Recordings />} />
+          <Route path={ROUTES.ANALYTICS}   element={<Analytics />} />
+          <Route path={ROUTES.SETTINGS}    element={<Settings />} />
+        </Route>
+      </Routes>
     </>
   );
 }

@@ -202,6 +202,14 @@ export default function VideoRoom({ roomCode, isHost }) {
   const initial = (userName||'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName||'Y');
   const spotlight = peerList.find(([id]) => id === spotlightId);
+  // Self-view background effects. Blur applies to the LIVE video via CSS
+  // filter (works today). Photo backgrounds can't replace a live camera feed
+  // without on-device segmentation, so they render behind the avatar whenever
+  // the camera is off (grid tile + solo "waiting" view).
+  const localFilter = activeFilter === 'blur' ? 'blur(8px)' : activeFilter === 'half-blur' ? 'blur(4px)' : 'none';
+  const selfBgStyle = selectedBgImage !== 'none'
+    ? { backgroundImage:`url(${selectedBgImage})`, backgroundSize:'cover', backgroundPosition:'center' }
+    : null;
 
   if (!admitted) {
     return (
@@ -499,9 +507,9 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {modalTab==='backgrounds' && (
                   <div>
                     <div style={{ position:'relative',width:280,height:158,background:'#0a0a0a',borderRadius:10,overflow:'hidden',margin:'0 auto 20px',border:'1px solid rgba(212,175,55,.12)' }}>
-                      {localStream&&!cameraOff?<video ref={el=>{if(el)el.srcObject=localStream;}} autoPlay playsInline muted style={{ width:'100%',height:'100%',objectFit:'cover',transform:'scaleX(-1)',filter:activeFilter==='blur'?'blur(8px)':activeFilter==='half-blur'?'blur(4px)':'none' }} />:<div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505' }}><div style={{ width:64,height:64,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:700,color:'#f0e6d3' }}>{initial}</div></div>}
+                      {localStream&&!cameraOff?<video ref={el=>{if(el)el.srcObject=localStream;}} autoPlay playsInline muted style={{ width:'100%',height:'100%',objectFit:'cover',transform:'scaleX(-1)',filter:activeFilter==='blur'?'blur(8px)':activeFilter==='half-blur'?'blur(4px)':'none' }} />:<div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505',...(selfBgStyle||{}) }}><div style={{ width:64,height:64,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:700,color:'#f0e6d3' }}>{initial}</div></div>}
                     </div>
-                    <button style={{ background:'none',border:'none',color:'#b8860b',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600,padding:0,marginBottom:16 }}><Plus size={16}/><span>Add background</span></button>
+                    <button onClick={() => { const url = window.prompt('Paste an image URL to use as your background:'); if (url && url.trim()) { setActiveFilter('none'); setSelectedBgImage(url.trim()); } }} style={{ background:'none',border:'none',color:'#b8860b',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600,padding:0,marginBottom:16 }}><Plus size={16}/><span>Add background</span></button>
                     <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10 }}>
                       {BG_OPTIONS.map(opt => {
                         const isSel = (opt.type==='filter'&&activeFilter===opt.id&&selectedBgImage==='none')||(opt.type==='image'&&selectedBgImage===opt.url);
@@ -784,10 +792,11 @@ export default function VideoRoom({ roomCode, isHost }) {
                 position:'relative',
                 display:'flex',alignItems:'center',justifyContent:'center',
                 background:'#0a0a0a',
+                ...((cameraOff||selfViewHidden||!localStream)&&selfBgStyle?selfBgStyle:{}),
                 overflow:'hidden',
               }}>
                 {localStream && !cameraOff && !selfViewHidden ? (
-                  <VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/>
+                  <VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff} filter={localFilter} bgImage={selectedBgImage}/>
                 ) : (
                   <div style={{
                     width:130,height:130,borderRadius:'50%',
@@ -865,9 +874,9 @@ export default function VideoRoom({ roomCode, isHost }) {
               {spotlight ? (
                 <div style={{ width:'100%',height:'100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName||'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream||!!spotlight[1].videoOff}/></div>
               ) : localStream && !cameraOff ? (
-                <div style={{ width:'100%',height:'100%' }}><VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff}/></div>
+                <div style={{ width:'100%',height:'100%' }}><VideoTile stream={localStream} userName={userName||'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff} filter={localFilter} bgImage={selectedBgImage}/></div>
               ) : (
-                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:18 }}>
+                <div style={{ position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:18, ...(selfBgStyle||{}) }}>
                   <div style={{ width:168,height:168,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:60,fontWeight:700,animation:'speak 2.2s infinite' }}>{initial}</div>
                   <div style={{ textAlign:'center' }}>
                     <div style={{ fontSize:16,fontWeight:600 }}>{userName||'You'}</div>
@@ -901,13 +910,13 @@ export default function VideoRoom({ roomCode, isHost }) {
               {/* Group 1 — A/V controls: Mic + Camera */}
               <div style={{ display:'flex',alignItems:'center',gap:6 }}>
                 <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:2 }}>
-                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={() => { setShowSettingsModal(true); setModalTab('audio'); }} title="Audio settings" style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
                   <button onClick={toggleMic} title={micMuted?'Unmute':'Mute'} style={{ width:40,height:40,borderRadius:10,border:'none',background:micMuted?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:micMuted?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
                     {micMuted ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
                   </button>
                 </div>
                 <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:2 }}>
-                  <button style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <button onClick={() => { setShowSettingsModal(true); setModalTab('video'); }} title="Video settings" style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',padding:0,display:'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
                   <button onClick={toggleCamera} title={cameraOff?'Start camera':'Stop camera'} style={{ width:40,height:40,borderRadius:10,border:'none',background:cameraOff?'rgba(239,68,68,.18)':'rgba(212,175,55,.15)',color:cameraOff?'#f87171':'#f0e6d3',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'background .15s' }}>
                     {cameraOff ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8"/><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>}
                   </button>

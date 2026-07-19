@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import apiClient, { getApiErrorMessage } from '../utils/apiClient'
 import { persistAuthSession, isAuthenticated } from '../utils/auth'
+import { useWallet } from '../context/WalletContext'
 import etherxLogo from '../assets/etherx_transparent.png'
 import { AUTH_CSS, AppleIcon, GoogleIcon, PersonIcon, MailIcon, LockIcon, EyeIcon } from './authShared'
 
@@ -11,6 +12,13 @@ const defaultBaseUrl = typeof window !== 'undefined'
   : 'http://localhost:5000';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
+
+// Mirrors Login.jsx's mapping — see its comment for why authConnection
+// (not connectorName) is the right signal for the display label.
+const VALID_AUTH_PROVIDERS = ['google', 'email_passwordless', 'discord', 'wallet'];
+function toAuthProvider(authConnection) {
+  return VALID_AUTH_PROVIDERS.includes(authConnection) ? authConnection : 'wallet';
+}
 
 function getStrength(pw) {
   if (!pw) return { score: 0, label: '', color: '' }
@@ -35,13 +43,50 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError]               = useState('')
   const [loading, setLoading]           = useState(false)
+  const [web3authLoading, setWeb3authLoading] = useState(false)
 
   const navigate = useNavigate()
+  const { login, userInfo, signMessage } = useWallet()
   const strength = getStrength(password)
 
   useEffect(() => {
     if (isAuthenticated()) navigate('/', { replace: true })
   }, [navigate])
+
+  const handleWeb3AuthSignIn = async () => {
+    setError('')
+    setWeb3authLoading(true)
+    try {
+      const result = await login()
+      if (!result) { setWeb3authLoading(false); return }
+      const { walletAddress, authConnection } = result
+
+      const nonceRes = await apiClient.post('/api/auth/web3auth/nonce', { walletAddress })
+      const nonce = nonceRes.data?.data?.nonce
+      if (!nonce) { setError('Could not start wallet verification. Please try again.'); setWeb3authLoading(false); return }
+
+      const signature = await signMessage(nonce, walletAddress)
+
+      const res = await apiClient.post('/api/auth/web3auth', {
+        walletAddress,
+        nonce,
+        signature,
+        email: userInfo?.email || null,
+        name: userInfo?.name || null,
+        avatar: userInfo?.profileImage || null,
+        loginMethod: toAuthProvider(authConnection),
+      })
+      if (res.data.success) {
+        persistAuthSession({ token: res.data.data.token, user: res.data.data.user })
+        navigate('/', { replace: true })
+        return
+      }
+      setError('Sign-in failed. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Sign-in failed. Please try again.'))
+    }
+    setWeb3authLoading(false)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -99,6 +144,16 @@ export default function Register() {
             <GoogleIcon /> Google
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={handleWeb3AuthSignIn}
+          disabled={web3authLoading}
+          className="auth-social-btn"
+          style={{ width: '100%', marginTop: 10 }}
+        >
+          {web3authLoading ? 'Connecting…' : 'Continue with Web3Auth (Google / Discord / Wallet)'}
+        </button>
 
         <div className="auth-divider">or</div>
 
