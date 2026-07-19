@@ -7,10 +7,14 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Optional + sparse: wallet-signature (Web3Auth) users are identified by
+    // walletAddress and may have no email attached (e.g. when their email is
+    // already used by another account). Password registration still requires
+    // email — enforced at the /register route, not the schema.
     email: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
     },
