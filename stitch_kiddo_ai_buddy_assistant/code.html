@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Insight AI - Sign Up</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-secondary-fixed-variant": "#454747",
+                      "on-tertiary": "#313030",
+                      "surface-container-lowest": "#0e0e10",
+                      "on-surface-variant": "#cbc3d7",
+                      "surface-container-low": "#1c1b1d",
+                      "surface-container-highest": "#353437",
+                      "surface-variant": "#353437",
+                      "secondary-container": "#454747",
+                      "on-primary-fixed-variant": "#5516be",
+                      "primary-container": "#a078ff",
+                      "surface-container-high": "#2a2a2c",
+                      "on-primary": "#3c0091",
+                      "surface-tint": "#d0bcff",
+                      "primary": "#d0bcff",
+                      "secondary-fixed": "#e2e2e2",
+                      "on-tertiary-fixed-variant": "#474746",
+                      "on-surface": "#e5e1e4",
+                      "inverse-primary": "#6d3bd7",
+                      "surface-bright": "#39393b",
+                      "tertiary-fixed-dim": "#c8c6c5",
+                      "on-error": "#690005",
+                      "inverse-on-surface": "#313032",
+                      "on-primary-fixed": "#23005c",
+                      "surface": "#131315",
+                      "on-primary-container": "#340080",
+                      "on-error-container": "#ffdad6",
+                      "on-background": "#e5e1e4",
+                      "on-secondary-fixed": "#1a1c1c",
+                      "surface-container": "#201f22",
+                      "error": "#ffb4ab",
+                      "tertiary-container": "#929090",
+                      "secondary-fixed-dim": "#c6c6c7",
+                      "outline": "#958ea0",
+                      "inverse-surface": "#e5e1e4",
+                      "tertiary-fixed": "#e5e2e1",
+                      "tertiary": "#c8c6c5",
+                      "background": "#131315",
+                      "primary-fixed-dim": "#d0bcff",
+                      "outline-variant": "#494454",
+                      "on-secondary": "#2f3131",
+                      "error-container": "#93000a",
+                      "on-secondary-container": "#b4b5b5",
+                      "primary-fixed": "#e9ddff",
+                      "on-tertiary-fixed": "#1c1b1b",
+                      "secondary": "#c6c6c7",
+                      "surface-dim": "#131315",
+                      "on-tertiary-container": "#2a2a2a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack_md": "16px",
+                      "stack_sm": "8px",
+                      "stack_lg": "32px",
+                      "sidebar_width": "72px",
+                      "container_max_width": "480px",
+                      "gutter": "24px"
+              },
+              "fontFamily": {
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "display": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "1",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display": [
+                              "32px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.5",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "1.3",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .bg-glow {
+            background: radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.15) 0%, rgba(19, 19, 21, 0) 70%);
+        }
+        .input-bg {
+            background-color: #171717;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex selection:bg-primary-container selection:text-on-primary-container">
+<!-- Suppressed Nav Shells (Login intent is linear/transactional) -->
+<!-- Main Canvas -->
+<main class="flex-1 relative flex items-center justify-center overflow-hidden bg-glow">
+<!-- Central Card Container -->
+<div class="w-full max-w-container_max_width px-gutter relative z-10 flex flex-col items-center">
+<!-- Header Text -->
+<h1 class="font-display text-display text-center text-on-surface mb-stack_lg">
+                Create your Insight AI account to get started.
+            </h1>
+<div class="w-full space-y-stack_md mb-stack_lg">
+<button class="w-full flex items-center justify-center gap-2 bg-white text-on-tertiary-fixed-variant rounded-full py-3 px-4 font-body-sm text-body-sm hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background" type="button">
+<img alt="Apple Logo" class="h-5 w-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsyoZm3CirHZs3-OwyXHX51JdFxXSXvf5jUechIxkziIjBckAL4JCWmAwWW50slJBXy6d3CE6dXF6OIWhCv4IB2od9H1JVihSyVwb9eG9ciDJHlyOlGa2Tsn3IaeBlksYHow0SURrWu3XkMHSwYtnMI0Jc7RznfbsycaehmeSCjv4b2IoqVxqGCQLyTS1PdLtpPEMHCIX4TSn6yPxh66Wi_XGPX4cVNhdwxgH-j8MHzBYXbqmp_5NMg5fpBWoa4RPEgp-puShttso"/>
+                    Sign up with Apple
+                </button>
+<button class="w-full flex items-center justify-center gap-2 bg-white text-on-tertiary-fixed-variant rounded-full py-3 px-4 font-body-sm text-body-sm hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background" type="button">
+<img alt="Google Logo" class="h-5 w-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHx-Q-B-AxjHDzJlI_Foh5qHcGHRBK3t0-XjOdqfzNF8l3BqtgARUUh4qAhajMEKwFy9-PvhvcZeyVoNdeRVLc7__f33nd8VgyEi4EB3uyMsGVDJCoEbAVLMHPdGDxwGsxuqwH6A8azhY-UP8PIV4ylGOitXyoQzydc2zczuYbg_vDdR21KQoq3AQAR-1asMRAKkRy4JULLuJIbk8fQYgovIOnGzNo3l0MVXmmiZHPOSsTO9Pkfz_S8DgJGUH1motmuwbn-dwOqq0"/>
+                    Sign up with Google
+                </button>
+</div>
+<!-- Divider -->
+<div class="w-full flex items-center gap-4 mb-stack_lg">
+<div class="h-px bg-outline-variant flex-1"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Or</span>
+<div class="h-px bg-outline-variant flex-1"></div>
+</div>
+<!-- Sign Up Form -->
+<form class="w-full space-y-stack_md flex flex-col items-center">
+<div class="w-full relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" style="font-variation-settings: 'FILL' 0;">person</span>
+<input class="w-full input-bg text-on-surface border border-[#333333] rounded-lg py-3 pl-10 pr-4 font-body-sm text-body-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors placeholder:text-on-surface-variant" placeholder="Full Name" type="text"/>
+</div>
+<div class="w-full relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" style="font-variation-settings: 'FILL' 0;">mail</span>
+<input class="w-full input-bg text-on-surface border border-[#333333] rounded-lg py-3 pl-10 pr-4 font-body-sm text-body-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors placeholder:text-on-surface-variant" placeholder="Email Address" type="email"/>
+</div>
+<div class="w-full relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" style="font-variation-settings: 'FILL' 0;">lock</span>
+<input class="w-full input-bg text-on-surface border border-[#333333] rounded-lg py-3 pl-10 pr-4 font-body-sm text-body-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors placeholder:text-on-surface-variant" placeholder="Password" type="password"/>
+</div>
+<button class="w-full mt-stack_sm bg-primary-container text-on-primary-container font-label-caps text-label-caps rounded-full py-4 px-6 hover:bg-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background tracking-wider" type="submit">
+                    Create Account
+                </button>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-stack_md">
+                    Already have an account? <a class="text-primary hover:text-primary-fixed transition-colors underline decoration-transparent hover:decoration-primary" href="#">Log in</a>
+</p>
+</form>
+</div>
+</main>
+</body></html>

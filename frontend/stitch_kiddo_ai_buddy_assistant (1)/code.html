@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Login - Insight AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed-variant": "#454747",
+                        "on-tertiary": "#313030",
+                        "surface-container-lowest": "#0e0e10",
+                        "on-surface-variant": "#cbc3d7",
+                        "surface-container-low": "#1c1b1d",
+                        "surface-container-highest": "#353437",
+                        "surface-variant": "#353437",
+                        "secondary-container": "#454747",
+                        "on-primary-fixed-variant": "#5516be",
+                        "primary-container": "#a078ff",
+                        "surface-container-high": "#2a2a2c",
+                        "on-primary": "#3c0091",
+                        "surface-tint": "#d0bcff",
+                        "primary": "#d0bcff",
+                        "secondary-fixed": "#e2e2e2",
+                        "on-tertiary-fixed-variant": "#474746",
+                        "on-surface": "#e5e1e4",
+                        "inverse-primary": "#6d3bd7",
+                        "surface-bright": "#39393b",
+                        "tertiary-fixed-dim": "#c8c6c5",
+                        "on-error": "#690005",
+                        "inverse-on-surface": "#313032",
+                        "on-primary-fixed": "#23005c",
+                        "surface": "#131315",
+                        "on-primary-container": "#340080",
+                        "on-error-container": "#ffdad6",
+                        "on-background": "#e5e1e4",
+                        "on-secondary-fixed": "#1a1c1c",
+                        "surface-container": "#201f22",
+                        "error": "#ffb4ab",
+                        "tertiary-container": "#929090",
+                        "secondary-fixed-dim": "#c6c6c7",
+                        "outline": "#958ea0",
+                        "inverse-surface": "#e5e1e4",
+                        "tertiary-fixed": "#e5e2e1",
+                        "tertiary": "#c8c6c5",
+                        "background": "#131315",
+                        "primary-fixed-dim": "#d0bcff",
+                        "outline-variant": "#494454",
+                        "on-secondary": "#2f3131",
+                        "error-container": "#93000a",
+                        "on-secondary-container": "#b4b5b5",
+                        "primary-fixed": "#e9ddff",
+                        "on-tertiary-fixed": "#1c1b1b",
+                        "secondary": "#c6c6c7",
+                        "surface-dim": "#131315",
+                        "on-tertiary-container": "#2a2a2a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack_md": "16px",
+                        "stack_sm": "8px",
+                        "stack_lg": "32px",
+                        "sidebar_width": "72px",
+                        "container_max_width": "480px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Inter"],
+                        "display": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "display": ["32px", { "lineHeight": "1.2", "letterSp.acing": "-0.02em", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glow-background {
+            background: radial-gradient(circle at center top, rgba(255, 255, 255, 0.15) 0%, rgba(19, 19, 21, 0) 60%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex font-body-sm overflow-hidden">
+<!-- Suppressed SideNavBar for linear transactional page intent -->
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col relative">
+<!-- Atmospheric Glow -->
+<div class="absolute inset-0 glow-background pointer-events-none"></div>
+<div class="flex-1 flex items-center justify-center p-gutter z-10">
+<!-- Centered Card -->
+<div class="w-full max-w-container_max_width flex flex-col items-center">
+<!-- Header -->
+<div class="text-center mb-stack_lg">
+<h1 class="font-display text-display text-on-background mb-stack_sm">
+                        Sign up below to unlock<br/>the full potential of Insight AI.
+                    </h1>
+</div>
+<!-- Auth Options -->
+<div class="w-full space-y-stack_md mb-stack_lg">
+<button class="w-full bg-white text-[#000000] py-3 px-4 rounded-xl flex items-center justify-center gap-3 font-body-lg text-body-lg font-medium hover:bg-neutral-100 transition-colors">
+<svg class="w-5 h-5" fill="currentColor" viewbox="0 0 24 24">
+<path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.19 2.31-.88 3.5-.8 1.56.06 2.89.62 3.77 1.81-3.21 1.95-2.69 6.27.68 7.62-.7 1.68-1.57 3.32-3.03 3.54zm-4.32-15.1c-.2-1.6 1.15-3.13 2.68-3.35.43 1.76-1.16 3.26-2.68 3.35z"></path>
+</svg>
+                        Continue with Apple
+                    </button>
+<button class="w-full bg-white text-[#000000] py-3 px-4 rounded-xl flex items-center justify-center gap-3 font-body-lg text-body-lg font-medium hover:bg-neutral-100 transition-colors">
+<svg class="w-5 h-5" viewbox="0 0 24 24">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+</svg>
+                        Continue with Google
+                    </button>
+</div>
+<!-- Email Form -->
+<div class="w-full space-y-stack_sm">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">
+                            mail
+                        </span>
+<input class="w-full bg-[#171717] border border-[#333333] text-on-background placeholder:text-on-surface-variant rounded-xl py-3 pl-12 pr-4 font-body-sm text-body-sm focus:outline-none focus:border-outline-variant focus:ring-1 focus:ring-outline-variant transition-colors" placeholder="enter your mail" type="email"/>
+</div>
+<button class="w-full bg-[#1c1b1d] text-on-surface-variant py-3 px-4 rounded-xl font-body-lg text-body-lg font-medium hover:bg-surface-container-highest transition-colors mt-stack_sm">
+                        Continue with email
+                    </button>
+</div>
+<!-- Footer Action -->
+<div class="mt-stack_lg">
+<a class="text-on-surface-variant hover:text-on-background font-body-sm text-body-sm transition-colors" href="#">
+                        Close
+                    </a>
+</div>
+</div>
+</div>
+</main>
+</body></html>

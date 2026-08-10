@@ -1,0 +1,21 @@
+node_modules
+
+backend/uploads/
+dist/
+.worktrees/
+
+nxtmeet-temp/
+
+# Environment and secrets
+.env
+
+# Logs
+*.log
+docker-*.txt
+
+# IDE / Analysis temp files
+.qodo/
+.graphify_*
+graphify-out/
+
+
