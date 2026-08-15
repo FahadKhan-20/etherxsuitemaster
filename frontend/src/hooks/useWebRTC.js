@@ -21,7 +21,7 @@ const ICE_SERVERS = [
 /**
  * Core WebRTC hook. Manages peer connections, socket events, and all
  * collaborative features: host controls, reactions, hand queue, network
- * quality polling, collaborative notes, and polls.
+ * quality polling, collaborative notes, polls, and meeting agenda.
  *
  * @param {string} roomCode  - The meeting room code.
  * @param {object} [opts]    - Options object.
@@ -78,6 +78,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // 'file-shared' broadcast, never from the on-join 'files-state' history
   // load, so joining a room with existing files doesn't spam popups.
   const [fileNotifications, setFileNotifications] = useState([]);
+
+  // ── Feature: Meeting Agenda ─────────────────────────────────────────────────
+  const [agendaItems, setAgendaItems] = useState([]); // [{id, title, done, createdBy}]
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef      = useRef(null);
@@ -162,6 +165,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
+        socket.emit('get-agenda', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -302,12 +306,25 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setPolls(prev => prev.map(p => p.id === updatedPoll.id ? updatedPoll : p));
       });
 
+      // ── Feature: Meeting Agenda ──────────────────────────────────────────────
+
+      // Full agenda list on connect
+      socket.on('agenda-state', ({ items }) => {
+        setAgendaItems(items);
+      });
+
+      // Full agenda list after any add/toggle/reorder/delete
+      socket.on('agenda-updated', (items) => {
+        setAgendaItems(items);
+      });
+
       // Join the room if host (already admitted); otherwise request admission
       if (isHost) {
         socket.emit('join-room', { roomCode, userId, userName });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
+        socket.emit('get-agenda', { roomCode });
       } else {
         socket.emit('request-join', { roomCode, userId, userName });
       }
@@ -616,6 +633,28 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     setFileNotifications(prev => prev.filter(f => f.id !== id));
   }, []);
 
+  // ── Feature: Meeting Agenda emitters ────────────────────────────────────────
+
+  /** Add a new topic to the agenda (host adds topics before/during the meeting). */
+  const addAgendaItem = useCallback((title) => {
+    socketRef.current?.emit('add-agenda-item', { roomCode, title });
+  }, [roomCode]);
+
+  /** Mark an agenda item done/not-done — presenter uses this during the meeting. */
+  const toggleAgendaItem = useCallback((id) => {
+    socketRef.current?.emit('toggle-agenda-item', { roomCode, id });
+  }, [roomCode]);
+
+  /** Reorder the agenda — pass the full array of item ids in the new order. */
+  const reorderAgenda = useCallback((orderedIds) => {
+    socketRef.current?.emit('reorder-agenda', { roomCode, orderedIds });
+  }, [roomCode]);
+
+  /** Remove an agenda item entirely. */
+  const deleteAgendaItem = useCallback((id) => {
+    socketRef.current?.emit('delete-agenda-item', { roomCode, id });
+  }, [roomCode]);
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   return {
@@ -644,5 +683,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Feature: File Sharing
     sharedFiles, shareFile,
     fileNotifications, dismissFileNotification,
+    // Feature: Meeting Agenda
+    agendaItems, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
   };
 }

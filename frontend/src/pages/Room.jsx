@@ -114,6 +114,14 @@ export default function Room() {
 
   const isHost = sessionStorage.getItem('etherx_host_room') === code;
 
+  const [agendaTopics, setAgendaTopics] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('etherx_agenda') || '[]'); } catch { return []; }
+  });
+  const handleAgendaChange = (topics) => {
+    setAgendaTopics(topics);
+    sessionStorage.setItem('etherx_agenda', JSON.stringify(topics));
+  };
+
   // Query active participants list
   useEffect(() => {
     if (hasJoined || !code) return;
@@ -354,6 +362,41 @@ export default function Room() {
               )}
             </p>
           </div>
+
+          {/* Agenda — host only, before joining */}
+          {isHost && (
+            <div style={{ width: '100%', maxWidth: '340px', marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: '#A89A7C', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>MEETING AGENDA</div>
+              <div style={{ background: 'rgba(212,175,55,.04)', border: '1px solid rgba(212,175,55,.18)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 260 }}>
+                {/* topic list */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {agendaTopics.length === 0 && (
+                    <div style={{ textAlign: 'center', color: 'rgba(168,152,120,.45)', fontSize: 12, padding: '12px 0' }}>Add topics for your meeting</div>
+                  )}
+                  {agendaTopics.map((t, i) => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 8px', borderRadius: 7, background: 'rgba(212,175,55,.06)', border: '1px solid rgba(212,175,55,.1)' }}>
+                      <span style={{ width: 18, height: 18, borderRadius: 5, border: '1.5px solid rgba(212,175,55,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#a89878', flexShrink: 0 }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontSize: 12.5, color: '#f0e6d3' }}>{t.title}</span>
+                      <button onClick={() => handleAgendaChange(agendaTopics.filter(x => x.id !== t.id))} style={{ background: 'none', border: 'none', color: 'rgba(168,152,120,.5)', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                {/* add input */}
+                <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderTop: '1px solid rgba(212,175,55,.1)' }}>
+                  <input
+                    id="agenda-input"
+                    placeholder="Add a topic…"
+                    onKeyDown={e => { if (e.key === 'Enter' && e.target.value.trim()) { handleAgendaChange([...agendaTopics, { id: Date.now(), title: e.target.value.trim(), completed: false }]); e.target.value = ''; } }}
+                    style={{ flex: 1, padding: '7px 9px', borderRadius: 7, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+                  />
+                  <button
+                    onClick={() => { const inp = document.getElementById('agenda-input'); if (inp?.value.trim()) { handleAgendaChange([...agendaTopics, { id: Date.now(), title: inp.value.trim(), completed: false }]); inp.value = ''; } }}
+                    style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#b8860b', color: '#050505', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >Add</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Name field */}
           <label style={{ fontSize: 11, color: "#A89A7C", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, display: "block", fontWeight: 600, width: "100%", maxWidth: "340px", textAlign: "left" }}>

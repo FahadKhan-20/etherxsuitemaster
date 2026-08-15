@@ -1,6 +1,6 @@
 const { Server } = require('socket.io');
 
-// roomCode -> Map<socketId, { socketId, userName, userId }>
+// roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
 const rooms = new Map();
 
 // roomCode -> boolean (locked state)
@@ -18,6 +18,9 @@ const roomMedia = new Map();
 // roomCode -> [{id, name, size, type, url, sharedBy, sharedAt}]
 const roomFiles = new Map();
 
+// roomCode -> [{id, title, done, createdBy}]
+const roomAgenda = new Map();
+
 function setupSignaling(httpServer, allowedOrigin) {
   const io = new Server(httpServer, {
     cors: {
@@ -29,7 +32,7 @@ function setupSignaling(httpServer, allowedOrigin) {
   io.on('connection', (socket) => {
     let currentRoom = null;
 
-    socket.on('join-room', ({ roomCode, userId, userName }) => {
+    socket.on('join-room', ({ roomCode, userId, userName, isHost }) => {
       currentRoom = roomCode;
       socket.join(roomCode);
 
@@ -41,10 +44,10 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.emit('existing-users', existing);
 
       // Add new joiner to room
-      room.set(socket.id, { socketId: socket.id, userId, userName });
+      room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost });
 
       // Notify everyone else
-      socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName });
+      socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName, isHost: !!isHost });
     });
 
     socket.on('offer', ({ to, offer }) => {
@@ -250,6 +253,78 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.emit('files-state', { files: roomFiles.get(roomCode) || [] });
     });
 
+    // ── Feature: Meeting Agenda (host-only add/edit/complete) ───────────────
+
+    /**
+     * Add a new agenda topic. Host-only — presenters/attendees can view but
+     * not modify the agenda. Broadcasts the full updated list to everyone
+     * (including the sender) so the order/index stays consistent for all,
+     * mirroring the Files broadcast pattern above.
+     */
+    socket.on('add-agenda-item', ({ roomCode, title }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      if (!user?.isHost) return; // silently reject — not the host
+      if (!title || !title.trim()) return;
+      const item = {
+        id: Date.now() + '_' + socket.id,
+        title: title.trim(),
+        done: false,
+        createdBy: user?.userName || 'Someone',
+      };
+      if (!roomAgenda.has(roomCode)) roomAgenda.set(roomCode, []);
+      roomAgenda.get(roomCode).push(item);
+      io.to(roomCode).emit('agenda-updated', roomAgenda.get(roomCode));
+    });
+
+    /**
+     * Toggle an agenda item's completed state (host/presenter marks topics
+     * done during the meeting). Host-only. Broadcasts the full list.
+     */
+    socket.on('toggle-agenda-item', ({ roomCode, id }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      if (!user?.isHost) return; // silently reject — not the host
+      const items = roomAgenda.get(roomCode) || [];
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      item.done = !item.done;
+      io.to(roomCode).emit('agenda-updated', items);
+    });
+
+    /**
+     * Reorder agenda items. Host-only. Client sends the full array of ids in
+     * the new order; server rebuilds the list to match and broadcasts it.
+     */
+    socket.on('reorder-agenda', ({ roomCode, orderedIds }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      if (!user?.isHost) return; // silently reject — not the host
+      const items = roomAgenda.get(roomCode) || [];
+      const byId = new Map(items.map(i => [i.id, i]));
+      const reordered = orderedIds.map(id => byId.get(id)).filter(Boolean);
+      // Guard against a stale/partial id list clobbering items
+      if (reordered.length !== items.length) return;
+      roomAgenda.set(roomCode, reordered);
+      io.to(roomCode).emit('agenda-updated', reordered);
+    });
+
+    /**
+     * Remove an agenda item. Host-only. Broadcasts the full updated list.
+     */
+    socket.on('delete-agenda-item', ({ roomCode, id }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      if (!user?.isHost) return; // silently reject — not the host
+      const items = (roomAgenda.get(roomCode) || []).filter(i => i.id !== id);
+      roomAgenda.set(roomCode, items);
+      io.to(roomCode).emit('agenda-updated', items);
+    });
+
+    /**
+     * Request the current agenda for the room. Anyone can request (read-only)
+     * — returns to the requesting socket only (used on join, mirroring
+     * get-notes / get-media / get-files).
+     */
+    socket.on('get-agenda', ({ roomCode }) => {
+      socket.emit('agenda-state', { items: roomAgenda.get(roomCode) || [] });
+    });
 
     /**
      * Notify all other participants that this user's camera turned on/off,
@@ -271,6 +346,7 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomPolls.delete(currentRoom);
           roomMedia.delete(currentRoom);
           roomFiles.delete(currentRoom);
+          roomAgenda.delete(currentRoom);
           delete roomLocks[currentRoom];
         }
       }

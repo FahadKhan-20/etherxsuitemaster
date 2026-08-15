@@ -7,18 +7,28 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const passport = require('passport');
+
 const connectDB = require('./config/db');
 const configurePassport = require('./config/passport');
+
+// Routes
 const authRoutes = require('./routes/auth');
 const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
 const feedbackRoutes = require('./routes/feedback');
+const meetingAgendaRoutes = require('./routes/meetingAgendaRoutes');
+
+// Middleware
 const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// =====================================================
+// ALLOWED ORIGINS
+// =====================================================
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_LAN,
@@ -27,47 +37,95 @@ const allowedOrigins = [
   'http://10.190.103.55:3000',
 ].filter(Boolean);
 
+// =====================================================
+// PASSPORT CONFIGURATION
+// =====================================================
 configurePassport();
 
+// =====================================================
+// CORS CONFIGURATION
+// =====================================================
 const corsOptions = {
   origin: (origin, callback) => {
-    // Dynamically allow the requesting origin to support local network devices
+    // Dynamically allow the requesting origin
+    // to support local network devices
     callback(null, true);
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+
+  credentials: true,
 };
 
+// =====================================================
+// MIDDLEWARE
+// =====================================================
 app.use(cors(corsOptions));
+
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginResourcePolicy: {
+      policy: 'cross-origin',
+    },
   })
 );
-app.use(morgan('dev'));
-app.use(express.json());
-app.use(passport.initialize());
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+app.use(morgan('dev'));
+
+app.use(express.json());
+
+app.use(passport.initialize());
+
+// Serve uploaded files
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'))
+);
+
+// =====================================================
+// API ROUTES
+// =====================================================
 app.use('/api/auth', authRoutes);
+
 app.use('/api/recordings', recordingRoutes);
+
 app.use('/api/livekit', livekitRoutes);
+
 app.use('/api/feedback', feedbackRoutes);
 
+// Meeting Agenda Routes
+app.use('/api/meeting-agenda', meetingAgendaRoutes);
+
+// =====================================================
+// GET ROOM PARTICIPANTS
+// =====================================================
 app.get('/api/rooms/:code/participants', (req, res) => {
   const { code } = req.params;
+
   const roomMap = rooms.get(code);
+
   if (!roomMap) {
-    return res.json({ success: true, participants: [] });
+    return res.json({
+      success: true,
+      participants: [],
+    });
   }
-  const list = Array.from(roomMap.values()).map(p => ({
-    userName: p.userName
+
+  const list = Array.from(roomMap.values()).map((p) => ({
+    userName: p.userName,
   }));
-  res.json({ success: true, participants: list });
+
+  res.json({
+    success: true,
+    participants: list,
+  });
 });
 
-
+// =====================================================
+// 404 ROUTE HANDLER
+// =====================================================
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
@@ -75,8 +133,14 @@ app.use((_req, res) => {
   });
 });
 
+// =====================================================
+// ERROR HANDLER
+// =====================================================
 app.use(errorHandler);
 
+// =====================================================
+// APPLICATION ERROR HANDLER
+// =====================================================
 app.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
     console.error(`Port ${PORT} is already in use.`);
@@ -87,16 +151,38 @@ app.on('error', (error) => {
   process.exit(1);
 });
 
+// =====================================================
+// START SERVER
+// =====================================================
 const startServer = async () => {
-  await connectDB();
+  try {
+    // Connect to MongoDB
+    await connectDB();
 
-  const httpServer = http.createServer(app);
-  setupSignaling(httpServer, allowedOrigins);
+    // Create HTTP server
+    const httpServer = http.createServer(app);
 
-  httpServer.listen(PORT, () => {
-    console.log(`EtherXMeet backend running on http://localhost:${PORT}`);
-    console.log(`EtherXMeet backend LAN:   http://10.190.103.55:${PORT}`);
-  });
+    // Setup WebRTC / Socket signaling
+    setupSignaling(httpServer, allowedOrigins);
+
+    // Start server
+    httpServer.listen(PORT, () => {
+      console.log(
+        `EtherXMeet backend running on http://localhost:${PORT}`
+      );
+
+      console.log(
+        `EtherXMeet backend LAN: http://10.190.103.55:${PORT}`
+      );
+
+      console.log(
+        `Meeting Agenda API: http://localhost:${PORT}/api/meeting-agenda`
+      );
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error.message);
+    process.exit(1);
+  }
 };
 
 startServer();

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Plus } from 'lucide-react';
+import MeetingAgenda from '../MeetingAgenda';
 
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
@@ -153,6 +154,13 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
+  const [agendaTopics, setAgendaTopics] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('etherx_agenda') || '[]'); } catch { return []; }
+  });
+  const handleAgendaChange = (topics) => {
+    setAgendaTopics(topics);
+    sessionStorage.setItem('etherx_agenda', JSON.stringify(topics));
+  };
 
   useEffect(() => {
     if (sharedMediaUrl) setMediaStageMinimized(false);
@@ -583,7 +591,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         {chatOpen && (
           <div style={{ width:320,flexShrink:0,background:'#050505',border:'none',borderRight:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 18px 10px' }}>
-              <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':'Files'}</span>
+              <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':panelTab==='agenda'?'Agenda':'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:16 }}>✕</button>
             </div>
             <div style={{ display:'flex',alignItems:'center',gap:4,padding:'0 14px 12px',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
@@ -592,6 +600,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 { id:'polls', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>, title:'Polls' },
                 { id:'cc', node:<span style={{ fontSize:10,fontWeight:700,letterSpacing:'.02em' }}>CC</span>, title:'Captions' },
                 { id:'files', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, title:'Files' },
+                { id:'agenda', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, title:'Agenda' },
               ].map(t => (
                 <button key={t.id} onClick={() => setPanelTab(t.id)} title={t.title} style={{ width:38,height:34,borderRadius:9,border:'none',background:panelTab===t.id?'rgba(212,175,55,.22)':'transparent',color:panelTab===t.id?'#e5c76b':'rgba(255,255,255,.55)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'all .15s' }}>{t.node}</button>
               ))}
@@ -651,6 +660,10 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {captionsOn && <LiveTranscript stream={localStream}/>}
                 <button onClick={() => setCaptionsOn(v=>!v)} style={{ width:'100%',padding:12,borderRadius:12,border:'1px solid rgba(212,175,55,.2)',background:captionsOn?'rgba(212,175,55,.25)':'rgba(212,175,55,.07)',color:'#f0e6d3',fontWeight:600,fontSize:13.5,cursor:'pointer',fontFamily:"'Sora',sans-serif" }}>{captionsOn?'Turn off captions':'Turn on captions'}</button>
               </div>
+            )}
+
+            {panelTab==='agenda' && (
+              <MeetingAgenda isHost={isHost} meetingStarted={true} topics={agendaTopics} onTopicsChange={handleAgendaChange} />
             )}
 
             {panelTab==='files' && (
@@ -945,6 +958,11 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {raised && <span style={{ position:'absolute',top:2,right:2,minWidth:14,height:14,padding:'0 2px',borderRadius:7,background:'#d4af37',color:'#050505',fontSize:8.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>1</span>}
               </button>
 
+              <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width:40,height:40,borderRadius:10,border:'none',background:(chatOpen&&panelTab==='agenda')?'rgba(212,175,55,.22)':'transparent',color:(chatOpen&&panelTab==='agenda')?'#e5c76b':'#a89878',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:2,position:'relative' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                <span style={{ fontSize:8,fontWeight:600,letterSpacing:'.02em',lineHeight:1,color:(chatOpen&&panelTab==='agenda')?'#e5c76b':'#a89878' }}>Agenda</span>
+              </button>
+
               <button onClick={() => setShowPeople(v=>!v)} title="Participants" style={{ width:40,height:40,borderRadius:10,border:'none',background:showPeople?'rgba(212,175,55,.15)':'transparent',color:showPeople?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
                 <span style={{ position:'absolute',top:2,right:2,minWidth:14,height:14,padding:'0 2px',borderRadius:7,background:'#d4af37',color:'#0a0a0a',fontSize:8.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{totalP}</span>
@@ -976,6 +994,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Performance settings', divider:false, action:() => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'View full screen', divider:false, action:() => { if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen().catch(()=>{}); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, label:'Meeting Agenda', divider:false, action:() => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, label:'Closed captions', divider:false, action:() => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Polls', divider:false, action:() => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'File sharing', divider:true, action:() => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },

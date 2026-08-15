@@ -53,6 +53,8 @@ const createCurrentUserParticipant = (user) => ({
   joinedAt: new Date().toISOString(),
 });
 
+const isHostOrCoHost = (role) => role === 'Host' || role === 'Co-host';
+
 /**
  * Coordinates room-level collaboration state, simulated real-time activity,
  * and persistent mock data for recordings, messages, and scheduled meetings.
@@ -85,6 +87,17 @@ export function MeetingProvider({ children }) {
   const [recordingOptions, setRecordingOptions] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [agendaTemplate, setAgendaTemplate] = useState(agendaTemplates[0]);
+
+  // --- Agenda topics (shared, live agenda state) ---
+  const [agendaTopics, setAgendaTopics] = useState(
+    agendaTemplates[0].items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      completed: false,
+    })),
+  );
+  const [presenterId, setPresenterId] = useState(currentUser.id);
+
   const [scheduledMeetings, setScheduledMeetings] = useLocalStorage(
     'nexmeet_upcoming_meetings',
     seedUpcomingMeetings,
@@ -340,6 +353,42 @@ export function MeetingProvider({ children }) {
     );
   };
 
+  // --- Agenda helpers ---
+  const canEditAgenda = isHostOrCoHost(currentUser.role) && meetingState !== 'connected';
+  const canMarkAgendaCompleted = currentUser.id === presenterId && meetingState === 'connected';
+
+  const addAgendaTopic = (title) => {
+    if (!canEditAgenda || !title.trim()) return;
+
+    setAgendaTopics((previousTopics) => [
+      ...previousTopics,
+      { id: `topic-${Date.now()}`, title: title.trim(), completed: false },
+    ]);
+  };
+
+  const deleteAgendaTopic = (topicId) => {
+    if (!canEditAgenda) return;
+
+    setAgendaTopics((previousTopics) =>
+      previousTopics.filter((topic) => topic.id !== topicId),
+    );
+  };
+
+  const toggleAgendaTopic = (topicId) => {
+    if (!canMarkAgendaCompleted) return;
+
+    setAgendaTopics((previousTopics) =>
+      previousTopics.map((topic) =>
+        topic.id === topicId ? { ...topic, completed: !topic.completed } : topic,
+      ),
+    );
+  };
+
+  const setPresenter = (participantId) => {
+    if (!isHostOrCoHost(currentUser.role)) return;
+    setPresenterId(participantId);
+  };
+
   const analyticsSnapshot = useMemo(() => {
     const totalSpeaking = participants.reduce((sum, participant) => sum + participant.speakingTime, 0) || 1;
 
@@ -368,6 +417,10 @@ export function MeetingProvider({ children }) {
       isRecording,
       recordingOptions,
       agendaTemplate,
+      agendaTopics,
+      presenterId,
+      canEditAgenda,
+      canMarkAgendaCompleted,
       scheduledMeetings,
       savedRecordings,
       savedAsyncMessages,
@@ -376,6 +429,10 @@ export function MeetingProvider({ children }) {
       setMeetingId: setCurrentMeetingId,
       setMeetingTitle,
       setAgendaTemplate,
+      addAgendaTopic,
+      deleteAgendaTopic,
+      toggleAgendaTopic,
+      setPresenter,
       joinMeeting,
       leaveMeeting,
       toggleMute,
@@ -395,6 +452,10 @@ export function MeetingProvider({ children }) {
     }),
     [
       agendaTemplate,
+      agendaTopics,
+      presenterId,
+      canEditAgenda,
+      canMarkAgendaCompleted,
       analyticsSnapshot,
       chatMessages,
       currentMeetingId,
