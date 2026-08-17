@@ -18,8 +18,66 @@ const roomMedia = new Map();
 // roomCode -> [{id, name, size, type, url, sharedBy, sharedAt}]
 const roomFiles = new Map();
 
+
 // roomCode -> [{id, title, done, createdBy}]
 const roomAgenda = new Map();
+
+// roomCode -> userId (host/presenter who controls the whiteboard)
+const roomHosts = new Map();
+
+// roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
+const roomWhiteboards = new Map();
+
+/**
+ * Apply a whiteboard operation to the in-memory room state. This mirrors the
+ * frontend's operation model so late joiners receive an accurate board.
+ */
+function applyWhiteboardOp(board, op) {
+  switch (op.type) {
+    case 'STROKE_START':
+      board.lines.push({ id: op.id, tool: op.tool, color: op.color, size: op.size, points: [op.point] });
+      break;
+    case 'STROKE_EXTEND': {
+      const line = board.lines.find(l => l.id === op.id);
+      if (line) line.points.push(op.point);
+      break;
+    }
+    case 'STROKE_END':
+      break;
+    case 'STICKY_ADD':
+      board.notes.push({ id: op.id, x: op.x, y: op.y, text: op.text, color: op.color });
+      break;
+    case 'STICKY_UPDATE': {
+      const note = board.notes.find(n => n.id === op.id);
+      if (note) note.text = op.text;
+      break;
+    }
+    case 'STICKY_MOVE': {
+      const note = board.notes.find(n => n.id === op.id);
+      if (note) { note.x = op.x; note.y = op.y; }
+      break;
+    }
+    case 'UNDO':
+      board.lines.pop();
+      break;
+    case 'REDO':
+      if (op.line) board.lines.push(op.line);
+      break;
+    case 'CLEAR':
+      board.lines = [];
+      board.notes = [];
+      break;
+    case 'IMAGE_ADD':
+      board.uploadedImage = op.url;
+      break;
+    case 'LASER':
+      board.laser = { x: op.x, y: op.y, visible: op.visible };
+      break;
+    default:
+      break;
+  }
+}
+
 
 function setupSignaling(httpServer, allowedOrigin) {
   const io = new Server(httpServer, {
@@ -38,6 +96,11 @@ function setupSignaling(httpServer, allowedOrigin) {
 
       if (!rooms.has(roomCode)) rooms.set(roomCode, new Map());
       const room = rooms.get(roomCode);
+
+      // First participant to join becomes the host/presenter
+      if (!roomHosts.has(roomCode)) {
+        roomHosts.set(roomCode, userId);
+      }
 
       // Send existing participants to the new joiner
       const existing = Array.from(room.values());
@@ -334,6 +397,39 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
     });
 
+    // ── Feature: Live Collaborative Whiteboard ────────────────────────────────
+
+    /**
+     * Apply a whiteboard operation and broadcast it to the room.
+     * Only the host/presenter (first joiner) is allowed to modify the board.
+     * The operation is applied to the in-memory room state so late joiners
+     * receive the current board via 'get-whiteboard'.
+     */
+    socket.on('whiteboard-op', ({ roomCode, op }) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!member) return; // not a room member
+      if (roomHosts.get(roomCode) !== member.userId) return; // not the host
+
+      if (!roomWhiteboards.has(roomCode)) {
+        roomWhiteboards.set(roomCode, { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } });
+      }
+      const board = roomWhiteboards.get(roomCode);
+      applyWhiteboardOp(board, op);
+      // Broadcast to everyone else; the host already applied the op locally.
+      socket.to(roomCode).emit('whiteboard-op', op);
+    });
+
+    /**
+     * Request the current whiteboard state for the room.
+     * Returns it only to the requesting socket (used by late joiners).
+     */
+    socket.on('get-whiteboard', ({ roomCode }) => {
+      socket.emit('whiteboard-state', {
+        board: roomWhiteboards.get(roomCode) || { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } },
+      });
+    });
+
     // ── Disconnect ────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
@@ -346,7 +442,12 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomPolls.delete(currentRoom);
           roomMedia.delete(currentRoom);
           roomFiles.delete(currentRoom);
+
           roomAgenda.delete(currentRoom);
+
+          roomHosts.delete(currentRoom);
+          roomWhiteboards.delete(currentRoom);
+
           delete roomLocks[currentRoom];
         }
       }

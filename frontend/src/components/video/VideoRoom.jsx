@@ -14,6 +14,7 @@ import VideoCanvasProcessor from './VideoCanvasProcessor';
 import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
 import LiveTranscript from '../room/LiveTranscript';
+import Whiteboard from '../features/Whiteboard/Whiteboard';
 import { ROUTES } from '../../utils/constants';
 import apiClient from '../../utils/apiClient';
 import etherxLogo from '../../assets/etherx_transparent.png';
@@ -104,6 +105,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [showPollForm, setShowPollForm] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const toolbarTimerRef = useRef(null);
 
   // Auto-hide bottom toolbar after 3 s of no mouse movement
@@ -141,6 +143,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   }, [navigate]);
 
   const {
+    socket, socketReady,
     localStream, peers, micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
@@ -436,6 +439,17 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} />}
+
+      {whiteboardOpen && (
+        <Whiteboard
+          isOpen={whiteboardOpen}
+          onClose={() => setWhiteboardOpen(false)}
+          socket={socket}
+          socketReady={socketReady}
+          roomCode={roomCode}
+          isHost={isHost}
+        />
+      )}
 
       {feedbackOpen && (
         <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:400 }}>
@@ -978,6 +992,10 @@ export default function VideoRoom({ roomCode, isHost }) {
 
               <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width:40,height:40,borderRadius:10,border:'none',background:'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" stroke-width="1.6" strokeLinecap="round"/><path d="M18 8v6M15 11h6" stroke="currentColor" stroke-width="1.7" strokeLinecap="round"/></svg>
+              </button>
+
+              <button onClick={() => setWhiteboardOpen(v=>!v)} title="Whiteboard" style={{ width:40,height:40,borderRadius:10,border:'none',background:whiteboardOpen?'rgba(212,175,55,.15)':'transparent',color:whiteboardOpen?'#f0e6d3':'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 20h16M6 20V8l6-4 6 4v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
 
               <div style={{ position:'relative' }} ref={moreRef}>
