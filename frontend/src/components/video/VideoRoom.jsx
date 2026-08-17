@@ -13,6 +13,7 @@ import VideoCanvasProcessor from './VideoCanvasProcessor';
 import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
 import LiveTranscript from '../room/LiveTranscript';
+import QnAPanel from '../meeting/QnAPanel';
 import { ROUTES } from '../../utils/constants';
 import apiClient from '../../utils/apiClient';
 import etherxLogo from '../../assets/etherx_transparent.png';
@@ -119,6 +120,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const moreRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const qnaHostClaimRef = useRef(false);
 
   useEffect(() => {
     const start = parseInt(sessionStorage.getItem('NxtMeet_start') || sessionStorage.getItem('etherx_meet_start') || String(Date.now()), 10);
@@ -149,6 +151,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
+    socketRef,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
@@ -157,6 +160,27 @@ export default function VideoRoom({ roomCode, isHost }) {
   useEffect(() => {
     if (sharedMediaUrl) setMediaStageMinimized(false);
   }, [sharedMediaUrl]);
+
+  useEffect(() => {
+    if (!isHost || !roomCode || qnaHostClaimRef.current) {
+      return undefined;
+    }
+
+    qnaHostClaimRef.current = true;
+
+    const claimRoom = async () => {
+      try {
+        await apiClient.post('/api/rooms', { roomCode });
+      } catch (error) {
+        qnaHostClaimRef.current = false;
+        console.error('Failed to register room host for Q&A:', error);
+      }
+    };
+
+    claimRoom();
+
+    return undefined;
+  }, [isHost, roomCode]);
 
   useEffect(() => {
     if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
@@ -583,13 +607,14 @@ export default function VideoRoom({ roomCode, isHost }) {
         {chatOpen && (
           <div style={{ width:320,flexShrink:0,background:'#050505',border:'none',borderRight:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 18px 10px' }}>
-              <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':'Files'}</span>
+              <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':panelTab==='qna'?'Q&A':'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:16 }}>✕</button>
             </div>
             <div style={{ display:'flex',alignItems:'center',gap:4,padding:'0 14px 12px',borderBottom:'1px solid rgba(212,175,55,.12)' }}>
               {[
                 { id:'chat', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>, title:'Chat' },
                 { id:'polls', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>, title:'Polls' },
+                { id:'qna', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/></svg>, title:'Q&A' },
                 { id:'cc', node:<span style={{ fontSize:10,fontWeight:700,letterSpacing:'.02em' }}>CC</span>, title:'Captions' },
                 { id:'files', node:<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, title:'Files' },
               ].map(t => (
@@ -642,6 +667,15 @@ export default function VideoRoom({ roomCode, isHost }) {
                   </>
                 )}
               </div>
+            )}
+
+            {panelTab==='qna' && (
+              <QnAPanel
+                roomCode={roomCode}
+                userName={userName}
+                isHost={isHost}
+                socket={socketRef}
+              />
             )}
 
             {panelTab==='cc' && (
@@ -936,8 +970,12 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ width:1,height:16,background:'rgba(212,175,55,.25)',margin:'0 2px',flexShrink:0 }}/>
 
               {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
-              <button onClick={() => { setChatOpen(v=>!v); if(!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width:40,height:40,borderRadius:10,border:'none',background:chatOpen?'rgba(212,175,55,.15)':'transparent',color:chatOpen?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
+              <button onClick={() => { setChatOpen(v=>!v); if(!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width:40,height:40,borderRadius:10,border:'none',background:chatOpen&&panelTab==='chat'?'rgba(212,175,55,.15)':'transparent',color:chatOpen&&panelTab==='chat'?'#f0e6d3':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
+              </button>
+
+              <button onClick={() => { const open = chatOpen && panelTab==='qna'; if(open) { setChatOpen(false); } else { setChatOpen(true); setPanelTab('qna'); } }} title="Live Q&A" id="qna-toolbar-btn" style={{ width:40,height:40,borderRadius:10,border:'none',background:chatOpen&&panelTab==='qna'?'rgba(212,175,55,.22)':'transparent',color:chatOpen&&panelTab==='qna'?'#e5c76b':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/></svg>
               </button>
 
               <button onClick={handleRaiseHand} title={raised?'Lower hand':'Raise hand'} style={{ width:40,height:40,borderRadius:10,border:'none',background:raised?'rgba(212,175,55,.22)':'transparent',color:raised?'#e8c789':'#a89878',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative' }}>
@@ -978,6 +1016,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>, label:'Security options', divider:false, action:() => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, label:'Closed captions', divider:false, action:() => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Polls', divider:false, action:() => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4"/></svg>, label:'Live Q&A', divider:false, action:() => { setPanelTab('qna'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>, label:'File sharing', divider:true, action:() => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>, label:'Share video', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
                       { icon:<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6"/></svg>, label:'Share audio', divider:false, action:() => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },

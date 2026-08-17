@@ -10,9 +10,11 @@ const passport = require('passport');
 const connectDB = require('./config/db');
 const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/auth');
+const roomRoutes = require('./routes/rooms');
 const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
 const feedbackRoutes = require('./routes/feedback');
+const qnaRoutes = require('./routes/qna');
 const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config();
@@ -34,7 +36,7 @@ const corsOptions = {
     // Dynamically allow the requesting origin to support local network devices
     callback(null, true);
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
@@ -51,9 +53,11 @@ app.use(passport.initialize());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/rooms', roomRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/livekit', livekitRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/qna', qnaRoutes);
 
 app.get('/api/rooms/:code/participants', (req, res) => {
   const { code } = req.params;
@@ -91,7 +95,8 @@ const startServer = async () => {
   await connectDB();
 
   const httpServer = http.createServer(app);
-  setupSignaling(httpServer, allowedOrigins);
+  const io = setupSignaling(httpServer, allowedOrigins);
+  app.set('io', io);
 
   httpServer.listen(PORT, () => {
     console.log(`EtherXMeet backend running on http://localhost:${PORT}`);
