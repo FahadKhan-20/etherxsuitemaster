@@ -688,8 +688,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     polls, createPoll, votePoll, endPoll,
     // Feature: File Sharing
     sharedFiles, shareFile,
-    fileNotifications, dismissFileNotification,
     // Feature: Meeting Agenda
     agendaItems, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
+    // Socket ref — exposed so panels can subscribe to room-scoped events
+    socketRef,
   };
 }

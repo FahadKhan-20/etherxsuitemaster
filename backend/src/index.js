@@ -13,12 +13,13 @@ const configurePassport = require('./config/passport');
 
 // Routes
 const authRoutes = require('./routes/auth');
+const roomRoutes = require('./routes/rooms');
 const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
 const feedbackRoutes = require('./routes/feedback');
 const meetingAgendaRoutes = require('./routes/meetingAgendaRoutes');
+const qnaRoutes = require('./routes/qna');
 
-// Middleware
 const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config();
@@ -52,8 +53,7 @@ const corsOptions = {
     callback(null, true);
   },
 
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 
   credentials: true,
@@ -88,12 +88,13 @@ app.use(
 // API ROUTES
 // =====================================================
 app.use('/api/auth', authRoutes);
-
+app.use('/api/rooms', roomRoutes);
 app.use('/api/recordings', recordingRoutes);
 
 app.use('/api/livekit', livekitRoutes);
 
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/qna', qnaRoutes);
 
 // Meeting Agenda Routes
 app.use('/api/meeting-agenda', meetingAgendaRoutes);
@@ -161,9 +162,8 @@ const startServer = async () => {
 
     // Create HTTP server
     const httpServer = http.createServer(app);
-
-    // Setup WebRTC / Socket signaling
-    setupSignaling(httpServer, allowedOrigins);
+    const io = setupSignaling(httpServer, allowedOrigins);
+    app.set('io', io);
 
     // Start server
     httpServer.listen(PORT, () => {
