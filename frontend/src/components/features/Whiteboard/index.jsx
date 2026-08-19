@@ -11,57 +11,42 @@ import {
   RotateCcw,
   RotateCw,
   StickyNote,
+  Trash2,
   ZoomIn,
   ZoomOut,
   X,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import Button from '../../ui/Button';
+import { useWhiteboardSync } from '../../../hooks/useWhiteboardSync';
 
 const stickyPalette = ['#4F46E5', '#06B6D4', '#10B981', '#F59E0B'];
 const templates = ['blank', 'kanban', 'mindmap', 'retro', 'flow'];
 
-export default function Whiteboard({ isOpen, onClose }) {
+export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomCode, isHost }) {
   const canvasRef = useRef(null);
   const [tool, setTool] = useState('pen');
   const [color, setColor] = useState('#4F46E5');
   const [strokeSize, setStrokeSize] = useState(4);
-  const [lines, setLines] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [notes, setNotes] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [template, setTemplate] = useState('blank');
-  const [laser, setLaser] = useState({ x: 160, y: 120, visible: false });
   const [layers, setLayers] = useState({
     guides: true,
     ink: true,
     notes: true,
     upload: true,
   });
-  const [uploadedImage, setUploadedImage] = useState('');
-  const [remoteCursors, setRemoteCursors] = useState([
-    { id: 'remote-1', name: 'Nyla', x: 220, y: 180, color: '#06B6D4' },
-    { id: 'remote-2', name: 'Rian', x: 520, y: 320, color: '#10B981' },
-  ]);
+  const currentStrokeIdRef = useRef(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
+  const {
+    lines, notes, uploadedImage, laser,
+    startStroke, extendStroke, endStroke,
+    addSticky, updateSticky, moveSticky,
+    undo, redo, clearBoard, addImage, moveLaser,
+  } = useWhiteboardSync({ socket, socketReady, roomCode, isHost });
 
-    const interval = window.setInterval(() => {
-      setRemoteCursors((previous) =>
-        previous.map((cursor) => ({
-          ...cursor,
-          x: Math.max(60, Math.min(1180, cursor.x + Math.floor(Math.random() * 90) - 45)),
-          y: Math.max(60, Math.min(700, cursor.y + Math.floor(Math.random() * 90) - 45)),
-        })),
-      );
-    }, 1800);
-
-    return () => window.clearInterval(interval);
-  }, [isOpen]);
+  const canEdit = !!isHost;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -117,86 +102,63 @@ export default function Whiteboard({ isOpen, onClose }) {
   };
 
   const handlePointerDown = (event) => {
+    if (!canEdit) {
+      return;
+    }
     const point = pointerPosition(event);
 
     if (tool === 'sticky') {
-      setNotes((previousNotes) => [
-        ...previousNotes,
-        {
-          id: `sticky-${Date.now()}`,
-          x: point.x,
-          y: point.y,
-          text: 'New idea',
-          color: stickyPalette[notes.length % stickyPalette.length],
-        },
-      ]);
+      addSticky(
+        `sticky-${Date.now()}`,
+        point.x,
+        point.y,
+        'New idea',
+        stickyPalette[notes.length % stickyPalette.length],
+      );
       return;
     }
 
     if (tool === 'laser') {
-      setLaser({ x: point.x, y: point.y, visible: true });
+      moveLaser(point.x, point.y, true);
       return;
     }
 
+    const id = `line-${Date.now()}`;
+    currentStrokeIdRef.current = id;
     setIsDrawing(true);
-    setRedoStack([]);
-    setLines((previousLines) => [
-      ...previousLines,
-      {
-        id: `line-${Date.now()}`,
-        tool,
-        color,
-        size: strokeSize,
-        points: [point],
-      },
-    ]);
+    startStroke(id, tool, color, strokeSize, point);
   };
 
   const handlePointerMove = (event) => {
+    if (!canEdit) {
+      return;
+    }
     const point = pointerPosition(event);
 
     if (tool === 'laser') {
-      setLaser({ x: point.x, y: point.y, visible: true });
+      moveLaser(point.x, point.y, true);
       return;
     }
 
-    if (!isDrawing) {
+    if (!isDrawing || !currentStrokeIdRef.current) {
       return;
     }
 
-    setLines((previousLines) => {
-      const updated = [...previousLines];
-      updated[updated.length - 1] = {
-        ...updated[updated.length - 1],
-        points: [...updated[updated.length - 1].points, point],
-      };
-      return updated;
-    });
+    extendStroke(currentStrokeIdRef.current, point);
   };
 
   const handlePointerUp = () => {
+    if (!canEdit) {
+      return;
+    }
+    if (currentStrokeIdRef.current) {
+      endStroke(currentStrokeIdRef.current);
+      currentStrokeIdRef.current = null;
+    }
     setIsDrawing(false);
     if (tool === 'laser') {
-      setLaser((previous) => ({ ...previous, visible: false }));
+      moveLaser(0, 0, false);
     }
-  };
-
-  const undo = () => {
-    if (!lines.length) {
-      return;
-    }
-
-    setRedoStack((previousRedo) => [lines[lines.length - 1], ...previousRedo]);
-    setLines((previousLines) => previousLines.slice(0, -1));
-  };
-
-  const redo = () => {
-    if (!redoStack.length) {
-      return;
-    }
-
-    setLines((previousLines) => [...previousLines, redoStack[0]]);
-    setRedoStack((previousRedo) => previousRedo.slice(1));
   };
 
   const exportPng = () => {
@@ -247,6 +209,9 @@ export default function Whiteboard({ isOpen, onClose }) {
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-white/35">Collaborative whiteboard</p>
             <h2 className="mt-2 font-syne text-3xl font-bold text-white">Sketch, map, and annotate in the room</h2>
+            {!canEdit && (
+              <p className="mt-1 text-xs text-white/40">View-only — the host is presenting this board.</p>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -262,6 +227,7 @@ export default function Whiteboard({ isOpen, onClose }) {
             <ToolButton active={tool === 'laser'} icon={MousePointer2} label="Laser" onClick={() => setTool('laser')} />
             <ToolButton active={false} icon={RotateCcw} label="Undo" onClick={undo} />
             <ToolButton active={false} icon={RotateCw} label="Redo" onClick={redo} />
+            {canEdit && <ToolButton active={false} icon={Trash2} label="Clear" onClick={clearBoard} />}
           </div>
 
           <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#0b1021] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
@@ -291,7 +257,7 @@ export default function Whiteboard({ isOpen, onClose }) {
                 ref={canvasRef}
                 width={1280}
                 height={720}
-                className="absolute inset-0 h-full w-full touch-none"
+                className={`absolute inset-0 h-full w-full touch-none ${canEdit ? '' : 'pointer-events-none'}`}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -302,15 +268,16 @@ export default function Whiteboard({ isOpen, onClose }) {
                 notes.map((note) => (
                   <motion.textarea
                     key={note.id}
-                    drag
+                    drag={canEdit}
+                    dragMomentum={false}
                     defaultValue={note.text}
+                    readOnly={!canEdit}
                     onChange={(event) => {
                       const text = event.target.value;
-                      setNotes((previousNotes) =>
-                        previousNotes.map((currentNote) =>
-                          currentNote.id === note.id ? { ...currentNote, text } : currentNote,
-                        ),
-                      );
+                      updateSticky(note.id, text);
+                    }}
+                    onDragEnd={(event, info) => {
+                      moveSticky(note.id, note.x + info.offset.x, note.y + info.offset.y);
                     }}
                     className="absolute min-h-[120px] w-40 resize-none rounded-[20px] border border-white/10 p-3 text-sm text-white shadow-[0_16px_40px_rgba(4,8,24,0.35)]"
                     style={{
@@ -329,19 +296,6 @@ export default function Whiteboard({ isOpen, onClose }) {
                   style={{ left: laser.x - 10, top: laser.y - 10 }}
                 />
               )}
-
-              {remoteCursors.map((cursor) => (
-                <motion.div
-                  key={cursor.id}
-                  animate={{ x: cursor.x, y: cursor.y }}
-                  className="absolute left-0 top-0"
-                >
-                  <div className="rounded-full px-2 py-1 text-xs text-white shadow-[0_10px_24px_rgba(4,8,24,0.4)]" style={{ background: cursor.color }}>
-                    {cursor.name}
-                  </div>
-                  <div className="ml-2 h-3 w-3 rounded-full" style={{ background: cursor.color }} />
-                </motion.div>
-              ))}
             </div>
           </div>
 
@@ -404,26 +358,28 @@ export default function Whiteboard({ isOpen, onClose }) {
               </div>
             </div>
 
-            <label className="cursor-pointer rounded-[22px] border border-white/10 bg-black/10 px-4 py-3 text-sm text-white/65">
-              <div className="flex items-center gap-2">
-                <ImagePlus className="h-4 w-4" />
-                Upload image
-              </div>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) {
-                    return;
-                  }
-                  const reader = new FileReader();
-                  reader.onload = () => setUploadedImage(String(reader.result));
-                  reader.readAsDataURL(file);
-                }}
-              />
-            </label>
+            {canEdit && (
+              <label className="cursor-pointer rounded-[22px] border border-white/10 bg-black/10 px-4 py-3 text-sm text-white/65">
+                <div className="flex items-center gap-2">
+                  <ImagePlus className="h-4 w-4" />
+                  Upload image
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => addImage(String(reader.result));
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+            )}
 
             <div className="mt-auto flex flex-col gap-2">
               <Button variant="outline" onClick={exportPng}>
