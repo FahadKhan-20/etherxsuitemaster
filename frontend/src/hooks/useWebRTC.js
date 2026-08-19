@@ -650,5 +650,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Feature: File Sharing
     sharedFiles, shareFile,
     fileNotifications, dismissFileNotification,
+    // Socket ref — exposed so panels can subscribe to room-scoped events
+    socketRef,
   };
 }
