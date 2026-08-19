@@ -81,6 +81,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef      = useRef(null);
+  // Tracks when the socket is created so consumers (e.g. Whiteboard) can
+  // reliably receive the live socket reference via the public API.
+  const [socketReady, setSocketReady] = useState(false);
   const pcsRef         = useRef({});           // socketId → RTCPeerConnection
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
@@ -145,6 +148,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       const socket = io(import.meta.env.VITE_API_BASE_URL, { transports: ['websocket', 'polling'] });
       socketRef.current = socket;
+      setSocketReady(true);
 
       // ── Waiting Room Signaling ─────────────────────────────────────────────
       socket.on('join-request', ({ socketId, userId: uId, userName: uName }) => {
@@ -620,6 +624,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   return {
     // Core
+    socket: socketRef.current,
+    socketReady,
     localStream, peers,
     micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId,
