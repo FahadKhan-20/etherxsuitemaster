@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import VideoCanvasProcessor from './VideoCanvasProcessor';
 
 const AVATAR_COLORS = [
   '#ec4899', '#8b5cf6', '#3b82f6', '#10b981',
@@ -29,10 +30,12 @@ export default function VideoTile({
   const hasVideo = stream && stream.getVideoTracks().length > 0;
 
   useEffect(() => {
-    if (videoRef.current && stream) {
+    if (videoRef.current && stream && filter === 'none' && bgImage === 'none') {
       videoRef.current.srcObject = stream;
     }
-  }, [stream]);
+  }, [stream, filter, bgImage]);
+
+  const hasEffects = (filter && filter !== 'none') || (bgImage && bgImage !== 'none');
 
   // Small grid tile view
   if (isSmall || !isSpotlight) {
@@ -57,9 +60,13 @@ export default function VideoTile({
           }}>✦ Verified</div>
         )}
         {hasVideo && !isCameraOff ? (
-          <video ref={videoRef} autoPlay playsInline muted={isLocal}
-            disablePictureInPicture disableRemotePlayback
-            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter, transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+          hasEffects ? (
+            <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
+          ) : (
+            <video ref={videoRef} autoPlay playsInline muted={isLocal}
+              disablePictureInPicture disableRemotePlayback
+              style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+          )
         ) : (
           <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -109,9 +116,13 @@ export default function VideoTile({
     }}>
 
       {hasVideo && !isCameraOff ? (
-        <video ref={videoRef} autoPlay playsInline muted={isLocal}
-          disablePictureInPicture disableRemotePlayback
-          style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', filter, transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+        hasEffects ? (
+          <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
+        ) : (
+          <video ref={videoRef} autoPlay playsInline muted={isLocal}
+            disablePictureInPicture disableRemotePlayback
+            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+        )
       ) : (
         <div className="float-avatar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           {/* Pulse ring */}

@@ -48,6 +48,17 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
 
   const canEdit = !!isHost;
 
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, visible: false });
+
+  const selectTool = (newTool) => {
+    setTool(newTool);
+    if (newTool === 'eraser' && strokeSize < 12) {
+      setStrokeSize(24);
+    } else if (newTool === 'pen' && strokeSize > 20) {
+      setStrokeSize(4);
+    }
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -57,33 +68,42 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (layers.upload && uploadedImage) {
-      const image = new Image();
-      image.onload = () => ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      image.src = uploadedImage;
-    }
-
     if (!layers.ink) {
       return;
     }
 
     lines.forEach((line) => {
-      if (!line.points.length) {
+      if (!line.points || !line.points.length) {
         return;
       }
 
       ctx.beginPath();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = line.tool === 'eraser' ? '#13132b' : line.color;
-      ctx.lineWidth = line.tool === 'highlighter' ? line.size * 3 : line.size;
-      ctx.globalAlpha = line.tool === 'highlighter' ? 0.24 : 1;
+
+      if (line.tool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = line.size || 24;
+        ctx.globalAlpha = 1;
+      } else if (line.tool === 'highlighter') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = line.color || '#4F46E5';
+        ctx.lineWidth = (line.size || 4) * 2.5;
+        ctx.globalAlpha = 0.24;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = line.color || '#4F46E5';
+        ctx.lineWidth = line.size || 4;
+        ctx.globalAlpha = 1;
+      }
+
       ctx.moveTo(line.points[0].x, line.points[0].y);
       line.points.forEach((point) => ctx.lineTo(point.x, point.y));
       ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     });
-  }, [layers.ink, layers.upload, lines, uploadedImage]);
+  }, [layers.ink, lines]);
 
   if (!isOpen) {
     return null;
@@ -134,6 +154,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       return;
     }
     const point = pointerPosition(event);
+    setCursorPos({ x: point.x, y: point.y, visible: true });
 
     if (tool === 'laser') {
       moveLaser(point.x, point.y, true);
@@ -197,34 +218,49 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
     }
   }, [template]);
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/75 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-[2000] bg-black/75 p-2 sm:p-3 backdrop-blur-sm"
     >
-      <div className="flex h-full flex-col rounded-[36px] border border-white/10 bg-[rgba(13,13,26,0.95)] p-4 shadow-[0_30px_100px_rgba(4,8,24,0.62)] backdrop-blur-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="flex h-full flex-col rounded-[24px] sm:rounded-[36px] border border-white/10 bg-[rgba(13,13,26,0.95)] p-3 sm:p-4 shadow-[0_30px_100px_rgba(4,8,24,0.62)] backdrop-blur-2xl overflow-y-auto">
+        <div className="mb-3 sm:mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-white/35">Collaborative whiteboard</p>
-            <h2 className="mt-2 font-syne text-3xl font-bold text-white">Sketch, map, and annotate in the room</h2>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.28em] text-white/35">Collaborative whiteboard</p>
+            <h2 className="mt-1 sm:mt-2 font-syne text-xl sm:text-3xl font-bold text-white">Sketch, map, and annotate</h2>
             {!canEdit && (
-              <p className="mt-1 text-xs text-white/40">View-only — the host is presenting this board.</p>
+              <p className="mt-0.5 text-[11px] sm:text-xs text-white/40">View-only — the host is presenting this board.</p>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close whiteboard"
+            className="relative z-10 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white/80 transition-all hover:bg-white/20 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="grid flex-1 gap-4 lg:grid-cols-[auto_1fr_auto]">
-          <div className="flex flex-col gap-3 rounded-[28px] border border-white/10 bg-white/5 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <ToolButton active={tool === 'pen'} icon={Paintbrush2} label="Pen" onClick={() => setTool('pen')} />
-            <ToolButton active={tool === 'highlighter'} icon={Highlighter} label="Marker" onClick={() => setTool('highlighter')} />
-            <ToolButton active={tool === 'eraser'} icon={Eraser} label="Erase" onClick={() => setTool('eraser')} />
-            <ToolButton active={tool === 'sticky'} icon={StickyNote} label="Sticky" onClick={() => setTool('sticky')} />
-            <ToolButton active={tool === 'laser'} icon={MousePointer2} label="Laser" onClick={() => setTool('laser')} />
+        <div className="grid flex-1 gap-3 sm:gap-4 lg:grid-cols-[auto_1fr_auto]">
+          <div className="flex flex-row overflow-x-auto gap-2 lg:flex-col lg:gap-3 rounded-[20px] lg:rounded-[28px] border border-white/10 bg-white/5 p-2 lg:p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] shrink-0">
+            <ToolButton active={tool === 'pen'} icon={Paintbrush2} label="Pen" onClick={() => selectTool('pen')} />
+            <ToolButton active={tool === 'highlighter'} icon={Highlighter} label="Marker" onClick={() => selectTool('highlighter')} />
+            <ToolButton active={tool === 'eraser'} icon={Eraser} label="Erase" onClick={() => selectTool('eraser')} />
+            <ToolButton active={tool === 'sticky'} icon={StickyNote} label="Sticky" onClick={() => selectTool('sticky')} />
+            <ToolButton active={tool === 'laser'} icon={MousePointer2} label="Laser" onClick={() => selectTool('laser')} />
             <ToolButton active={false} icon={RotateCcw} label="Undo" onClick={undo} />
             <ToolButton active={false} icon={RotateCw} label="Redo" onClick={redo} />
             {canEdit && <ToolButton active={false} icon={Trash2} label="Clear" onClick={clearBoard} />}
@@ -249,6 +285,14 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
 
             <div className={`absolute inset-0 ${layers.guides ? backgroundGuide : ''}`} />
 
+            {layers.upload && uploadedImage && (
+              <img
+                src={uploadedImage}
+                alt="Uploaded content"
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+              />
+            )}
+
             <div
               className="absolute inset-0 origin-top-left"
               style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
@@ -257,12 +301,27 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 ref={canvasRef}
                 width={1280}
                 height={720}
-                className={`absolute inset-0 h-full w-full touch-none ${canEdit ? '' : 'pointer-events-none'}`}
+                className={`absolute inset-0 h-full w-full touch-none ${canEdit ? (tool === 'eraser' ? 'cursor-none' : 'cursor-crosshair') : 'pointer-events-none'}`}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerUp}
+                onPointerLeave={() => {
+                  handlePointerUp();
+                  setCursorPos((prev) => ({ ...prev, visible: false }));
+                }}
               />
+
+              {tool === 'eraser' && cursorPos.visible && (
+                <div
+                  className="pointer-events-none absolute rounded-full border-2 border-white/80 bg-white/20 shadow-[0_0_12px_rgba(255,255,255,0.4)]"
+                  style={{
+                    width: strokeSize,
+                    height: strokeSize,
+                    left: cursorPos.x - strokeSize / 2,
+                    top: cursorPos.y - strokeSize / 2,
+                  }}
+                />
+              )}
 
               {layers.notes &&
                 notes.map((note) => (
@@ -316,22 +375,33 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-white/35">Color & stroke</p>
-              <div className="mt-3 flex gap-2">
-                {['#4F46E5', '#06B6D4', '#10B981', '#EF4444', '#F59E0B'].map((swatch) => (
-                  <button
-                    key={swatch}
-                    onClick={() => setColor(swatch)}
-                    className={`h-8 w-8 rounded-full border ${color === swatch ? 'border-white' : 'border-white/10'}`}
-                    style={{ background: swatch }}
-                  />
-                ))}
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.28em] text-white/35">
+                  {tool === 'eraser' ? 'Eraser size' : 'Color & stroke'}
+                </p>
+                <span className="font-mono text-xs font-semibold text-cyan-400">{strokeSize}px</span>
               </div>
+
+              {tool !== 'eraser' && (
+                <div className="mt-3 flex gap-2">
+                  {['#4F46E5', '#06B6D4', '#10B981', '#EF4444', '#F59E0B', '#FFFFFF'].map((swatch) => (
+                    <button
+                      key={swatch}
+                      onClick={() => setColor(swatch)}
+                      className={`h-8 w-8 rounded-full border transition-all ${
+                        color === swatch ? 'scale-110 border-white ring-2 ring-cyan-400/50' : 'border-white/10 opacity-70 hover:opacity-100'
+                      }`}
+                      style={{ background: swatch }}
+                    />
+                  ))}
+                </div>
+              )}
+
               <input
-                className="mt-4 w-full"
+                className="mt-4 w-full accent-cyan-400 cursor-pointer"
                 type="range"
-                min="2"
-                max="20"
+                min={tool === 'eraser' ? 6 : 2}
+                max={tool === 'eraser' ? 100 : 30}
                 value={strokeSize}
                 onChange={(event) => setStrokeSize(Number(event.target.value))}
               />
@@ -402,12 +472,12 @@ function ToolButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-[20px] border px-3 py-3 text-left text-sm ${
-        active ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-black/10 text-white/60'
+      className={`flex items-center gap-2 lg:gap-3 rounded-[14px] lg:rounded-[20px] border px-2.5 lg:px-3 py-2 lg:py-3 text-left text-xs lg:text-sm whitespace-nowrap transition-all ${
+        active ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-black/10 text-white/60 hover:text-white'
       }`}
     >
-      <Icon className="h-4 w-4" />
-      {label}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span>{label}</span>
     </button>
   );
 }

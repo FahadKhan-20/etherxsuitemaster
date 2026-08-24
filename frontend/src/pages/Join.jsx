@@ -166,19 +166,19 @@ export default function Join() {
     <AnimatedPage>
     <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans, sans-serif', color: '#eedca0', position: 'relative' }}>
       {/* Nav */}
-      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 28px', height: '80px', background: 'transparent', position: 'relative', zIndex: 10 }}>
+      <nav className="flex items-center justify-between px-4 sm:px-7 h-16 sm:h-20 bg-transparent relative z-10">
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img src={etherxLogo} alt="EtherXMeet" style={{ height: '90px', width: 'auto', display: 'block' }} />
+          <img src={etherxLogo} alt="EtherXMeet" className="h-12 sm:h-16 w-auto block" />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '10px', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(240,238,232,0.45)', letterSpacing: '0.02em' }}>{clock}</span>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
+          <span className="hidden sm:inline-block" style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(240,238,232,0.45)', letterSpacing: '0.02em' }}>{clock}</span>
 
           <button
             type="button"
             onClick={handleHelp}
             aria-label="Help"
-            style={{ height: '34px', padding: '0 14px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', fontWeight: 500 }}
+            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
           >
             Help
           </button>
@@ -186,28 +186,28 @@ export default function Join() {
           <button
             type="button"
             onClick={handleLogout}
-            style={{ height: '34px', padding: '0 14px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', fontWeight: 500 }}
+            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
           >
             Logout
           </button>
 
           <div
             aria-label="User avatar"
-            style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)', color: '#eedca0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', boxShadow: '0 0 0 2px rgba(212,175,55,0.25)' }}
+            style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)', color: '#eedca0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', boxShadow: '0 0 0 2px rgba(212,175,55,0.25)' }}
           >
             {userInitial}
           </div>
         </div>
       </nav>
 
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative', zIndex: 2 }}>
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-6 relative z-10">
       <motion.div
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
         style={{ width: '100%', maxWidth: '900px' }}
       >
-        <div style={{ background: 'rgba(8,8,12,0.28)', border: '1px solid rgba(212,175,55,0.28)', borderRadius: '20px', padding: '36px', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 1px 0 rgba(212,175,55,0.12) inset', position: 'relative', overflow: 'hidden' }}>
+        <div className="p-4 sm:p-9 rounded-2xl sm:rounded-[20px] bg-[rgba(8,8,12,0.4)] border border-[rgba(212,175,55,0.28)] backdrop-blur-2xl shadow-[0_32px_80px_rgba(0,0,0,0.45),0_1px_0_rgba(212,175,55,0.12)_inset] relative overflow-hidden">
           {/* top accent line */}
           <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.6), transparent)' }} />
           <motion.p variants={staggerChild} style={{ fontFamily: 'DM Sans, sans-serif', fontSize: '11px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#d4af37', margin: '0 0 12px', opacity: 0.8 }}>EtherXMeet</motion.p>

@@ -69,6 +69,15 @@ async function findRoomByCode(roomCode) {
   return null;
 }
 
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'EtherXMeet 100ms Token Server',
+    status: 'online',
+    frontendUrl: 'http://localhost:3000',
+    endpoints: ['/health', '/create-room', '/get-token']
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });

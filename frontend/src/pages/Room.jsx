@@ -318,7 +318,7 @@ export default function Room() {
       <div className="room-lobby-left">
         {/* Top: brand */}
         <div className="room-lobby-brand">
-          <img src={etherxLogo} alt="EtherX Meet" style={{ width: "135px", height: "auto" }} />
+          <img src={etherxLogo} alt="EtherX Meet" style={{ width: "165px", height: "auto" }} />
         </div>
 
         {/* Center — info + form */}
@@ -633,25 +633,11 @@ export default function Room() {
         />
 
         {stream && isVideoEnabled ? (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              transform: "scaleX(-1)", // Mirror local video
-              zIndex: 1,
-              filter: activeFilter === 'blur' ? 'blur(8px)' :
-                      activeFilter === 'half-blur' ? 'blur(4px)' :
-                      activeFilter === 'warm' ? 'sepia(0.35) saturate(1.25)' :
-                      activeFilter === 'cool' ? 'hue-rotate(185deg) saturate(1.2)' :
-                      activeFilter === 'mono' ? 'grayscale(1)' : 'none'
-            }}
+          <VideoCanvasProcessor
+            stream={stream}
+            activeFilter={activeFilter}
+            selectedBgImage={selectedBgImage}
+            mirror={true}
           />
         ) : (
           <div style={{

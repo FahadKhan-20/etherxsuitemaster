@@ -20,7 +20,7 @@ export default function Tabs({
   return (
     <div className={`w-full ${className}`} {...props}>
       {/* Tab buttons */}
-      <div className="flex gap-2 p-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-x-auto">
+      <div className="flex gap-2 p-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-x-auto custom-scrollbar max-w-full">
         {tabs.map((tab) => (
           <button
             key={tab.id}

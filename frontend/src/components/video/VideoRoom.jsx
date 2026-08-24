@@ -295,13 +295,20 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes fadeIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
         @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
         .toolbar-wrap{transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
-        .toolbar-wrap.hidden{transform:translateY(110%);opacity:0;pointer-events:none;}
         @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
         ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
         ::-webkit-scrollbar{width:8px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:#2d2a24;border-radius:5px;border:2px solid #0a0a0a;}
         ::-webkit-scrollbar-thumb:hover{background:rgba(212,175,55,.35);}
+        @media (max-width: 768px) {
+          .room-top-bar { padding: 8px 12px !important; flex-wrap: wrap !important; }
+          .room-top-logo img { height: 44px !important; }
+          .room-title-pill { position: static !important; transform: none !important; width: 100% !important; justify-content: center !important; margin-top: 4px !important; font-size: 11px !important; padding: 6px 12px !important; order: 3 !important; }
+          .room-side-panel { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important; z-index: 500 !important; }
+          .toolbar-wrap { bottom: 10px !important; padding: 0 8px !important; width: 100% !important; }
+          .toolbar-wrap > div { max-width: 100% !important; overflow-x: auto !important; padding: 6px 8px !important; border-radius: 16px !important; }
+        }
       `}</style>
 
       {isHost && joinRequests.length > 0 && (
@@ -554,7 +561,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {modalTab==='backgrounds' && (
                   <div>
                     <div style={{ position:'relative',width:280,height:158,background:'#0a0a0a',borderRadius:10,overflow:'hidden',margin:'0 auto 20px',border:'1px solid rgba(212,175,55,.12)' }}>
-                      {localStream&&!cameraOff?<video ref={el=>{if(el)el.srcObject=localStream;}} autoPlay playsInline muted style={{ width:'100%',height:'100%',objectFit:'cover',transform:'scaleX(-1)',filter:activeFilter==='blur'?'blur(8px)':activeFilter==='half-blur'?'blur(4px)':'none' }} />:<div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505',...(selfBgStyle||{}) }}><div style={{ width:64,height:64,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:700,color:'#f0e6d3' }}>{initial}</div></div>}
+                      {localStream&&!cameraOff?<VideoCanvasProcessor stream={localStream} activeFilter={activeFilter} selectedBgImage={selectedBgImage} mirror={true} />:<div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#050505',...(selfBgStyle||{}) }}><div style={{ width:64,height:64,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:700,color:'#f0e6d3' }}>{initial}</div></div>}
                     </div>
                     <button onClick={() => { const url = window.prompt('Paste an image URL to use as your background:'); if (url && url.trim()) { setActiveFilter('none'); setSelectedBgImage(url.trim()); } }} style={{ background:'none',border:'none',color:'#b8860b',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600,padding:0,marginBottom:16 }}><Plus size={16}/><span>Add background</span></button>
                     <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10 }}>
@@ -592,24 +599,34 @@ export default function VideoRoom({ roomCode, isHost }) {
       )}
 
       {/* TOP BAR — floats over video, zero height cost */}
-      <div style={{ position:'absolute',top:0,left:0,right:0,zIndex:100,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 28px',background:'linear-gradient(180deg,rgba(10,10,10,.75) 0%,transparent 100%)',backdropFilter:'blur(0px)' }}>
-        <div style={{ display:'flex',alignItems:'center',flexShrink:0,zIndex:1 }}>
-          <img src={etherxLogo} alt="EtherX Meet" style={{ height:140,width:'auto',objectFit:'contain' }}/>
+      <div className="room-top-bar" style={{ position:'absolute',top:0,left:0,right:0,zIndex:100,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 20px',background:'linear-gradient(180deg,rgba(10,10,10,.85) 0%,transparent 100%)',pointerEvents:'none',overflow:'hidden' }}>
+        <div className="room-top-logo" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, pointerEvents: 'auto' }}>
+          <img
+            src={etherxLogo}
+            alt="EtherX Meet"
+            style={{
+              height: 65,
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+              filter: 'drop-shadow(0 3px 10px rgba(0,0,0,0.95)) brightness(1.2)'
+            }}
+          />
         </div>
-        <div style={{ position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex',alignItems:'center',gap:12,background:'rgba(212,175,55,.07)',padding:'10px 20px',borderRadius:24,whiteSpace:'nowrap',border:'1px solid rgba(212,175,55,.15)' }}>
-          <span style={{ fontSize:14.5,fontWeight:600,letterSpacing:'0.02em' }}>{fmtTitle(roomCode)}</span>
-          <span style={{ width:1,height:16,background:'rgba(212,175,55,.22)' }}/>
-          <span style={{ fontFamily:"'IBM Plex Mono',monospace",fontSize:12.5,color:'#c9bda2' }}>{roomCode}</span>
-          <button onClick={handleCopyCode} title="Copy room code" style={{ background:'none',border:'none',color:codeCopied?'#d4af37':'rgba(255,255,255,.5)',cursor:'pointer',display:'flex',padding:2 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8"/></svg>
+        <div className="room-title-pill" style={{ display:'flex',alignItems:'center',gap:10,background:'rgba(212,175,55,.07)',padding:'6px 16px',borderRadius:24,whiteSpace:'nowrap',border:'1px solid rgba(212,175,55,.15)',backdropFilter:'blur(12px)',pointerEvents:'auto',flexShrink:1,minWidth:0,overflow:'hidden' }}>
+          <span style={{ fontSize:13,fontWeight:600,letterSpacing:'0.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{fmtTitle(roomCode)}</span>
+          <span style={{ width:1,height:14,background:'rgba(212,175,55,.22)',flexShrink:0 }}/>
+          <span style={{ fontFamily:"'IBM Plex Mono',monospace",fontSize:11.5,color:'#c9bda2',flexShrink:0 }}>{roomCode}</span>
+          <button onClick={handleCopyCode} title="Copy room code" style={{ background:'none',border:'none',color:codeCopied?'#d4af37':'rgba(255,255,255,.5)',cursor:'pointer',display:'flex',padding:2,flexShrink:0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8"/></svg>
           </button>
-          <span style={{ width:1,height:16,background:'rgba(212,175,55,.22)' }}/>
-          <span style={{ display:'flex',alignItems:'center',gap:6,fontFamily:"'IBM Plex Mono',monospace",fontSize:12.5,color:'#c9bda2' }}>
+          <span style={{ width:1,height:14,background:'rgba(212,175,55,.22)',flexShrink:0 }}/>
+          <span style={{ display:'flex',alignItems:'center',gap:6,fontFamily:"'IBM Plex Mono',monospace",fontSize:11.5,color:'#c9bda2',flexShrink:0 }}>
             <span style={{ width:7,height:7,borderRadius:'50%',background:'#ef4444',animation:isRecording?'chainPulse 1.5s infinite':undefined,display:'inline-block' }}/>
             {fmtTime(elapsed)}
           </span>
         </div>
-        <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(212,175,55,.05)',padding:'6px 14px 6px 6px',borderRadius:22,position:'relative',zIndex:1,flexShrink:0 }}>
+        <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(212,175,55,.05)',padding:'5px 12px 5px 5px',borderRadius:22,flexShrink:0,pointerEvents:'auto' }}>
           <div style={{ position:'relative',width:28,height:28,flexShrink:0 }}>
             <div style={{ width:28,height:28,borderRadius:'50%',background:`linear-gradient(160deg,${userColor},${userColor}88)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700 }}>{initial}</div>
             {raised && (<div style={{ position:'absolute',top:-4,right:-5,width:14,height:14,borderRadius:'50%',background:'#d4af37',border:'2px solid #0a0a0a',display:'flex',alignItems:'center',justifyContent:'center' }}>
@@ -618,7 +635,6 @@ export default function VideoRoom({ roomCode, isHost }) {
           </div>
           {micMuted && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color:'#f87171',flexShrink:0 }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
           <span style={{ fontSize:12,fontWeight:600,color:'#c9bda2' }}>{userName||'You'}</span>
-          {account && <span style={{ fontSize:11,color:'#a89878',fontFamily:"'IBM Plex Mono',monospace" }}>{account.slice(0,6)}…</span>}
         </div>
       </div>
 
@@ -627,7 +643,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
         {/* LEFT CHAT PANEL */}
         {chatOpen && (
-          <div style={{ width:320,flexShrink:0,background:'#050505',border:'none',borderRight:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
+          <div className="room-side-panel" style={{ width:320,flexShrink:0,background:'#050505',border:'none',borderRight:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 18px 10px' }}>
               <span style={{ fontSize:15,fontWeight:700 }}>{panelTab==='chat'?'Chat':panelTab==='polls'?'Polls':panelTab==='cc'?'Captions':panelTab==='qna'?'Q&A':panelTab==='agenda'?'Agenda':'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:16 }}>✕</button>
@@ -810,7 +826,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
         {/* PARTICIPANTS RIGHT PANEL */}
         {showPeople && (
-          <div style={{ width:290,flexShrink:0,background:'#050505',borderLeft:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
+          <div className="room-side-panel" style={{ width:290,flexShrink:0,background:'#050505',borderLeft:'1px solid rgba(212,175,55,.12)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'fadeIn .18s ease-out',position:'relative',zIndex:150 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 18px 12px' }}>
               <span style={{ fontSize:14,fontWeight:700 }}>Participants ({totalP})</span>
               <button onClick={() => setShowPeople(false)} style={{ background:'none',border:'none',color:'#a89878',cursor:'pointer',fontSize:16 }}>✕</button>
@@ -958,12 +974,7 @@ export default function VideoRoom({ roomCode, isHost }) {
             </div>
           )}
 
-          <div style={{ position:'absolute',top:18,left:18 }}>
-            <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,.4)',backdropFilter:'blur(6px)',padding:'6px 12px',borderRadius:18,fontSize:12 }}>
-              {micMuted && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color:'#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-              {userName||'You'}
-            </div>
-          </div>
+
 
           {/* BOTTOM TOOLBAR */}
           <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position:'absolute',bottom:24,left:0,right:0,display:'flex',justifyContent:'center' }}>
@@ -1029,7 +1040,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               </button>
 
               <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width:40,height:40,borderRadius:10,border:'none',background:'transparent',color:'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" stroke-width="1.6" strokeLinecap="round"/><path d="M18 8v6M15 11h6" stroke="currentColor" stroke-width="1.7" strokeLinecap="round"/></svg>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
               </button>
 
               <button onClick={() => setWhiteboardOpen(v=>!v)} title="Whiteboard" style={{ width:40,height:40,borderRadius:10,border:'none',background:whiteboardOpen?'rgba(212,175,55,.15)':'transparent',color:whiteboardOpen?'#f0e6d3':'#c9bda2',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer' }}>

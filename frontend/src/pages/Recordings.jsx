@@ -140,7 +140,7 @@ export default function Recordings() {
           </div>
 
           {/* ── Two-column layout ── */}
-          <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)' }}>
+          <div className="grid gap-5 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
 
             {/* Left column */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

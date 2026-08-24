@@ -245,7 +245,7 @@ function EtherxMark() {
     <img
       src={etherxLogo}
       alt="EtherX Meet"
-      style={{ width: 'clamp(90px, 24vw, 130px)', height: 'auto', display: 'block' }}
+      style={{ width: 'clamp(125px, 28vw, 160px)', height: 'auto', display: 'block' }}
     />
   );
 }
@@ -265,7 +265,7 @@ function TopChip({ eyebrow, value, detail }) {
 function IconShell({ children, title }) {
   return (
     <button
-      className="flex h-[52px] w-[52px] items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-300 hover:border-[#d4af37]/30 hover:text-[#d4af37]"
+      className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-300 hover:border-[#d4af37]/30 hover:text-[#d4af37]"
       title={title}
       type="button"
     >

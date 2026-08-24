@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageSquare, X, Send, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { useWallet } from '../../context/WalletContext';
+import { MessageSquare, X, Send } from 'lucide-react';
 import apiClient from '../../utils/apiClient';
 
 const GOLD = '#d4af37';
 const GOLD_BORDER = 'rgba(212,175,55,0.25)';
 
-function truncate(addr) {
-  return addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
-}
-
-function ChatContent({ roomCode, account, signer, alwaysOpen }) {
+function ChatContent({ roomCode, userName = 'Guest', alwaysOpen }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -39,11 +34,13 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || !signer || !account || sending) return;
+    if (!text || sending) return;
     setSending(true);
     try {
-      const signature = await signer.signMessage(`EtherXMeet chat: ${text}`);
-      await apiClient.post(`/api/rooms/chat/${roomCode}`, { address: account, message: text, signature });
+      await apiClient.post(`/api/rooms/chat/${roomCode}`, {
+        address: userName,
+        message: text,
+      });
       setInput('');
       await fetchMessages();
     } catch { /* ignore */ } finally {
@@ -62,11 +59,8 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
     }}>
       {/* Header */}
       <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ShieldCheck size={14} color={GOLD} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3' }}>Verified Chat</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Signed by wallet
-        </span>
+        <MessageSquare size={14} color={GOLD} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3' }}>Room Chat</span>
       </div>
 
       {/* Messages */}
@@ -74,14 +68,13 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
         {messages.length === 0 && (
           <p style={{ fontSize: 12, color: '#444', textAlign: 'center', marginTop: 40 }}>No messages yet. Be the first!</p>
         )}
-        {messages.map(m => {
-          const isSelf = m.address === account?.toLowerCase();
+        {messages.map((m, idx) => {
+          const isSelf = m.address === userName;
           return (
-            <div key={m._id} style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start' }}>
+            <div key={m._id || idx} style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-                {m.verified ? <ShieldCheck size={10} color="#22c55e" /> : <ShieldAlert size={10} color="#888" />}
-                <span style={{ fontSize: 10, color: '#555', fontFamily: 'monospace' }}>
-                  {isSelf ? 'you' : truncate(m.address)}
+                <span style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>
+                  {m.address || 'User'}
                 </span>
               </div>
               <div style={{
@@ -105,8 +98,8 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder={signer ? 'Type a message…' : 'Wallet not ready'}
-          disabled={!signer || sending}
+          placeholder="Type a message…"
+          disabled={sending}
           style={{
             flex: 1, background: 'rgba(255,255,255,0.06)',
             border: '1px solid rgba(255,255,255,0.10)',
@@ -117,13 +110,13 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim() || !signer || sending}
+          disabled={!input.trim() || sending}
           style={{
             width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-            background: input.trim() && signer ? 'linear-gradient(135deg,#d4af37,#b8860b)' : 'rgba(255,255,255,0.06)',
-            border: 'none', color: input.trim() && signer ? '#000' : '#555',
+            background: input.trim() ? 'linear-gradient(135deg,#d4af37,#b8860b)' : 'rgba(255,255,255,0.06)',
+            border: 'none', color: input.trim() ? '#000' : '#555',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: input.trim() && signer ? 'pointer' : 'default',
+            cursor: input.trim() ? 'pointer' : 'default',
           }}
         >
           <Send size={14} />
@@ -148,7 +141,7 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
           cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
           transition: 'all 0.2s',
         }}
-        aria-label={open ? 'Close chat' : 'Open verified chat'}
+        aria-label={open ? 'Close chat' : 'Open chat'}
       >
         {open ? <X size={18} /> : <MessageSquare size={18} />}
       </button>
@@ -166,7 +159,6 @@ function ChatContent({ roomCode, account, signer, alwaysOpen }) {
   );
 }
 
-export default function VerifiedChat({ roomCode, embedded = false }) {
-  const { account, signer } = useWallet();
-  return <ChatContent roomCode={roomCode} account={account} signer={signer} alwaysOpen={embedded} />;
+export default function VerifiedChat({ roomCode, userName = 'Guest', embedded = false }) {
+  return <ChatContent roomCode={roomCode} userName={userName} alwaysOpen={embedded} />;
 }

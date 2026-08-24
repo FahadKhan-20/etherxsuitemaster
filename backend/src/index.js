@@ -85,6 +85,18 @@ app.use(
 );
 
 // =====================================================
+// ROOT ROUTE
+// =====================================================
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'EtherXMeet Backend API Server',
+    status: 'online',
+    frontendUrl: 'http://localhost:3000',
+    documentation: 'http://localhost:5000/api'
+  });
+});
+
+// =====================================================
 // API ROUTES
 // =====================================================
 app.use('/api/auth', authRoutes);
