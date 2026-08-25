@@ -42,8 +42,8 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
   const {
     lines, notes, uploadedImage, laser,
     startStroke, extendStroke, endStroke,
-    addSticky, updateSticky, moveSticky,
-    undo, redo, clearBoard, addImage, moveLaser,
+    addSticky, updateSticky, moveSticky, deleteSticky,
+    undo, redo, clearBoard, addImage, removeImage, moveLaser,
   } = useWhiteboardSync({ socket, socketReady, roomCode, isHost });
 
   const canEdit = !!isHost;
@@ -83,6 +83,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
 
       if (line.tool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
         ctx.lineWidth = line.size || 24;
         ctx.globalAlpha = 1;
       } else if (line.tool === 'highlighter') {
@@ -98,7 +99,11 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       }
 
       ctx.moveTo(line.points[0].x, line.points[0].y);
-      line.points.forEach((point) => ctx.lineTo(point.x, point.y));
+      if (line.points.length === 1) {
+        ctx.lineTo(line.points[0].x + 0.01, line.points[0].y + 0.01);
+      } else {
+        line.points.forEach((point) => ctx.lineTo(point.x, point.y));
+      }
       ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
@@ -126,6 +131,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       return;
     }
     const point = pointerPosition(event);
+    setCursorPos({ x: point.x, y: point.y, visible: true });
 
     if (tool === 'sticky') {
       addSticky(
@@ -315,36 +321,51 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 <div
                   className="pointer-events-none absolute rounded-full border-2 border-white/80 bg-white/20 shadow-[0_0_12px_rgba(255,255,255,0.4)]"
                   style={{
-                    width: strokeSize,
-                    height: strokeSize,
-                    left: cursorPos.x - strokeSize / 2,
-                    top: cursorPos.y - strokeSize / 2,
+                    width: `${(strokeSize / 1280) * 100}%`,
+                    aspectRatio: '1 / 1',
+                    left: `${(cursorPos.x / 1280) * 100}%`,
+                    top: `${(cursorPos.y / 720) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
                   }}
                 />
               )}
 
               {layers.notes &&
                 notes.map((note) => (
-                  <motion.textarea
+                  <motion.div
                     key={note.id}
                     drag={canEdit}
                     dragMomentum={false}
-                    defaultValue={note.text}
-                    readOnly={!canEdit}
-                    onChange={(event) => {
-                      const text = event.target.value;
-                      updateSticky(note.id, text);
-                    }}
                     onDragEnd={(event, info) => {
                       moveSticky(note.id, note.x + info.offset.x, note.y + info.offset.y);
                     }}
-                    className="absolute min-h-[120px] w-40 resize-none rounded-[20px] border border-white/10 p-3 text-sm text-white shadow-[0_16px_40px_rgba(4,8,24,0.35)]"
+                    className="group absolute flex min-h-[120px] w-40 flex-col rounded-[20px] border border-white/10 p-3 text-sm text-white shadow-[0_16px_40px_rgba(4,8,24,0.35)]"
                     style={{
                       left: note.x,
                       top: note.y,
                       background: note.color,
                     }}
-                  />
+                  >
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => deleteSticky(note.id)}
+                        className="absolute right-2 top-2 z-10 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-white/80 transition-all hover:bg-black/70 hover:text-white"
+                        title="Delete note"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                    <textarea
+                      defaultValue={note.text}
+                      readOnly={!canEdit}
+                      onChange={(event) => {
+                        const text = event.target.value;
+                        updateSticky(note.id, text);
+                      }}
+                      className="h-full w-full resize-none bg-transparent text-sm text-white focus:outline-none"
+                    />
+                  </motion.div>
                 ))}
 
               {laser.visible && (
@@ -382,7 +403,23 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 <span className="font-mono text-xs font-semibold text-cyan-400">{strokeSize}px</span>
               </div>
 
-              {tool !== 'eraser' && (
+              {tool === 'eraser' ? (
+                <div className="mt-3 flex gap-2">
+                  {[12, 24, 48, 80].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setStrokeSize(s)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition-all ${
+                        strokeSize === s
+                          ? 'border-cyan-400 bg-cyan-400/20 text-cyan-200 ring-2 ring-cyan-400/50'
+                          : 'border-white/10 bg-black/20 text-white/60 hover:text-white'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : (
                 <div className="mt-3 flex gap-2">
                   {['#4F46E5', '#06B6D4', '#10B981', '#EF4444', '#F59E0B', '#FFFFFF'].map((swatch) => (
                     <button
@@ -401,7 +438,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 className="mt-4 w-full accent-cyan-400 cursor-pointer"
                 type="range"
                 min={tool === 'eraser' ? 6 : 2}
-                max={tool === 'eraser' ? 100 : 30}
+                max={tool === 'eraser' ? 120 : 30}
                 value={strokeSize}
                 onChange={(event) => setStrokeSize(Number(event.target.value))}
               />
