@@ -73,16 +73,35 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
     }
 
     lines.forEach(line => {
-      if (!line.points.length) return;
+      if (!line.points || !line.points.length) return;
       ctx.beginPath();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = line.tool === 'eraser' ? '#111827' : line.color;
-      ctx.lineWidth   = line.tool === 'highlighter' ? line.size * 3 : line.size;
-      ctx.globalAlpha = line.tool === 'highlighter' ? 0.3 : 1;
+      if (line.tool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
+        ctx.lineWidth   = line.size ? line.size * 4 : 24;
+        ctx.globalAlpha = 1;
+      } else if (line.tool === 'highlighter') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = line.color || '#ffffff';
+        ctx.lineWidth   = (line.size || 4) * 3;
+        ctx.globalAlpha = 0.3;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = line.color || '#ffffff';
+        ctx.lineWidth   = line.size || 4;
+        ctx.globalAlpha = 1;
+      }
+
       ctx.moveTo(line.points[0].x, line.points[0].y);
-      line.points.forEach(p => ctx.lineTo(p.x, p.y));
+      if (line.points.length === 1) {
+        ctx.lineTo(line.points[0].x + 0.01, line.points[0].y + 0.01);
+      } else {
+        line.points.forEach(p => ctx.lineTo(p.x, p.y));
+      }
       ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     });
   }, [lines, uploadedImage]);

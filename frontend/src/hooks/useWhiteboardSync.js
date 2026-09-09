@@ -49,6 +49,9 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
       case 'STICKY_MOVE':
         setNotes(prev => prev.map(n => n.id === op.id ? { ...n, x: op.x, y: op.y } : n));
         break;
+      case 'STICKY_DELETE':
+        setNotes(prev => prev.filter(n => n.id !== op.id));
+        break;
       case 'UNDO':
         setLines(prev => prev.slice(0, -1));
         break;
@@ -61,6 +64,9 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
         break;
       case 'IMAGE_ADD':
         setUploadedImage(op.url);
+        break;
+      case 'IMAGE_REMOVE':
+        setUploadedImage('');
         break;
       case 'LASER':
         setLaser({ x: op.x, y: op.y, visible: op.visible });
@@ -128,6 +134,10 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
     emitOp({ type: 'STICKY_MOVE', id, x, y });
   }, [emitOp]);
 
+  const deleteSticky = useCallback((id) => {
+    emitOp({ type: 'STICKY_DELETE', id });
+  }, [emitOp]);
+
   // ── Undo / Redo / Clear ────────────────────────────────────────────────────
   const undo = useCallback(() => {
     if (!linesRef.current.length) return;
@@ -147,9 +157,13 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
     emitOp({ type: 'CLEAR' });
   }, [emitOp]);
 
-  // ── Image upload ───────────────────────────────────────────────────────────
+  // ── Image upload / remove ──────────────────────────────────────────────────
   const addImage = useCallback((url) => {
     emitOp({ type: 'IMAGE_ADD', url });
+  }, [emitOp]);
+
+  const removeImage = useCallback(() => {
+    emitOp({ type: 'IMAGE_REMOVE' });
   }, [emitOp]);
 
   // ── Laser pointer ──────────────────────────────────────────────────────────
@@ -160,7 +174,7 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
   return {
     lines, notes, uploadedImage, laser,
     startStroke, extendStroke, endStroke,
-    addSticky, updateSticky, moveSticky,
-    undo, redo, clearBoard, addImage, moveLaser,
+    addSticky, updateSticky, moveSticky, deleteSticky,
+    undo, redo, clearBoard, addImage, removeImage, moveLaser,
   };
 }
