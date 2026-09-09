@@ -36,26 +36,26 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const userId = storedUser?.id || account || fallbackIdRef.current;
 
   // ── Waiting Room State ──────────────────────────────────────────────────────
-  const [admitted, setAdmitted]         = useState(!!isHost);
-  const [denied, setDenied]             = useState(false);
+  const [admitted, setAdmitted] = useState(!!isHost);
+  const [denied, setDenied] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
 
   // ── Core media state ────────────────────────────────────────────────────────
-  const [localStream, setLocalStream]       = useState(null);
-  const [peers, setPeers]                   = useState({}); // socketId → { userName, userId, stream }
-  const [micMuted, setMicMuted]             = useState(false);
-  const [cameraOff, setCameraOff]           = useState(false);
+  const [localStream, setLocalStream] = useState(null);
+  const [peers, setPeers] = useState({}); // socketId → { userName, userId, stream }
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [noiseSuppressed, setNoiseSuppressed] = useState(false);
-  const [roomLocked, setRoomLockedState]    = useState(false);
-  const [spotlightId, setSpotlightId]       = useState('local');
+  const [roomLocked, setRoomLockedState] = useState(false);
+  const [spotlightId, setSpotlightId] = useState('local');
   const [connectionError, setConnectionError] = useState('');
 
   // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────────
   // reactions: [{id, emoji, socketId, userName}] — floating emoji overlays
-  const [reactions, setReactions]   = useState([]);
+  const [reactions, setReactions] = useState([]);
   // handQueue: [{socketId, userName}] — ordered list of raised hands
-  const [handQueue, setHandQueue]   = useState([]);
+  const [handQueue, setHandQueue] = useState([]);
   const reactionIdRef = useRef(0);
 
   // ── Feature 4: Network Quality ─────────────────────────────────────────────
@@ -83,11 +83,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [agendaItems, setAgendaItems] = useState([]); // [{id, title, done, createdBy}]
 
   // ── Refs ────────────────────────────────────────────────────────────────────
-  const socketRef      = useRef(null);
+  const socketRef = useRef(null);
   // Tracks when the socket is created so consumers (e.g. Whiteboard) can
   // reliably receive the live socket reference via the public API.
   const [socketReady, setSocketReady] = useState(false);
-  const pcsRef         = useRef({});           // socketId → RTCPeerConnection
+  const pcsRef = useRef({});           // socketId → RTCPeerConnection
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
@@ -209,7 +209,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       });
 
       socket.on('ice-candidate', async ({ from, candidate }) => {
-        try { await pcsRef.current[from]?.addIceCandidate(candidate); } catch {}
+        try { await pcsRef.current[from]?.addIceCandidate(candidate); } catch { }
       });
 
       socket.on('user-left', ({ socketId }) => {
@@ -389,7 +389,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Tell all peers: send a null/black track so their UI updates
       Object.values(pcsRef.current).forEach(pc => {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(null).catch(() => {});
+        if (sender) sender.replaceTrack(null).catch(() => { });
       });
       // Tell peers explicitly so they show the avatar instead of a frozen frame
       socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
@@ -408,7 +408,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         // Replace track in all peer connections
         Object.values(pcsRef.current).forEach(pc => {
           const sender = pc.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
-          if (sender) sender.replaceTrack(newTrack).catch(() => {});
+          if (sender) sender.replaceTrack(newTrack).catch(() => { });
         });
         // Update the local stream state so VideoTile re-renders with new track
         setLocalStream(prev => {
@@ -458,7 +458,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         localStreamRef.current.removeTrack(currentTrack);
         localStreamRef.current.addTrack(filteredTrack);
         Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(filteredTrack).catch(() => {});
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(filteredTrack).catch(() => { });
         });
         setNoiseSuppressed(true);
       } catch (err) {
@@ -471,10 +471,10 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         localStreamRef.current.removeTrack(currentTrack);
         localStreamRef.current.addTrack(rawTrack);
         Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(rawTrack).catch(() => {});
+          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(rawTrack).catch(() => { });
         });
       }
-      noiseAudioCtxRef.current.close().catch(() => {});
+      noiseAudioCtxRef.current.close().catch(() => { });
       noiseAudioCtxRef.current = null;
       rawMicTrackRef.current = null;
       setNoiseSuppressed(false);
@@ -502,7 +502,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         });
         screenTrack.onended = () => toggleScreenShare();
         setIsScreenSharing(true);
-      } catch {}
+      } catch { }
     }
   }, [isScreenSharing]);
 

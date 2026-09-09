@@ -57,6 +57,9 @@ function applyWhiteboardOp(board, op) {
       if (note) { note.x = op.x; note.y = op.y; }
       break;
     }
+    case 'STICKY_DELETE':
+      board.notes = board.notes.filter(n => n.id !== op.id);
+      break;
     case 'UNDO':
       board.lines.pop();
       break;
@@ -69,6 +72,9 @@ function applyWhiteboardOp(board, op) {
       break;
     case 'IMAGE_ADD':
       board.uploadedImage = op.url;
+      break;
+    case 'IMAGE_REMOVE':
+      board.uploadedImage = '';
       break;
     case 'LASER':
       board.laser = { x: op.x, y: op.y, visible: op.visible };
