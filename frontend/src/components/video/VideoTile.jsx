@@ -28,10 +28,12 @@ export default function VideoTile({
   const initial  = (userName || 'A').charAt(0).toUpperCase();
   const color    = avatarColor(initial);
   const hasVideo = stream && stream.getVideoTracks().length > 0;
+  const cssFilter = filter === 'blur' ? 'blur(8px)' : filter === 'half-blur' ? 'blur(4px)' : 'none';
 
   useEffect(() => {
     if (videoRef.current && stream && filter === 'none' && bgImage === 'none') {
       videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
     }
   }, [stream, filter, bgImage]);
 
@@ -65,7 +67,7 @@ export default function VideoTile({
           ) : (
             <video ref={videoRef} autoPlay playsInline muted={isLocal}
               disablePictureInPicture disableRemotePlayback
-              style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+              style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
           )
         ) : (
           <div style={{
@@ -121,7 +123,7 @@ export default function VideoTile({
         ) : (
           <video ref={videoRef} autoPlay playsInline muted={isLocal}
             disablePictureInPicture disableRemotePlayback
-            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none' }} />
+            style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
         )
       ) : (
         <div className="float-avatar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>

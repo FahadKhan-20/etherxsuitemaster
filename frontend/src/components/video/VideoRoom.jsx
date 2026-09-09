@@ -242,7 +242,6 @@ export default function VideoRoom({ roomCode, isHost }) {
   // filter (works today). Photo backgrounds can't replace a live camera feed
   // without on-device segmentation, so they render behind the avatar whenever
   // the camera is off (grid tile + solo "waiting" view).
-  const localFilter = activeFilter === 'blur' ? 'blur(8px)' : activeFilter === 'half-blur' ? 'blur(4px)' : 'none';
   const selfBgStyle = selectedBgImage !== 'none'
     ? { backgroundImage: `url(${selectedBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : null;
@@ -874,7 +873,15 @@ export default function VideoRoom({ roomCode, isHost }) {
                 overflow: 'hidden',
               }}>
                 {localStream && !cameraOff && !selfViewHidden ? (
-                  <VideoTile stream={localStream} userName={userName || 'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff} filter={localFilter} bgImage={selectedBgImage} />
+                  <VideoTile
+                    stream={localStream}
+                    userName={userName || 'You'}
+                    isLocal
+                    isMuted={micMuted}
+                    isCameraOff={cameraOff}
+                    filter={activeFilter}
+                    bgImage={selectedBgImage}
+                  />
                 ) : (
                   <div style={{
                     width: 130, height: 130, borderRadius: '50%',
@@ -952,7 +959,17 @@ export default function VideoRoom({ roomCode, isHost }) {
               {spotlight ? (
                 <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
               ) : localStream && !cameraOff ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={localStream} userName={userName || 'You'} isLocal isMuted={micMuted} isCameraOff={cameraOff} filter={localFilter} bgImage={selectedBgImage} /></div>
+                <div style={{ width: '100%', height: '100%' }}>
+                  <VideoTile
+                    stream={localStream}
+                    userName={userName || 'You'}
+                    isLocal
+                    isMuted={micMuted}
+                    isCameraOff={cameraOff}
+                    filter={activeFilter}
+                    bgImage={selectedBgImage}
+                  />
+                </div>
               ) : (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, ...(selfBgStyle || {}) }}>
                   <div style={{ width: 168, height: 168, borderRadius: '50%', background: `linear-gradient(160deg,${userColor},${userColor}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60, fontWeight: 700, animation: 'speak 2.2s infinite' }}>{initial}</div>

@@ -90,10 +90,8 @@ export default function VirtualVideoCanvas({
   useEffect(() => {
     const video = videoRef.current;
     if (video && stream) {
-      if (video.srcObject !== stream) {
-        video.srcObject = stream;
-        video.play().catch(() => {});
-      }
+      video.srcObject = stream;
+      video.play().catch(() => {});
     }
   }, [stream]);
 
@@ -142,6 +140,14 @@ export default function VirtualVideoCanvas({
     let isProcessing = false;
     let latestResults = null;
 
+    // Set up segmenter callback once per loop lifecycle
+    if (segmenterRef.current) {
+      segmenterRef.current.onResults((results) => {
+        latestResults = results;
+        isProcessing = false;
+      });
+    }
+
     const render = async () => {
       if (!active) return;
 
@@ -172,10 +178,6 @@ export default function VirtualVideoCanvas({
           // Real-time AI Selfie Segmentation
           if (!isProcessing) {
             isProcessing = true;
-            segmenterRef.current.onResults((results) => {
-              latestResults = results;
-              isProcessing = false;
-            });
             segmenterRef.current.send({ image: video }).catch(() => {
               isProcessing = false;
             });
@@ -269,7 +271,7 @@ export default function VirtualVideoCanvas({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [filter, bgImage, segmenterLoaded, isLocal]);
+  }, [filter, bgImage, segmenterLoaded, isLocal, stream]);
 
   return (
     <canvas

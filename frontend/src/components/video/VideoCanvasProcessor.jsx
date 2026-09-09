@@ -1,12 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-/**
- * Real-time AI Video Processor for Virtual Backgrounds & Background Blur.
- * Uses MediaPipe AI Selfie Segmentation to isolate the candidate from the background.
- * - Keeps candidate sharp, crisp, and completely unblurred.
- * - Blurs ONLY the background when "Blur" or "Half Blur" is selected.
- * - Replaces background behind the candidate with selected Virtual Background images.
- */
 export default function VideoCanvasProcessor({
   stream,
   activeFilter = 'none',
@@ -20,249 +13,187 @@ export default function VideoCanvasProcessor({
   const bgImageRef = useRef(null);
   const animFrameRef = useRef(null);
   const segmenterRef = useRef(null);
+  const activeFilterRef = useRef(activeFilter);
+  const selectedBgImageRef = useRef(selectedBgImage);
+  const mirrorRef = useRef(mirror);
   const [segmenterLoaded, setSegmenterLoaded] = useState(false);
 
-  // Load background image object when selectedBgImage changes
+  // Keep refs in sync with latest props — no loop restart needed
+  useEffect(() => { activeFilterRef.current = activeFilter; }, [activeFilter]);
+  useEffect(() => { selectedBgImageRef.current = selectedBgImage; }, [selectedBgImage]);
+  useEffect(() => { mirrorRef.current = mirror; }, [mirror]);
+
+  // Load background image whenever selectedBgImage changes
   useEffect(() => {
     if (selectedBgImage && selectedBgImage !== 'none') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = selectedBgImage;
-      img.onload = () => {
-        bgImageRef.current = img;
-      };
-      img.onerror = () => {
-        bgImageRef.current = null;
-      };
+      img.onload = () => { bgImageRef.current = img; };
+      img.onerror = () => { bgImageRef.current = null; };
     } else {
       bgImageRef.current = null;
     }
   }, [selectedBgImage]);
 
-  // Load MediaPipe SelfieSegmentation CDN script dynamically
+  // Load MediaPipe script once
   useEffect(() => {
     let isMounted = true;
-
-    if (window.SelfieSegmentation) {
-      if (isMounted) setSegmenterLoaded(true);
-      return;
-    }
-
+    if (window.SelfieSegmentation) { setSegmenterLoaded(true); return; }
     if (document.getElementById('mediapipe-selfie-script')) {
-      const checkInterval = setInterval(() => {
-        if (window.SelfieSegmentation) {
-          clearInterval(checkInterval);
-          if (isMounted) setSegmenterLoaded(true);
-        }
+      const iv = setInterval(() => {
+        if (window.SelfieSegmentation) { clearInterval(iv); if (isMounted) setSegmenterLoaded(true); }
       }, 100);
-      return () => clearInterval(checkInterval);
+      return () => clearInterval(iv);
     }
-
     const script = document.createElement('script');
     script.id = 'mediapipe-selfie-script';
     script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
     script.crossOrigin = 'anonymous';
-    script.onload = () => {
-      if (window.SelfieSegmentation && isMounted) {
-        setSegmenterLoaded(true);
-      }
-    };
+    script.onload = () => { if (window.SelfieSegmentation && isMounted) setSegmenterLoaded(true); };
     document.body.appendChild(script);
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
-  // Connect MediaStream to hidden video element
+  // Attach stream to hidden video
   useEffect(() => {
-    const videoEl = videoRef.current;
-    if (videoEl && stream) {
-      if (videoEl.srcObject !== stream) {
-        videoEl.srcObject = stream;
-        videoEl.play().catch(() => {});
-      }
-    }
+    const v = videoRef.current;
+    if (v && stream) { v.srcObject = stream; v.play().catch(() => {}); }
   }, [stream]);
 
-  // Initialize SelfieSegmentation instance
+  // Init segmenter once loaded
   useEffect(() => {
     if (!segmenterLoaded || !window.SelfieSegmentation) return;
-
     try {
-      const selfieSegmentation = new window.SelfieSegmentation({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+      const seg = new window.SelfieSegmentation({
+        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`,
       });
-
-      selfieSegmentation.setOptions({
-        modelSelection: 1, // 1 for landscape webcam
-        selfieMode: false,
-      });
-
-      segmenterRef.current = selfieSegmentation;
-    } catch (e) {
-      console.error('SelfieSegmentation init error:', e);
-    }
-
+      seg.setOptions({ modelSelection: 1, selfieMode: false });
+      segmenterRef.current = seg;
+    } catch (e) { console.error('SelfieSegmentation init error:', e); }
     return () => {
-      if (segmenterRef.current) {
-        try {
-          segmenterRef.current.close();
-        } catch (e) {}
-        segmenterRef.current = null;
-      }
+      if (segmenterRef.current) { try { segmenterRef.current.close(); } catch (_) {} segmenterRef.current = null; }
     };
   }, [segmenterLoaded]);
 
-  // Main Rendering Loop
+  // Single render loop — reads all values from refs so it never goes stale
   useEffect(() => {
     let active = true;
     let isProcessing = false;
     let latestResults = null;
-
     const offCanvas = document.createElement('canvas');
     const offCtx = offCanvas.getContext('2d');
 
-    const renderFrame = async () => {
+    if (segmenterRef.current) {
+      segmenterRef.current.onResults((r) => { latestResults = r; isProcessing = false; });
+    }
+
+    const renderFrame = () => {
       if (!active) return;
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
+      const filter = activeFilterRef.current;
+      const bgUrl = selectedBgImageRef.current;
+      const isMirror = mirrorRef.current;
 
       if (video && canvas && video.readyState >= 2 && video.videoWidth > 0) {
-        const width = video.videoWidth;
-        const height = video.videoHeight;
+        const W = video.videoWidth;
+        const H = video.videoHeight;
 
-        if (canvas.width !== width || canvas.height !== height) {
-          canvas.width = width;
-          canvas.height = height;
-          offCanvas.width = width;
-          offCanvas.height = height;
+        if (canvas.width !== W || canvas.height !== H) {
+          canvas.width = W; canvas.height = H;
+          offCanvas.width = W; offCanvas.height = H;
         }
 
         const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const hasVirtualBg = selectedBgImage !== 'none' && bgImageRef.current;
-          const isBlur = activeFilter === 'blur' || activeFilter === 'half-blur';
+        const hasBg = bgUrl !== 'none' && bgImageRef.current;
+        const isBlur = filter === 'blur' || filter === 'half-blur';
 
-          if (segmenterRef.current && (hasVirtualBg || isBlur)) {
-            // AI Selfie Segmentation frame processing
-            if (!isProcessing) {
-              isProcessing = true;
-              segmenterRef.current.onResults((results) => {
-                latestResults = results;
-                isProcessing = false;
-              });
-              segmenterRef.current.send({ image: video }).catch(() => {
-                isProcessing = false;
-              });
-            }
+        if (segmenterRef.current && (hasBg || isBlur)) {
+          // Re-register callback each time segmenter is active so results stay fresh
+          if (!isProcessing) {
+            isProcessing = true;
+            segmenterRef.current.onResults((r) => { latestResults = r; isProcessing = false; });
+            segmenterRef.current.send({ image: video }).catch(() => { isProcessing = false; });
+          }
 
-            if (latestResults) {
-              const { segmentationMask, image } = latestResults;
+          if (latestResults) {
+            const { segmentationMask, image } = latestResults;
 
-              // 1. Isolate sharp candidate on offscreen canvas
-              offCtx.save();
-              offCtx.clearRect(0, 0, width, height);
-              if (mirror) {
-                offCtx.translate(width, 0);
-                offCtx.scale(-1, 1);
-              }
-              offCtx.drawImage(image, 0, 0, width, height);
-              offCtx.globalCompositeOperation = 'destination-in';
-              offCtx.drawImage(segmentationMask, 0, 0, width, height);
-              offCtx.restore();
+            // 1. Person on offscreen canvas
+            offCtx.save();
+            offCtx.clearRect(0, 0, W, H);
+            if (isMirror) { offCtx.translate(W, 0); offCtx.scale(-1, 1); }
+            offCtx.drawImage(image, 0, 0, W, H);
+            offCtx.globalCompositeOperation = 'destination-in';
+            offCtx.drawImage(segmentationMask, 0, 0, W, H);
+            offCtx.restore();
 
-              // 2. Render background on main canvas
-              ctx.save();
-              ctx.clearRect(0, 0, width, height);
-
-              if (hasVirtualBg) {
-                // Render selected Virtual Background Image
-                ctx.drawImage(bgImageRef.current, 0, 0, width, height);
-              } else if (isBlur) {
-                // Blur ONLY background
-                const blurRadius = activeFilter === 'blur' ? 16 : 7;
-                if (mirror) {
-                  ctx.translate(width, 0);
-                  ctx.scale(-1, 1);
-                }
-                ctx.filter = `blur(${blurRadius}px)`;
-                ctx.drawImage(image, 0, 0, width, height);
-                ctx.filter = 'none';
-              }
-              ctx.restore();
-
-              // 3. Draw sharp candidate over background
-              ctx.drawImage(offCanvas, 0, 0, width, height);
-            } else {
-              // Direct video draw while initial ML frame computes
-              ctx.save();
-              if (mirror) {
-                ctx.translate(width, 0);
-                ctx.scale(-1, 1);
-              }
-              ctx.drawImage(video, 0, 0, width, height);
-              ctx.restore();
-            }
-          } else {
-            // Fallback before ML segmenter loads, or for standard video / color filters
+            // 2. Background
             ctx.save();
-            if (mirror) {
-              ctx.translate(width, 0);
-              ctx.scale(-1, 1);
-            }
-
-            if (hasVirtualBg) {
-              ctx.drawImage(bgImageRef.current, 0, 0, width, height);
-              ctx.save();
-              ctx.beginPath();
-              ctx.ellipse(width / 2, height / 2 + height * 0.05, width * 0.35, height * 0.45, 0, 0, 2 * Math.PI);
-              ctx.clip();
-              ctx.drawImage(video, 0, 0, width, height);
-              ctx.restore();
+            ctx.clearRect(0, 0, W, H);
+            if (hasBg) {
+              ctx.drawImage(bgImageRef.current, 0, 0, W, H);
             } else if (isBlur) {
-              const blurRadius = activeFilter === 'blur' ? 16 : 8;
-              ctx.save();
-              ctx.filter = `blur(${blurRadius}px)`;
-              ctx.drawImage(video, 0, 0, width, height);
-              ctx.restore();
-
-              ctx.save();
-              ctx.beginPath();
-              ctx.ellipse(width / 2, height / 2 + height * 0.05, width * 0.35, height * 0.45, 0, 0, 2 * Math.PI);
-              ctx.clip();
-              ctx.drawImage(video, 0, 0, width, height);
-              ctx.restore();
-            } else {
-              let filterString = 'none';
-              if (activeFilter === 'warm') filterString = 'sepia(0.35) saturate(1.25)';
-              else if (activeFilter === 'cool') filterString = 'hue-rotate(185deg) saturate(1.2)';
-              else if (activeFilter === 'mono') filterString = 'grayscale(1)';
-
-              ctx.filter = filterString;
-              ctx.drawImage(video, 0, 0, width, height);
+              if (isMirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+              ctx.filter = `blur(${filter === 'blur' ? 16 : 7}px)`;
+              ctx.drawImage(image, 0, 0, W, H);
+              ctx.filter = 'none';
             }
+            ctx.restore();
 
+            // 3. Person on top
+            ctx.drawImage(offCanvas, 0, 0, W, H);
+          } else {
+            // Waiting for first segmentation result
+            ctx.save();
+            if (isMirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+            ctx.drawImage(video, 0, 0, W, H);
             ctx.restore();
           }
+        } else {
+          // No effects or segmenter not ready yet
+          ctx.save();
+          if (isMirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+          if (hasBg) {
+            // Fallback oval composite before segmenter loads
+            ctx.drawImage(bgImageRef.current, 0, 0, W, H);
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(W / 2, H / 2 + H * 0.05, W * 0.35, H * 0.45, 0, 0, 2 * Math.PI);
+            ctx.clip();
+            ctx.drawImage(video, 0, 0, W, H);
+            ctx.restore();
+          } else if (isBlur) {
+            const r = filter === 'blur' ? 16 : 8;
+            ctx.filter = `blur(${r}px)`;
+            ctx.drawImage(video, 0, 0, W, H);
+            ctx.filter = 'none';
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(W / 2, H / 2 + H * 0.05, W * 0.35, H * 0.45, 0, 0, 2 * Math.PI);
+            ctx.clip();
+            ctx.drawImage(video, 0, 0, W, H);
+            ctx.restore();
+          } else {
+            ctx.drawImage(video, 0, 0, W, H);
+          }
+          ctx.restore();
         }
       }
 
-      if (active) {
-        animFrameRef.current = requestAnimationFrame(renderFrame);
-      }
+      if (active) animFrameRef.current = requestAnimationFrame(renderFrame);
     };
 
     renderFrame();
 
     return () => {
       active = false;
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeFilter, selectedBgImage, mirror, segmenterLoaded]);
+  // Only restart loop when stream or segmenter changes — props update via refs
+  }, [stream, segmenterLoaded]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
@@ -272,25 +203,15 @@ export default function VideoCanvasProcessor({
         muted
         playsInline
         style={{
-          position: 'absolute',
-          width: '1px',
-          height: '1px',
-          opacity: 0.001,
-          pointerEvents: 'none',
-          left: '-9999px',
-          top: '-9999px',
+          position: 'absolute', width: '1px', height: '1px',
+          opacity: 0.001, pointerEvents: 'none',
+          left: '-9999px', top: '-9999px',
         }}
       />
       <canvas
         ref={canvasRef}
         className={className}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          display: 'block',
-          ...style,
-        }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', ...style }}
       />
     </div>
   );
