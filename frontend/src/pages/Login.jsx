@@ -126,8 +126,9 @@ export default function Login() {
                   <AppleIcon /> Apple
                 </button>
                 <button type="button" className="auth-social-btn" onClick={() => {
-                  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                    setError('Google OAuth redirects require localhost. For mobile network testing, please sign in with your Email & Password.');
+                  const isPrivateIp = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(window.location.hostname);
+                  if (isPrivateIp) {
+                    setError('Google OAuth redirects require a registered web domain or localhost. For local network testing, please sign in with Email & Password.');
                     return;
                   }
                   window.location.href = `${API_BASE}/api/auth/google`;

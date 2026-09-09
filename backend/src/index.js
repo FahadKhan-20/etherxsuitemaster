@@ -91,8 +91,8 @@ app.get('/', (_req, res) => {
   res.json({
     name: 'EtherXMeet Backend API Server',
     status: 'online',
-    frontendUrl: 'http://localhost:3000',
-    documentation: 'http://localhost:5000/api'
+    frontendUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+    documentation: '/api',
   });
 });
 

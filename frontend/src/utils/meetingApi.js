@@ -2,8 +2,13 @@ import axios from 'axios';
 import { getAuthToken } from './auth';
 import { getApiErrorMessage } from './apiClient';
 
+const defaultMeetingBaseUrl =
+  import.meta.env.VITE_MEETING_API_BASE_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
+
 const meetingApiClient = axios.create({
-  baseURL: import.meta.env.VITE_MEETING_API_BASE_URL || 'http://localhost:4000',
+  baseURL: defaultMeetingBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -10,7 +10,11 @@ export function useRoomSocket(roomCode) {
   useEffect(() => {
     if (!roomCode) return;
     if (!_socket || _socket.disconnected) {
-      _socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000');
+      const socketUrl =
+        import.meta.env.VITE_SOCKET_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
+      _socket = io(socketUrl);
     }
     socketRef.current = _socket;
     _socket.emit('room:join', roomCode);
