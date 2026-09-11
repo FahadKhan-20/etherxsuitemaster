@@ -74,15 +74,7 @@ function CameraIcon() {
   );
 }
 
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <circle cx="6" cy="12" r="2" fill="currentColor" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-      <circle cx="18" cy="12" r="2" fill="currentColor" />
-    </svg>
-  );
-}
+
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -220,6 +212,12 @@ export default function Landing() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (cameraOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraOn]);
 
   const startCamera = async () => {
     if (!navigator.mediaDevices) {
@@ -394,9 +392,7 @@ export default function Landing() {
                   <CameraIcon />
                 </button>
 
-                <button type="button" className="meet-control-btn" aria-label="More options">
-                  <MoreIcon />
-                </button>
+
               </div>
             </section>
 
