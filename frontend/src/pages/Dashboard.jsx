@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Users2,
+  CalendarClock, CalendarDays, Link2, Plus, TimerReset,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
@@ -53,7 +53,7 @@ const lift = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { scheduledMeetings, savedAsyncMessages } = useMeeting();
+  const { scheduledMeetings } = useMeeting();
   const [showScheduler, setShowScheduler] = useState(false);
 
 
@@ -71,7 +71,6 @@ export default function Dashboard() {
     return [
       { label: 'Meetings Scheduled', value: `${scheduledMeetings.length}`, Icon: CalendarDays },
       { label: 'Hours Planned', value: `${(totalMinutes / 60).toFixed(1)}h`, Icon: TimerReset },
-      { label: 'Collaborators', value: `${uniqueParticipants}`, Icon: Users2 },
     ];
   }, [scheduledMeetings]);
 
@@ -216,88 +215,7 @@ export default function Dashboard() {
 
             </div>
 
-            {/* RIGHT */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Top Collaborators */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-                style={card}
-              >
-                <div style={{ marginBottom: 20 }}>
-                  <p style={overline}>Network</p>
-                  <p style={sectionTitle}>Top Collaborators</p>
-                </div>
-                {upcoming.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', padding: '20px 0' }}>
-                    Collaborators appear after your first shared meeting.
-                  </p>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {Array.from(
-                      scheduledMeetings
-                        .flatMap((m) => m.participants || [])
-                        .reduce((map, name) => { map.set(name, (map.get(name) || 0) + 1); return map; }, new Map())
-                    )
-                      .sort((a, b) => b[1] - a[1])
-                      .slice(0, 6)
-                      .map(([name, count]) => {
-                        const initials = name.split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
-                        return (
-                          <motion.div
-                            key={name}
-                            {...lift}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '10px 12px', cursor: 'pointer' }}
-                          >
-                            <div style={{ width: 38, height: 38, borderRadius: 10, background: GRADIENT_CTA, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#111', flexShrink: 0 }}>
-                              {initials}
-                            </div>
-                            <div>
-                              <p style={{ fontSize: 13, fontWeight: 500, color: '#E8D5A3' }}>{name}</p>
-                              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{count} session{count !== 1 ? 's' : ''}</p>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                  </div>
-                )}
-              </motion.div>
-
-              {/* Async Inbox */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-                style={card}
-              >
-                <div style={{ marginBottom: 20 }}>
-                  <p style={overline}>Async Inbox</p>
-                  <p style={sectionTitle}>Video Follow-ups</p>
-                </div>
-                {savedAsyncMessages.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', padding: '20px 0' }}>
-                    No video follow-ups yet.
-                  </p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {savedAsyncMessages.slice(0, 4).map((msg) => (
-                      <motion.div
-                        key={msg.id}
-                        {...lift}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '12px 16px', cursor: 'pointer' }}
-                      >
-                        <div style={{ overflow: 'hidden' }}>
-                          <p style={{ fontSize: 14, fontWeight: 500, color: '#E8D5A3' }}>{msg.sender}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>{msg.message}</p>
-                        </div>
-                        <span style={{ fontSize: 11, color: GOLD, background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, borderRadius: 99, padding: '4px 10px', fontWeight: 700, flexShrink: 0 }}>
-                          {msg.duration || '01:10'}
-                        </span>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-
-            </div>
           </div>
         </div>
 
