@@ -99,7 +99,6 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [selectedBgImage, setSelectedBgImage] = useState('none');
   const [isPlayingTest, setIsPlayingTest] = useState(false);
   const [activeDashes, setActiveDashes] = useState(0);
-  const [polls, setPolls] = useState([]);
   const [myVotes, setMyVotes] = useState({});
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['Yes', 'No', 'Maybe']);
@@ -152,7 +151,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
-    sendHandRaise, sendHandLower, createPoll, votePoll, updateNotes,
+    sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
@@ -676,20 +675,22 @@ export default function VideoRoom({ roomCode, isHost }) {
                   </div>
                 ) : (
                   <>
-                    {polls.map(poll => (
-                      <div key={poll.id} style={{ padding: 12, borderRadius: 10, background: 'rgba(212,175,55,.05)', border: '1px solid rgba(212,175,55,.12)' }}>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '0 0 8px' }}>{poll.q}</p>
-                        {poll.opts.map((o, i) => {
-                          const total = poll.votes.reduce((a, v) => a + v, 0);
-                          const pct = total > 0 ? Math.round(((poll.votes[i] || 0) / total) * 100) : 0;
-                          const mine = myVotes[poll.id] === i;
-                          return (<button key={i} onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); setPolls(ps => ps.map(p => p.id === poll.id ? { ...p, votes: p.opts.map((_, j) => j === i ? (p.votes[j] || 0) + 1 : (p.votes[j] || 0)) } : p)); }} style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: `1px solid ${mine ? '#e5c76b' : 'rgba(212,175,55,.12)'}`, background: mine ? 'rgba(212,175,55,.12)' : 'transparent', color: mine ? '#e5c76b' : 'rgba(255,255,255,.7)', fontSize: 12, cursor: 'pointer', marginBottom: 4, position: 'relative', overflow: 'hidden', fontFamily: "'Sora',sans-serif" }}>
-                            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(212,175,55,.1)', transition: 'width .4s' }} />
-                            <span style={{ position: 'relative' }}>{o} <span style={{ opacity: .5 }}>({pct}%)</span></span>
-                          </button>);
-                        })}
-                      </div>
-                    ))}
+                    {polls.map(poll => {
+                      const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
+                      return (
+                        <div key={poll.id} style={{ padding: 12, borderRadius: 10, background: 'rgba(212,175,55,.05)', border: '1px solid rgba(212,175,55,.12)' }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '0 0 8px' }}>{poll.question}</p>
+                          {poll.options.map((o, i) => {
+                            const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
+                            const mine = myVotes[poll.id] === i;
+                            return (<button key={i} onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }} style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: `1px solid ${mine ? '#e5c76b' : 'rgba(212,175,55,.12)'}`, background: mine ? 'rgba(212,175,55,.12)' : 'transparent', color: mine ? '#e5c76b' : 'rgba(255,255,255,.7)', fontSize: 12, cursor: 'pointer', marginBottom: 4, position: 'relative', overflow: 'hidden', fontFamily: "'Sora',sans-serif" }}>
+                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(212,175,55,.1)', transition: 'width .4s' }} />
+                              <span style={{ position: 'relative' }}>{o.text} <span style={{ opacity: .5 }}>({pct}%)</span></span>
+                            </button>);
+                          })}
+                        </div>
+                      );
+                    })}
                     {showPollForm && (
                       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <input value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} placeholder="Poll question…" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }} />
@@ -697,7 +698,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                         <button onClick={() => setPollOptions(o => [...o, ''])} style={{ background: 'none', border: '1px dashed rgba(212,175,55,.2)', borderRadius: 6, color: '#a89878', fontSize: 12, cursor: 'pointer', padding: '6px', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => setShowPollForm(false)} style={{ flex: 1, padding: 9, borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Cancel</button>
-                          <button onClick={() => { if (!pollQuestion.trim()) return; setPolls(p => [...p, { id: Date.now(), q: pollQuestion, opts: pollOptions.filter(o => o.trim()), votes: [] }]); setPollQuestion(''); setPollOptions(['Yes', 'No']); setShowPollForm(false); createPoll?.(pollQuestion, pollOptions); }} style={{ flex: 1, padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Launch Poll</button>
+                          <button onClick={() => { if (!pollQuestion.trim()) return; createPoll?.(pollQuestion, pollOptions.filter(o => o.trim())); setPollQuestion(''); setPollOptions(['Yes', 'No']); setShowPollForm(false); }} style={{ flex: 1, padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Launch Poll</button>
                         </div>
                       </div>
                     )}
