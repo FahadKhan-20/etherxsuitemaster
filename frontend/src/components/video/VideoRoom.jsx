@@ -454,7 +454,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <div style={{ fontSize: 12.5 }}><strong>Room Code:</strong> {roomCode}</div>
                 <div style={{ fontSize: 12.5, marginTop: 4, fontFamily: "'IBM Plex Mono',monospace", color: '#a89878' }}>{roomCode}</div>
               </div>
-              <button onClick={handleCopyCode} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', flexShrink: 0 }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg></button>
+              <button onClick={handleCopyCode} title="Copy room code" style={{ background: 'none', border: 'none', color: codeCopied ? '#d4af37' : '#a89878', cursor: 'pointer', flexShrink: 0 }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg></button>
             </div>
           </div>
         </div>
