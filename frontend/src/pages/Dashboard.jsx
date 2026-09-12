@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Play, Plus, TimerReset, Video, Users2,
+  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Users2,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
@@ -53,7 +53,7 @@ const lift = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { scheduledMeetings, savedAsyncMessages, savedRecordings } = useMeeting();
+  const { scheduledMeetings, savedAsyncMessages } = useMeeting();
   const [showScheduler, setShowScheduler] = useState(false);
 
 
@@ -73,7 +73,7 @@ export default function Dashboard() {
       { label: 'Hours Planned', value: `${(totalMinutes / 60).toFixed(1)}h`, Icon: TimerReset },
       { label: 'Collaborators', value: `${uniqueParticipants}`, Icon: Users2 },
     ];
-  }, [scheduledMeetings, savedRecordings]);
+  }, [scheduledMeetings]);
 
   return (
     <AnimatedPage>
@@ -213,44 +213,7 @@ export default function Dashboard() {
                 )}
               </motion.div>
 
-              {/* Recent Recordings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-                style={card}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-                  <div>
-                    <p style={overline}>Library</p>
-                    <p style={sectionTitle}>Recent Recordings</p>
-                  </div>
-                  <button onClick={() => navigate('/recordings')} style={{ fontSize: 12, color: GOLD, background: 'transparent', border: `1px solid ${GOLD_BORDER}`, borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontWeight: 600 }}>
-                    See All
-                  </button>
-                </div>
-                {savedRecordings.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', padding: '20px 0' }}>
-                    No recordings yet. End a meeting to save a recording.
-                  </p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {savedRecordings.slice(0, 4).map((rec) => (
-                      <motion.div
-                        key={rec.id}
-                        {...lift}
-                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, padding: '12px 16px', cursor: 'pointer' }}
-                      >
-                        <div style={{ width: 42, height: 42, borderRadius: 12, background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Play size={15} color={GOLD} fill={GOLD} />
-                        </div>
-                        <div style={{ flex: 1, overflow: 'hidden' }}>
-                          <p style={{ fontSize: 14, fontWeight: 500, color: '#E8D5A3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rec.title}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{rec.duration} min · {rec.participants?.length ?? 0} peers</p>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
+
             </div>
 
             {/* RIGHT */}
