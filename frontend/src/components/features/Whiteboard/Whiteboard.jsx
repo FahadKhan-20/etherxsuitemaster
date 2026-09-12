@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useWhiteboardSync } from '../../../hooks/useWhiteboardSync';
 
 const COLORS = ['#ffffff', '#d4af37', '#f87171', '#4ade80', '#60a5fa', '#c084fc', '#fb923c', '#000000'];
-const SIZES  = [2, 4, 8, 16];
+const SIZES = [2, 4, 8, 16];
 
 const TOOLS = [
-  { id: 'pen',         label: 'Pen',       icon: '✏️' },
-  { id: 'highlighter', label: 'Marker',    icon: '🖊' },
-  { id: 'eraser',      label: 'Eraser',    icon: '🧹' },
-  { id: 'laser',       label: 'Laser',     icon: '🔴' },
+  { id: 'pen', label: 'Pen', icon: '✏️' },
+  { id: 'highlighter', label: 'Marker', icon: '🖊' },
+  { id: 'eraser', label: 'Eraser', icon: '🧹' },
+  { id: 'laser', label: 'Laser', icon: '🔴' },
 ];
 
 function Btn({ active, title, onClick, children, style = {} }) {
@@ -37,9 +37,9 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
   const currentStrokeId = useRef(null);
   const isPointerDown = useRef(false);
 
-  const [tool,  setTool]  = useState('pen');
+  const [tool, setTool] = useState('pen');
   const [color, setColor] = useState('#ffffff');
-  const [size,  setSize]  = useState(4);
+  const [size, setSize] = useState(4);
 
   const {
     lines, uploadedImage, laser,
@@ -57,7 +57,7 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Background
-    ctx.fillStyle = '#111827';
+    ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Grid dots
@@ -80,17 +80,17 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
       if (line.tool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
         ctx.strokeStyle = 'rgba(0,0,0,1)';
-        ctx.lineWidth   = line.size ? line.size * 4 : 24;
+        ctx.lineWidth = line.size ? line.size * 4 : 24;
         ctx.globalAlpha = 1;
       } else if (line.tool === 'highlighter') {
         ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = line.color || '#ffffff';
-        ctx.lineWidth   = (line.size || 4) * 3;
+        ctx.lineWidth = (line.size || 4) * 3;
         ctx.globalAlpha = 0.3;
       } else {
         ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = line.color || '#ffffff';
-        ctx.lineWidth   = line.size || 4;
+        ctx.lineWidth = line.size || 4;
         ctx.globalAlpha = 1;
       }
 
@@ -110,8 +110,8 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     return {
-      x: ((e.clientX - rect.left) / rect.width)  * canvas.width,
-      y: ((e.clientY - rect.top)  / rect.height) * canvas.height,
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
     };
   }
 
@@ -183,8 +183,8 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#d4af37' }}>
-              <rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/>
-              <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              <rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
             <span style={{ fontSize: 14, fontWeight: 700, color: '#f0e6d3' }}>Live Whiteboard</span>
             <span style={{
@@ -287,7 +287,7 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
         )}
 
         {/* Canvas area */}
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111827' }}>
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#0a0a0a' }}>
           <canvas
             ref={canvasRef}
             width={1920}
@@ -309,7 +309,7 @@ export default function Whiteboard({ onClose, socket, socketReady, roomCode, isH
             <div style={{
               position: 'absolute',
               left: `${(laser.x / 1920) * 100}%`,
-              top:  `${(laser.y / 1080) * 100}%`,
+              top: `${(laser.y / 1080) * 100}%`,
               width: 18, height: 18,
               borderRadius: '50%',
               background: '#ef4444',
