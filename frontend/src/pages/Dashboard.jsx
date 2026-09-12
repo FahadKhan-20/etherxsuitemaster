@@ -114,7 +114,11 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: '100%', maxWidth: 'max-content' }}>
                 <button
-                  onClick={() => navigate(`/join?code=${user.roomSlug}`)}
+                  onClick={() => {
+                    sessionStorage.setItem('etherx_host_room', user.roomSlug);
+                    sessionStorage.setItem('etherx_meet_start', String(Date.now()));
+                    navigate(`/room/${user.roomSlug}`);
+                  }}
                   style={{ background: GRADIENT_CTA, border: 'none', color: '#111', fontWeight: 700, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140 }}
                 >
                   <Plus size={15} /> Open My Room
