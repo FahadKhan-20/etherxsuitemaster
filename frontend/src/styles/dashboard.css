@@ -38,7 +38,7 @@
 /* Responsive Grids for All Mobile Models */
 .dashboard-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -54,6 +54,7 @@
   .dashboard-stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
   .dashboard-main-grid {
     grid-template-columns: 1fr;
   }
@@ -127,4 +128,3 @@
 .font-syne {
   font-family: 'Inter', sans-serif;
 }
-
