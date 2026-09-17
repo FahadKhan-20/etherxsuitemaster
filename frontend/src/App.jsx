@@ -36,10 +36,10 @@ function AppRoutes() {
         <Route path={ROUTES.REGISTER}        element={<Register />} />
         <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
         <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
+        <Route path={ROUTES.ROOM}        element={<Room />} />
         <Route element={<ProtectedRoute />}>
           <Route path={ROUTES.HOME}        element={<Landing />} />
           <Route path={ROUTES.JOIN}        element={<Join />} />
-          <Route path={ROUTES.ROOM}        element={<Room />} />
           <Route path={ROUTES.DASHBOARD}   element={<Dashboard />} />
           <Route path={ROUTES.RECORDINGS}  element={<Recordings />} />
           <Route path={ROUTES.ANALYTICS}   element={<Analytics />} />

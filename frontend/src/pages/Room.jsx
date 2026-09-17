@@ -1,7 +1,7 @@
 // frontend/src/pages/Room.jsx
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { useUser } from '../context/UserContext';
+import { useUserContext } from '../context/UserContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import VideoRoom from '../components/video/VideoRoom';
 import VideoCanvasProcessor from '../components/video/VideoCanvasProcessor';
@@ -63,7 +63,7 @@ export default function Room() {
 
   const { code } = useParams();
   const navigate = useNavigate();
-  const { user, updateUser } = useUser();
+  const { user, updateUser } = useUserContext();
 
   const [hasJoined, setHasJoined] = useState(false);
   const [displayName, setDisplayName] = useState('');
