@@ -924,7 +924,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                     cursor: 'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
                     {p.stream && !p.videoOff ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} />
+                      <VideoTile stream={p.stream} userName={pName} isMuted={!!p.audioMuted} isCameraOff={false} />
                     ) : (
                       <div style={{
                         width: 130, height: 130, borderRadius: '50%',
@@ -958,7 +958,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].audioMuted} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
                   <VideoTile
@@ -984,7 +984,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {peerList.map(([id, p]) => (
                     <div key={id} onClick={() => setSpotlightId(spotlightId === id ? null : id)} style={{ width: 120, height: 80, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${spotlightId === id ? '#d4af37' : 'rgba(212,175,55,.15)'}`, flexShrink: 0 }}>
-                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={false} isCameraOff={!p.stream || !!p.videoOff} isSmall />
+                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={!!p.audioMuted} isCameraOff={!p.stream || !!p.videoOff} isSmall />
                     </div>
                   ))}
                 </div>

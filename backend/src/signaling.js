@@ -88,9 +88,12 @@ function applyWhiteboardOp(board, op) {
 function setupSignaling(httpServer, allowedOrigin) {
   const io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigin,
+      origin: '*',
       methods: ['GET', 'POST'],
     },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    transports: ['websocket'],
   });
 
   io.on('connection', (socket) => {
@@ -401,6 +404,10 @@ function setupSignaling(httpServer, allowedOrigin) {
      */
     socket.on('camera-toggled', ({ roomCode, isOff }) => {
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
+    });
+
+    socket.on('mic-toggled', ({ roomCode, isMuted }) => {
+      socket.to(roomCode).emit('mic-toggled', { socketId: socket.id, isMuted });
     });
 
     // ── Feature: Live Collaborative Whiteboard ────────────────────────────────

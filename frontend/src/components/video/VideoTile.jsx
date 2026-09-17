@@ -25,6 +25,7 @@ export default function VideoTile({
   bgImage = 'none',
 }) {
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
   const initial  = (userName || 'A').charAt(0).toUpperCase();
   const color    = avatarColor(initial);
   const hasVideo = stream && stream.getVideoTracks().length > 0;
@@ -36,6 +37,22 @@ export default function VideoTile({
       videoRef.current.play().catch(() => {});
     }
   }, [stream, filter, bgImage]);
+
+  // For remote participants: play audio via a dedicated <audio> element
+  // so audio is never blocked regardless of video mute state or effects.
+  useEffect(() => {
+    if (!isLocal && stream && audioRef.current) {
+      audioRef.current.srcObject = stream;
+      audioRef.current.play().catch(() => {});
+    }
+  }, [stream, isLocal]);
+
+  // Sync mute state to audio element
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
 
   const hasEffects = (filter && filter !== 'none') || (bgImage && bgImage !== 'none');
 
@@ -52,6 +69,7 @@ export default function VideoTile({
           boxShadow: hasWallet ? '0 0 12px rgba(124,58,237,0.3)' : 'none',
         }}
       >
+        {!isLocal && <audio ref={audioRef} autoPlay style={{ display: 'none' }} />}
         {hasWallet && (
           <div style={{
             position:'absolute', top:4, right:4, zIndex:10,
@@ -65,7 +83,7 @@ export default function VideoTile({
           hasEffects ? (
             <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
           ) : (
-            <video ref={videoRef} autoPlay playsInline muted={isLocal}
+            <video ref={videoRef} autoPlay playsInline muted
               disablePictureInPicture disableRemotePlayback
               style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
           )
@@ -116,12 +134,13 @@ export default function VideoTile({
       background: bgImage === 'none' ? 'transparent' : `url(${bgImage}) center/cover`,
       transition: 'background 0.3s'
     }}>
+      {!isLocal && <audio ref={audioRef} autoPlay style={{ display: 'none' }} />}
 
       {hasVideo && !isCameraOff ? (
         hasEffects ? (
           <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
         ) : (
-          <video ref={videoRef} autoPlay playsInline muted={isLocal}
+          <video ref={videoRef} autoPlay playsInline muted
             disablePictureInPicture disableRemotePlayback
             style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
         )

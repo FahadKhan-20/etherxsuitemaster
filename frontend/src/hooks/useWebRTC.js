@@ -6,16 +6,8 @@ import { useWallet } from '../context/WalletContext';
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
 ];
 
 /**
@@ -27,6 +19,20 @@ const ICE_SERVERS = [
  * @param {object} [opts]    - Options object.
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
  */
+// Prioritize Opus codec and set stereo + high bitrate in SDP
+function setOpusParams(sdp) {
+  const lines = sdp.split('\r\n');
+  const opusPayload = lines
+    .find(l => l.includes('a=rtpmap') && l.toLowerCase().includes('opus'))
+    ?.match(/:(\d+) /)?.[1];
+  if (!opusPayload) return sdp;
+  const fmtpLine = `a=fmtp:${opusPayload} minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=128000`;
+  const filtered = lines.filter(l => !l.startsWith(`a=fmtp:${opusPayload}`));
+  const rtpmapIdx = filtered.findIndex(l => l.includes(`a=rtpmap:${opusPayload}`));
+  if (rtpmapIdx !== -1) filtered.splice(rtpmapIdx + 1, 0, fmtpLine);
+  return filtered.join('\r\n');
+}
+
 export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const { account } = useWallet();
   const storedUser = getStoredUser();
@@ -134,22 +140,47 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
     const init = async () => {
       let stream;
+      const audioConstraints = {
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        sampleRate: { ideal: 48000 },
+        sampleSize: { ideal: 16 },
+        channelCount: { ideal: 1 },
+        latency: { ideal: 0 },
+      };
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: audioConstraints });
       } catch {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
         } catch {
           setConnectionError('Could not access camera or microphone.');
           return;
         }
       }
+      // Force-apply constraints on the actual track after acquisition
+      try {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          await audioTrack.applyConstraints({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            latency: 0,
+          });
+        }
+      } catch { }
 
       if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      const socket = io(import.meta.env.VITE_API_BASE_URL, { transports: ['websocket', 'polling'] });
+      const socket = io(import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000', {
+        transports: ['websocket'],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
       socketRef.current = socket;
       setSocketReady(true);
 
@@ -185,8 +216,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           });
           setPeers(prev => ({ ...prev, [u.socketId]: { userName: u.userName, userId: u.userId, stream: null } }));
           const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('offer', { to: u.socketId, offer });
+          const optimizedOffer = new RTCSessionDescription({ type: offer.type, sdp: setOpusParams(offer.sdp) });
+          await pc.setLocalDescription(optimizedOffer);
+          socket.emit('offer', { to: u.socketId, offer: optimizedOffer });
         }
       });
 
@@ -200,8 +232,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         });
         await pc.setRemoteDescription(offer);
         const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('answer', { to: from, answer });
+        const optimizedAnswer = new RTCSessionDescription({ type: answer.type, sdp: setOpusParams(answer.sdp) });
+        await pc.setLocalDescription(optimizedAnswer);
+        socket.emit('answer', { to: from, answer: optimizedAnswer });
       });
 
       socket.on('answer', async ({ from, answer }) => {
@@ -271,6 +304,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       socket.on('camera-toggled', ({ socketId, isOff }) => {
         setPeers(prev => prev[socketId]
           ? { ...prev, [socketId]: { ...prev[socketId], videoOff: isOff } }
+          : prev);
+      });
+
+      socket.on('mic-toggled', ({ socketId, isMuted }) => {
+        setPeers(prev => prev[socketId]
+          ? { ...prev, [socketId]: { ...prev[socketId], audioMuted: isMuted } }
           : prev);
       });
 
@@ -375,9 +414,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Core media controls ─────────────────────────────────────────────────────
 
   const toggleMic = useCallback(() => {
-    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
-    setMicMuted(m => !m);
-  }, []);
+    const audioTracks = localStreamRef.current?.getAudioTracks();
+    if (!audioTracks?.length) return;
+    const newMuted = audioTracks[0].enabled; // will be toggled to !enabled
+    audioTracks.forEach(t => { t.enabled = !t.enabled; });
+    setMicMuted(newMuted);
+    socketRef.current?.emit('mic-toggled', { roomCode, isMuted: newMuted });
+  }, [roomCode]);
 
   const toggleCamera = useCallback(async () => {
     if (!cameraOff) {
