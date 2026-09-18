@@ -79,7 +79,7 @@ export default function Dashboard() {
       <div style={{ minHeight: '100dvh', color: '#f0f0f0', position: 'relative', background: '#000000' }}>
         <TopBar />
 
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px 60px' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px 12px 60px' }}>
 
           {/* ── HERO ── */}
           <motion.div

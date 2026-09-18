@@ -429,6 +429,15 @@ export const AUTH_CSS = `
     .auth-corner-logo {
       width: 90px;
     }
+    .auth-form-title {
+      font-size: 18px;
+    }
+    .auth-social-group {
+      grid-template-columns: 1fr;
+    }
+    .auth-input {
+      font-size: 13px;
+    }
   }
 `;
 

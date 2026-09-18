@@ -26,6 +26,38 @@ body { background: #000000 !important; color: var(--text); }
   .grid-cols-2, .grid-cols-3, .grid-cols-4 {
     grid-template-columns: 1fr !important;
   }
+
+  /* Bottom bar — wrap and shrink on mobile */
+  .bb {
+    flex-wrap: wrap;
+    height: auto !important;
+    min-height: 56px;
+    padding: 6px 8px !important;
+    gap: 6px !important;
+  }
+  .bb-clusters { gap: 4px !important; min-width: 0; overflow-x: auto; }
+  .bb-cluster { padding: 3px !important; gap: 1px !important; }
+  .bb-btn { height: 32px !important; min-width: 32px !important; padding: 0 5px !important; font-size: 11px !important; }
+  .bb-end { padding: 0 10px !important; height: 34px !important; font-size: 11.5px !important; }
+  .bb-time { font-size: 10px !important; padding: 4px 7px !important; height: 28px !important; }
+  .bb-view { display: none !important; }
+
+  /* Right rail — full width overlay on mobile */
+  .rr {
+    width: 100% !important;
+    flex: none !important;
+    max-height: 50vh;
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+  }
+  .rr-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .rr-tab { white-space: nowrap; padding: 8px 10px !important; font-size: 11px !important; }
+
+  /* Top bar chain card — hide on very small screens */
+  .tb-chain { display: none !important; }
+
+  /* Sidebar — full width on mobile */
+  .sb { width: 100% !important; flex: none !important; }
 }
 
 video::-webkit-media-controls,

@@ -496,3 +496,49 @@
     justify-self: center;
   }
 }
+
+@media (max-width: 768px) {
+  .gmeet-controls {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .gmeet-controls-left { justify-self: center; }
+  .gmeet-controls-center { justify-self: center; gap: 8px; }
+  .gmeet-controls-right { justify-self: center; }
+  .gmeet-control-btn { width: 42px; height: 42px; }
+  .gmeet-control-btn svg { width: 18px; height: 18px; }
+  .leave-btn { min-width: 76px; height: 42px; font-size: 13px; }
+
+  .gmeet-topbar {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .gmeet-topbar-left {
+    max-width: 120px;
+    font-size: 11px;
+  }
+
+  .gmeet-side-panel {
+    width: 100%;
+    top: auto;
+    bottom: 0;
+    height: 60vh;
+    border-left: none;
+    border-top: 1px solid var(--nm-shadow-gold);
+    transform: translateY(100%);
+  }
+  .gmeet-side-panel.is-open {
+    transform: translateY(0);
+  }
+
+  .etherx-room-logo {
+    height: 70px;
+    top: 8px;
+    left: 10px;
+  }
+  .etherx-room-logo img {
+    height: 70px;
+  }
+}

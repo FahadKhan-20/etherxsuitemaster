@@ -573,5 +573,15 @@
     width: 42px;
     height: 42px;
   }
+  .meet-clock {
+    display: none;
+  }
+  .meet-nav-right {
+    gap: 6px;
+  }
+  .meet-help {
+    padding: 0 10px;
+    font-size: 12px;
+  }
 }
 

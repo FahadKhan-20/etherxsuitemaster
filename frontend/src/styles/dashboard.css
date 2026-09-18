@@ -67,6 +67,14 @@
   }
 }
 
+/* Dashboard hero buttons — full width on small screens */
+@media (max-width: 480px) {
+  .dashboard-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
 /* App Color Variables */
 :root {
   --app-bg: #000000;

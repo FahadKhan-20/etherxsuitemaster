@@ -100,13 +100,13 @@ export default function Settings() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-10"
+          className="mb-6 md:mb-10"
         >
           <div className="flex items-center gap-3 mb-2">
-            <SettingsIcon className="h-8 w-8 text-indigo-400" />
-            <h1 className="text-4xl font-bold font-syne">Settings</h1>
+            <SettingsIcon className="h-6 w-6 md:h-8 md:w-8 text-indigo-400" />
+            <h1 className="text-2xl md:text-4xl font-bold font-syne">Settings</h1>
           </div>
-          <p className="text-white/50 mt-1">Manage your profile, devices, and preferences</p>
+          <p className="text-white/50 mt-1 text-sm">Manage your profile, devices, and preferences</p>
         </motion.div>
 
         <Tabs
@@ -542,9 +542,9 @@ export default function Settings() {
  */
 function SettingCard({ title, description, children }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold text-white">{title}</h3>
+    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
+      <div className="mb-4 sm:mb-6">
+        <h3 className="text-lg sm:text-xl font-semibold text-white">{title}</h3>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
       {children}
@@ -557,12 +557,14 @@ function SettingCard({ title, description, children }) {
  */
 function SettingToggle({ label, description, enabled = false, onChange }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-white font-medium">{label}</p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+    <div className="flex items-start sm:items-center justify-between gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-medium text-sm sm:text-base">{label}</p>
+        <p className="text-xs sm:text-sm text-white/50 mt-1">{description}</p>
       </div>
-      <Switch checked={enabled} onChange={onChange} />
+      <div className="flex-shrink-0 mt-1 sm:mt-0">
+        <Switch checked={enabled} onChange={onChange} />
+      </div>
     </div>
   );
 }

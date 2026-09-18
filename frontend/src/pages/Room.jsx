@@ -310,6 +310,16 @@ export default function Room() {
             height: 42px !important;
           }
         }
+        @media (max-width: 400px) {
+          .room-lobby-left {
+            padding: 16px 12px;
+          }
+          .ctrl-btn {
+            width: 38px !important;
+            height: 38px !important;
+            border-radius: 10px !important;
+          }
+        }
       `}</style>
 
       <div className="glow-grid" />
@@ -706,12 +716,14 @@ export default function Room() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1000,
           background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '16px'
         }}>
           <div style={{
-            width: '740px', height: '500px', background: '#121214',
+            width: '100%', maxWidth: '740px', height: 'min(500px, 90dvh)',
+            background: '#121214',
             border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px',
-            display: 'grid', gridTemplateColumns: '220px 1fr', overflow: 'hidden',
+            display: 'grid', gridTemplateColumns: 'min(220px, 35%) 1fr', overflow: 'hidden',
             boxShadow: '0 24px 64px rgba(0,0,0,0.8)'
           }}>
             {/* Left menu */}

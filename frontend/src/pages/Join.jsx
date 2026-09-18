@@ -345,7 +345,7 @@ export default function Join() {
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setAvatarColor(color.name)}
                       className={`
-                        w-12 h-12 rounded-full ${color.bg}
+                        w-9 h-9 sm:w-12 sm:h-12 rounded-full ${color.bg}
                         flex items-center justify-center
                         transition-all duration-200
                         ${avatarColor === color.name 
@@ -355,7 +355,7 @@ export default function Join() {
                       `}
                     >
                       {avatarColor === color.name && (
-                        <Check className="w-6 h-6 text-white" />
+                        <Check className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                       )}
                     </motion.button>
                   ))}
