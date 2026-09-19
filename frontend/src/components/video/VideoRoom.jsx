@@ -73,6 +73,20 @@ const CONFETTI = Array.from({ length: 80 }).map((_, i) => ({
   round: i % 3 === 0, rot: (i * 47) % 360, d: 1.5 + (i % 5) * 0.4, delay: (i * 0.05) % 2,
 }));
 
+// Plays one remote participant's audio, independent of their video tile. Tiles
+// only mount a <video> while the camera is on, so without this a teammate with
+// their camera off (or joined audio-only) would be completely silent.
+function RemoteAudio({ stream }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && stream) {
+      ref.current.srcObject = stream;
+      ref.current.play().catch(() => { });
+    }
+  }, [stream]);
+  return <audio ref={ref} autoPlay />;
+}
+
 export default function VideoRoom({ roomCode, isHost }) {
   const navigate = useNavigate();
   const { account } = useWallet();
@@ -1144,6 +1158,9 @@ export default function VideoRoom({ roomCode, isHost }) {
           <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ background: '#b8860b', border: 'none', color: '#f0e6d3', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Back to Dashboard</button>
         </div>
       )}
+
+      {/* One audio element per remote peer — the only place remote voice is played. */}
+      {peerList.map(([id, p]) => (p.stream ? <RemoteAudio key={id} stream={p.stream} /> : null))}
 
       {toast && (
         <div style={{ position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1100, background: 'rgba(5,5,5,.85)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 12, padding: '12px 24px', color: '#f0e6d3', fontSize: 13, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', gap: 10, animation: 'slideDown .3s ease-out forwards', fontFamily: "'Sora',sans-serif" }}>

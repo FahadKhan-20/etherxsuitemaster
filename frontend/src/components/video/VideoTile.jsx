@@ -25,15 +25,15 @@ export default function VideoTile({
   bgImage = 'none',
 }) {
   const videoRef = useRef(null);
-  const initial  = (userName || 'A').charAt(0).toUpperCase();
-  const color    = avatarColor(initial);
+  const initial = (userName || 'A').charAt(0).toUpperCase();
+  const color = avatarColor(initial);
   const hasVideo = stream && stream.getVideoTracks().length > 0;
   const cssFilter = filter === 'blur' ? 'blur(8px)' : filter === 'half-blur' ? 'blur(4px)' : 'none';
 
   useEffect(() => {
     if (videoRef.current && stream && filter === 'none' && bgImage === 'none') {
       videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
+      videoRef.current.play().catch(() => { });
     }
   }, [stream, filter, bgImage]);
 
@@ -54,18 +54,18 @@ export default function VideoTile({
       >
         {hasWallet && (
           <div style={{
-            position:'absolute', top:4, right:4, zIndex:10,
-            background:'rgba(124,58,237,0.85)',
-            borderRadius:999, padding:'2px 6px',
-            fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.05em',
-            pointerEvents:'none',
+            position: 'absolute', top: 4, right: 4, zIndex: 10,
+            background: 'rgba(124,58,237,0.85)',
+            borderRadius: 999, padding: '2px 6px',
+            fontSize: 9, fontWeight: 700, color: '#fff', letterSpacing: '0.05em',
+            pointerEvents: 'none',
           }}>✦ Verified</div>
         )}
         {hasVideo && !isCameraOff ? (
           hasEffects ? (
             <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
           ) : (
-            <video ref={videoRef} autoPlay playsInline muted={isLocal}
+            <video ref={videoRef} autoPlay playsInline muted
               disablePictureInPicture disableRemotePlayback
               style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
           )
@@ -99,7 +99,7 @@ export default function VideoTile({
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <svg viewBox="0 0 24 24" width={10} height={10}>
-              <line x1="3" y1="3" x2="21" y2="21" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+              <line x1="3" y1="3" x2="21" y2="21" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           </div>
         )}
@@ -121,7 +121,7 @@ export default function VideoTile({
         hasEffects ? (
           <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
         ) : (
-          <video ref={videoRef} autoPlay playsInline muted={isLocal}
+          <video ref={videoRef} autoPlay playsInline muted
             disablePictureInPicture disableRemotePlayback
             style={{ width: '100%', height: '100%', objectFit: 'cover', outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
         )
