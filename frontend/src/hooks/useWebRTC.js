@@ -70,6 +70,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
+  // pollNotifications: popup shown to everyone EXCEPT the poll's creator the
+  // moment a poll is launched. Auto-dismisses after 15s.
+  const [pollNotifications, setPollNotifications] = useState([]);
 
   // ── Feature: File Sharing ──────────────────────────────────────────────────
   const [sharedFiles, setSharedFiles] = useState([]); // [{id, name, size, type, url, sharedBy, sharedAt}]
@@ -303,6 +306,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // A new poll was created
       socket.on('poll-created', (poll) => {
         setPolls(prev => [...prev, poll]);
+        if (poll.createdById !== socket.id) {
+          setPollNotifications(prev => [...prev, poll]);
+          setTimeout(() => {
+            setPollNotifications(prev => prev.filter(p => p.id !== poll.id));
+          }, 15000);
+        }
       });
 
       // A poll was updated (vote or end)
@@ -632,6 +641,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socket.emit('share-file', { roomCode, file });
   }, [roomCode]);
 
+  /** Dismiss a poll popup notification before its 15s auto-timeout. */
+  const dismissPollNotification = useCallback((id) => {
+    setPollNotifications(prev => prev.filter(p => p.id !== id));
+  }, []);
+
   /** Dismiss a file-share popup notification before its 8s auto-timeout. */
   const dismissFileNotification = useCallback((id) => {
     setFileNotifications(prev => prev.filter(f => f.id !== id));
@@ -685,9 +699,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Feature: Media Share
     sharedMediaUrl, shareMedia,
     // Feature 7: Polls
-    polls, createPoll, votePoll, endPoll,
+    polls, createPoll, votePoll, endPoll, pollNotifications, dismissPollNotification,
     // Feature: File Sharing
-    sharedFiles, shareFile,
+    sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     // Feature: Meeting Agenda
     agendaItems, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
     // Socket ref — exposed so panels can subscribe to room-scoped events

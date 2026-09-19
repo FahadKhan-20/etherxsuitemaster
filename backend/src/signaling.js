@@ -231,8 +231,11 @@ function setupSignaling(httpServer, allowedOrigin) {
      * Create a new poll for the room. Broadcasts the poll to all participants.
      */
     socket.on('create-poll', ({ roomCode, question, options }) => {
+      const user = rooms.get(roomCode)?.get(socket.id);
       const poll = {
         id: Date.now(),
+        createdBy: user?.userName || 'Host',
+        createdById: socket.id,
         question,
         options: options.map(t => ({ text: t, voters: [] })),
         active: true,

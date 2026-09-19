@@ -152,6 +152,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
+    pollNotifications, dismissPollNotification,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
@@ -388,7 +389,23 @@ export default function VideoRoom({ roomCode, isHost }) {
         </button>
       )}
 
-      {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
+      {/* Poll popups — shown to every participant except the creator the moment a poll is launched (see useWebRTC's pollNotifications). */}
+      {pollNotifications?.length > 0 && (
+        <div style={{ position: 'fixed', top: 90, right: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+          {pollNotifications.map(poll => (
+            <div key={poll.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>📊 {poll.createdBy} started a poll</span>
+                <button onClick={() => dismissPollNotification(poll.id)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '8px 0 10px' }}>{poll.question}</p>
+              <button onClick={() => { setPanelTab('polls'); setChatOpen(true); dismissPollNotification(poll.id); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Vote now</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* File-share popups— auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
       {fileNotifications?.length > 0 && (
         <div style={{ position: 'fixed', top: 90, left: '50%', transform: 'translateX(-50%)', zIndex: 250, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', pointerEvents: 'none' }}>
           {fileNotifications.map(file => {
