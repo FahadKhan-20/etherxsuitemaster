@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LayoutDashboard, QrCode, Scan, Copy, Check } from 'lucide-react';
+import { LayoutDashboard, QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import etherxLogo from '../assets/etherx_transparent.png';
@@ -380,16 +380,16 @@ export default function Landing() {
                   onClick={() => setMicMuted((value) => !value)}
                   aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
                 >
-                  {micMuted ? <MicOffIcon /> : <MicOnIcon />}
+                  {micMuted ? <MicOff /> : <Mic />}
                 </button>
 
                 <button
                   type="button"
-                  className="meet-control-btn"
+                  className={`meet-control-btn ${cameraOn ? '' : 'is-muted'}`}
                   onClick={handleCameraToggle}
                   aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
                 >
-                  <CameraIcon />
+                  {cameraOn ? <Video /> : <VideoOff />}
                 </button>
 
 
