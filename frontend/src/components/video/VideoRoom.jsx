@@ -140,8 +140,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const qnaHostClaimRef = useRef(false);
 
   useEffect(() => {
-    const start = parseInt(sessionStorage.getItem('NxtMeet_start') || sessionStorage.getItem('etherx_meet_start') || String(Date.now()), 10);
-    sessionStorage.setItem('NxtMeet_start', String(start));
+    const start = Date.now(); // stopwatch starts at 00:00 every time you enter a meeting
     const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(t);
   }, []);
