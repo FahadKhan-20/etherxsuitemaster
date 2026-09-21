@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const MeetingRoom = require('../models/MeetingRoom');
 const ChatMessage = require('../models/ChatMessage');
+const { getSessionStart } = require('../signaling');
 
 const router = express.Router();
 
@@ -13,7 +14,13 @@ router.get('/chat/:roomCode', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid room code.' });
     }
 
-    const messages = await ChatMessage.find({ roomCode }).sort({ createdAt: 1 }).lean();
+    // Only this meeting's messages — a reused room code must not show earlier meetings' chats.
+    const sessionStart = getSessionStart(roomCode);
+    if (!sessionStart) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const messages = await ChatMessage.find({ roomCode, createdAt: { $gte: sessionStart } }).sort({ createdAt: 1 }).lean();
 
     return res.json({ success: true, data: messages });
   } catch (error) {

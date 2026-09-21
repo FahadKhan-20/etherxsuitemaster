@@ -31,6 +31,19 @@ const roomWhiteboards = new Map();
 // roomCode -> socketId of the participant currently sharing their screen (one presenter at a time)
 const roomScreenShares = new Map();
 
+// roomCode (lowercase) -> { startedAt: Date, emptySince: number|null }
+// A "session" begins when the first person joins an EMPTY room. Chat and Q&A are shown per session,
+// so re-using a room code (e.g. "Open My Room") doesn't bring back the previous meeting's history.
+// A quick rejoin (page refresh) within the grace period continues the same session.
+const SESSION_GRACE_MS = Number(process.env.SESSION_GRACE_MS) || 10 * 60 * 1000;
+const roomSessions = new Map();
+
+/** Start time of the room's current session, or null if nobody is (recently) in the room. */
+function getSessionStart(roomCode) {
+  const sess = roomSessions.get(String(roomCode || '').toLowerCase());
+  return sess ? sess.startedAt : null;
+}
+
 /**
  * Apply a whiteboard operation to the in-memory room state. This mirrors the
  * frontend's operation model so late joiners receive an accurate board.
@@ -105,6 +118,18 @@ function setupSignaling(httpServer, allowedOrigin) {
 
       if (!rooms.has(roomCode)) rooms.set(roomCode, new Map());
       const room = rooms.get(roomCode);
+
+      // Start a new session if this room was empty for longer than the grace period (or never seen)
+      {
+        const key = String(roomCode).toLowerCase();
+        const sess = roomSessions.get(key);
+        const now = Date.now();
+        if (!sess || (room.size === 0 && sess.emptySince && now - sess.emptySince > SESSION_GRACE_MS)) {
+          roomSessions.set(key, { startedAt: new Date(now), emptySince: null });
+        } else {
+          sess.emptySince = null;
+        }
+      }
 
       // First participant to join becomes the host/presenter
       if (!roomHosts.has(roomCode)) {
@@ -479,6 +504,18 @@ function setupSignaling(httpServer, allowedOrigin) {
         rooms.get(currentRoom).delete(socket.id);
         if (rooms.get(currentRoom).size === 0) {
           rooms.delete(currentRoom);
+
+          // Room is empty: remember when, so a quick rejoin keeps the session and a later one starts fresh
+          const sessKey = String(currentRoom).toLowerCase();
+          const sess = roomSessions.get(sessKey);
+          if (sess) {
+            sess.emptySince = Date.now();
+            const timer = setTimeout(() => {
+              const s = roomSessions.get(sessKey);
+              if (s && s.emptySince && Date.now() - s.emptySince >= SESSION_GRACE_MS) roomSessions.delete(sessKey);
+            }, SESSION_GRACE_MS + 1000);
+            if (timer.unref) timer.unref();
+          }
           // Clean up room-level state when last participant leaves
           roomNotes.delete(currentRoom);
           roomPolls.delete(currentRoom);
@@ -509,4 +546,4 @@ function setupSignaling(httpServer, allowedOrigin) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms };
+module.exports = { setupSignaling, rooms, getSessionStart };

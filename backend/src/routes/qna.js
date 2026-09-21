@@ -3,6 +3,7 @@ const router = express.Router();
 const Question = require('../models/Question');
 const MeetingRoom = require('../models/MeetingRoom');
 const auth = require('../middleware/auth');
+const { getSessionStart } = require('../signaling');
 
 const MAX_QUESTION_LENGTH = 500;
 const MIN_QUESTION_LENGTH = 3;
@@ -35,7 +36,13 @@ router.get('/:roomCode/questions', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid room code.' });
     }
 
-    const questions = await Question.find({ roomCode: roomCode.toLowerCase() })
+    // Only this meeting's questions — a reused room code must not show earlier meetings' Q&A.
+    const sessionStart = getSessionStart(roomCode);
+    if (!sessionStart) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const questions = await Question.find({ roomCode: roomCode.toLowerCase(), createdAt: { $gte: sessionStart } })
       .sort({ upvotes: -1, createdAt: -1 })
       .lean();
 
