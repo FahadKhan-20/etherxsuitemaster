@@ -274,9 +274,9 @@ export default function VideoRoom({ roomCode, isHost }) {
     const myId = String(getStoredUser()?.id || '');
     const onQuestion = (q) => {
       if (!q || (myId && String(q.userId) === myId)) return; // my own question
-      if (qnaVisibleRef.current) return;                      // panel is open — it updates live
+
       const id = String(q._id);
-      setQnaUnread(n => n + 1);
+      if (!qnaVisibleRef.current) setQnaUnread(n => n + 1);
       setQnaAlerts(prev => (prev.some(a => a.id === id) ? prev : [...prev, { id, userName: q.userName, text: q.text }]));
       setTimeout(() => setQnaAlerts(prev => prev.filter(a => a.id !== id)), 15000);
     };
