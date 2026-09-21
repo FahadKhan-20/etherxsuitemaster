@@ -92,6 +92,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const screenStreamRef = useRef(null);
   const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
   const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
+  // Ref that always points to the latest toggleScreenShare so the
+  // screenTrack.onended handler never captures a stale closure.
+  const toggleScreenShareRef = useRef(null);
 
   // ── Peer connection factory ─────────────────────────────────────────────────
   const createPC = useCallback((socketId, onStream) => {
@@ -483,28 +486,59 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
+      // ── STOP screen share ──────────────────────────────────────────────────
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
-      if (camTrack) {
-        Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(camTrack);
-        });
-      }
+      Object.values(pcsRef.current).forEach(async pc => {
+        // Find the video sender — may have a null track when camera is off
+        const sender = pc.getSenders().find(
+          s => s.track?.kind === 'video' || s.track === null
+        );
+        if (!sender) return;
+        await sender.replaceTrack(camTrack || null).catch(() => {});
+        // Renegotiate so the remote peer updates its decoder
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          const sid = Object.keys(pcsRef.current).find(k => pcsRef.current[k] === pc);
+          if (sid) socketRef.current?.emit('offer', { to: sid, offer });
+        } catch { }
+      });
       setIsScreenSharing(false);
     } else {
+      // ── START screen share ─────────────────────────────────────────────────
       try {
         const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         screenStreamRef.current = screen;
         const screenTrack = screen.getVideoTracks()[0];
-        Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(screenTrack);
+        Object.values(pcsRef.current).forEach(async pc => {
+          // Match video sender OR a sender whose track is null (camera-off state)
+          let sender = pc.getSenders().find(
+            s => s.track?.kind === 'video' || s.track === null
+          );
+          // If no video sender exists at all, add the track instead
+          if (!sender) {
+            pc.addTrack(screenTrack, screen);
+          } else {
+            await sender.replaceTrack(screenTrack).catch(() => {});
+          }
+          // Renegotiate so the remote peer receives the new screen track
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            const sid = Object.keys(pcsRef.current).find(k => pcsRef.current[k] === pc);
+            if (sid) socketRef.current?.emit('offer', { to: sid, offer });
+          } catch { }
         });
-        screenTrack.onended = () => toggleScreenShare();
+        // Use a ref-based callback so onended never captures a stale closure
+        screenTrack.onended = () => toggleScreenShareRef.current?.();
         setIsScreenSharing(true);
       } catch { }
     }
   }, [isScreenSharing]);
+  // Keep the ref in sync with the latest version of the callback
+  toggleScreenShareRef.current = toggleScreenShare;
 
   // ── Feature 1: Host control emitters ───────────────────────────────────────
 
