@@ -8,6 +8,7 @@ import MeetingAgenda from '../MeetingAgenda';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
+import { getStoredUser } from '../../utils/auth';
 import { useMeeting } from '../../context/MeetingContext';
 import VideoTile from './VideoTile';
 import VideoCanvasProcessor from './VideoCanvasProcessor';
@@ -254,6 +255,34 @@ export default function VideoRoom({ roomCode, isHost }) {
   useEffect(() => {
     if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
   }, [screenSharerId, setSpotlightId]);
+
+  // ── Live Q&A alerts ────────────────────────────────────────────────────────
+  // QnAPanel only listens for new questions while it is mounted (i.e. while the Q&A
+  // tab is open), so listen here too: popup + unread badge for questions from others.
+  const [qnaAlerts, setQnaAlerts] = useState([]);
+  const [qnaUnread, setQnaUnread] = useState(0);
+  const qnaVisibleRef = useRef(false);
+
+  useEffect(() => {
+    qnaVisibleRef.current = chatOpen && panelTab === 'qna';
+    if (qnaVisibleRef.current) { setQnaUnread(0); setQnaAlerts([]); }
+  }, [chatOpen, panelTab]);
+
+  useEffect(() => {
+    const s = socketRef?.current;
+    if (!s) return undefined;
+    const myId = String(getStoredUser()?.id || '');
+    const onQuestion = (q) => {
+      if (!q || (myId && String(q.userId) === myId)) return; // my own question
+      if (qnaVisibleRef.current) return;                      // panel is open — it updates live
+      const id = String(q._id);
+      setQnaUnread(n => n + 1);
+      setQnaAlerts(prev => (prev.some(a => a.id === id) ? prev : [...prev, { id, userName: q.userName, text: q.text }]));
+      setTimeout(() => setQnaAlerts(prev => prev.filter(a => a.id !== id)), 15000);
+    };
+    s.on('qna:question-created', onQuestion);
+    return () => s.off('qna:question-created', onQuestion);
+  }, [socketReady, roomCode, socketRef]);
   const totalP = 1 + peerList.length;
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
@@ -422,6 +451,22 @@ export default function VideoRoom({ roomCode, isHost }) {
           ) : (
             <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
           )}
+        </div>
+      )}
+
+      {/* Q&A popups — new questions from other participants while the Q&A tab is closed */}
+      {qnaAlerts.length > 0 && (
+        <div style={{ position: 'fixed', top: 90, left: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+          {qnaAlerts.map(a => (
+            <div key={a.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>❓ {a.userName || 'Someone'} asked a question</span>
+                <button onClick={() => setQnaAlerts(prev => prev.filter(x => x.id !== a.id))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', margin: '8px 0 10px', wordBreak: 'break-word' }}>{(a.text || '').length > 140 ? `${a.text.slice(0, 140)}…` : a.text}</p>
+              <button onClick={() => { setPanelTab('qna'); setChatOpen(true); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>View question</button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1085,6 +1130,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
               <button onClick={() => { const open = chatOpen && panelTab === 'qna'; if (open) { setChatOpen(false); } else { setChatOpen(true); setPanelTab('qna'); } }} title="Live Q&A" id="qna-toolbar-btn" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'qna' ? 'rgba(212,175,55,.22)' : 'transparent', color: chatOpen && panelTab === 'qna' ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /></svg>
+                {qnaUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{qnaUnread > 9 ? '9+' : qnaUnread}</span>}
               </button>
 
               <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
