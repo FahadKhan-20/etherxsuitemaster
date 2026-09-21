@@ -28,6 +28,9 @@ const roomHosts = new Map();
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
 
+// roomCode -> socketId of the participant currently sharing their screen (one presenter at a time)
+const roomScreenShares = new Map();
+
 /**
  * Apply a whiteboard operation to the in-memory room state. This mirrors the
  * frontend's operation model so late joiners receive an accurate board.
@@ -111,6 +114,12 @@ function setupSignaling(httpServer, allowedOrigin) {
       // Send existing participants to the new joiner
       const existing = Array.from(room.values());
       socket.emit('existing-users', existing);
+
+      // Tell the new joiner if someone is already presenting
+      const sharerId = roomScreenShares.get(roomCode);
+      if (sharerId && room.has(sharerId)) {
+        socket.emit('screen-share-state', { socketId: sharerId });
+      }
 
       // Add new joiner to room
       room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost });
@@ -406,6 +415,30 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
     });
 
+    /**
+     * Screen sharing: one presenter at a time. The client asks for the slot with an
+     * acknowledgement callback; everyone else is told who is presenting.
+     */
+    socket.on('screen-share-start', ({ roomCode } = {}, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      const room = rooms.get(roomCode);
+      if (!room || !room.has(socket.id)) { reply({ ok: false, by: null }); return; }
+      const current = roomScreenShares.get(roomCode);
+      if (current && current !== socket.id && room.has(current)) {
+        reply({ ok: false, by: room.get(current)?.userName || null });
+        return;
+      }
+      roomScreenShares.set(roomCode, socket.id);
+      socket.to(roomCode).emit('screen-share-started', { socketId: socket.id });
+      reply({ ok: true });
+    });
+
+    socket.on('screen-share-stop', ({ roomCode } = {}) => {
+      if (roomScreenShares.get(roomCode) !== socket.id) return;
+      roomScreenShares.delete(roomCode);
+      socket.to(roomCode).emit('screen-share-stopped', { socketId: socket.id });
+    });
+
     // ── Feature: Live Collaborative Whiteboard ────────────────────────────────
 
     /**
@@ -456,9 +489,14 @@ function setupSignaling(httpServer, allowedOrigin) {
 
           roomHosts.delete(currentRoom);
           roomWhiteboards.delete(currentRoom);
+          roomScreenShares.delete(currentRoom);
 
           delete roomLocks[currentRoom];
         }
+      }
+      if (currentRoom && roomScreenShares.get(currentRoom) === socket.id) {
+        roomScreenShares.delete(currentRoom);
+        socket.to(currentRoom).emit('screen-share-stopped', { socketId: socket.id });
       }
       if (currentRoom) {
         socket.to(currentRoom).emit('user-left', { socketId: socket.id });

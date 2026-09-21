@@ -161,6 +161,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     socket, socketReady,
     localStream, peers, micMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
+    screenSharerId, screenShareNotice,
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
@@ -248,6 +249,11 @@ export default function VideoRoom({ roomCode, isHost }) {
   };
 
   const peerList = Object.entries(peers);
+
+  // When someone else starts presenting, put their screen on the main stage
+  useEffect(() => {
+    if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
+  }, [screenSharerId, setSpotlightId]);
   const totalP = 1 + peerList.length;
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
@@ -401,6 +407,22 @@ export default function VideoRoom({ roomCode, isHost }) {
         <button onClick={() => setMediaStageMinimized(false)} style={{ position: 'fixed', top: 90, right: 24, zIndex: 210, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(5,5,5,.95)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 999, padding: '8px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', cursor: 'pointer', color: '#d4af37', fontSize: 12, fontFamily: "'Sora',sans-serif" }}>
           ▶ Shared media
         </button>
+      )}
+
+      {/* Screen-share status: presenter banner (with stop button), viewer label, "already sharing" notice */}
+      {(isScreenSharing || screenSharerId || screenShareNotice) && (
+        <div style={{ position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', zIndex: 260, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 999, background: 'rgba(5,5,5,.92)', backdropFilter: 'blur(14px)', border: '1px solid rgba(212,175,55,.4)', boxShadow: '0 12px 32px -12px rgba(0,0,0,.7)', fontFamily: "'Sora',sans-serif", fontSize: 13, color: '#f0e6d3' }}>
+          {screenShareNotice ? (
+            <span>{screenShareNotice}</span>
+          ) : isScreenSharing ? (
+            <>
+              <span>🖥️ You're sharing your screen</span>
+              <button onClick={toggleScreenShare} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: '#d4af37', color: '#050505', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Stop sharing</button>
+            </>
+          ) : (
+            <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
+          )}
+        </div>
       )}
 
       {/* Poll popups — shown to every participant except the creator the moment a poll is launched (see useWebRTC's pollNotifications). */}
@@ -954,8 +976,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                     overflow: 'hidden',
                     cursor: 'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                    {p.stream && !p.videoOff ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} />
+                    {p.stream && (!p.videoOff || id === screenSharerId) ? (
+                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
                     ) : (
                       <div style={{
                         width: 130, height: 130, borderRadius: '50%',
@@ -989,7 +1011,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
                   <VideoTile
