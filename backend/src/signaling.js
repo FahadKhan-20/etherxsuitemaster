@@ -28,6 +28,9 @@ const roomHosts = new Map();
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
 
+// roomCode -> { startedAt, startedBy } for the browser-side recording session
+const roomRecordings = new Map();
+
 /**
  * Apply a whiteboard operation to the in-memory room state. This mirrors the
  * frontend's operation model so late joiners receive an accurate board.
@@ -121,6 +124,10 @@ function setupSignaling(httpServer, allowedOrigin) {
         selfMuted: false,
         hostMuted: false,
       });
+
+      if (roomRecordings.has(roomCode)) {
+        socket.emit('recording-state', { state: 'recording', startedAt: roomRecordings.get(roomCode).startedAt });
+      }
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', {
@@ -463,6 +470,31 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
     });
 
+    // Recording commands use server-side membership and host state. Client
+    // role flags are intentionally ignored.
+    socket.on('recording-start', ({ roomCode }, acknowledge = () => {}) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
+      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can start recording.' });
+      if (roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'Recording is already active.' });
+      const recording = { startedAt: Date.now(), startedBy: member.userId };
+      roomRecordings.set(roomCode, recording);
+      io.to(roomCode).emit('recording-state', { state: 'recording', startedAt: recording.startedAt });
+      acknowledge({ ok: true });
+    });
+
+    socket.on('recording-stop', ({ roomCode }, acknowledge = () => {}) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
+      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can stop recording.' });
+      if (!roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'No recording is active.' });
+      roomRecordings.delete(roomCode);
+      io.to(roomCode).emit('recording-state', { state: 'idle' });
+      acknowledge({ ok: true });
+    });
+
     // ── Feature: Live Collaborative Whiteboard ────────────────────────────────
 
     /**
@@ -499,9 +531,19 @@ function setupSignaling(httpServer, allowedOrigin) {
     // ── Disconnect ────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
+      const room = currentRoom ? rooms.get(currentRoom) : null;
+      const departing = room?.get(socket.id);
+      const hostLeftWhileRecording = departing
+        && roomHosts.get(currentRoom) === departing.userId
+        && roomRecordings.has(currentRoom);
+
+      if (hostLeftWhileRecording) {
+        roomRecordings.delete(currentRoom);
+      }
+
       if (currentRoom && rooms.has(currentRoom)) {
-        rooms.get(currentRoom).delete(socket.id);
-        if (rooms.get(currentRoom).size === 0) {
+        room.delete(socket.id);
+        if (room.size === 0) {
           rooms.delete(currentRoom);
           // Clean up room-level state when last participant leaves
           roomNotes.delete(currentRoom);
@@ -513,11 +555,15 @@ function setupSignaling(httpServer, allowedOrigin) {
 
           roomHosts.delete(currentRoom);
           roomWhiteboards.delete(currentRoom);
+          roomRecordings.delete(currentRoom);
 
           delete roomLocks[currentRoom];
         }
       }
       if (currentRoom) {
+        if (hostLeftWhileRecording) {
+          socket.to(currentRoom).emit('recording-state', { state: 'idle', error: 'Recording stopped because the host left.' });
+        }
         socket.to(currentRoom).emit('user-left', { socketId: socket.id });
         // Lower hand on disconnect
         socket.to(currentRoom).emit('hand-lowered', { socketId: socket.id });

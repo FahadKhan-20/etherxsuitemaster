@@ -47,6 +47,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [hostMuted, setHostMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
   const [noiseSuppressed, setNoiseSuppressed] = useState(false);
   const [roomLocked, setRoomLockedState] = useState(false);
   const [spotlightId, setSpotlightId] = useState('local');
@@ -565,6 +566,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // ── STOP screen share ──────────────────────────────────────────────────
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
+      setScreenStream(null);
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
 
       const entries = Object.entries(pcsRef.current);
@@ -593,6 +595,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         return;
       }
       screenStreamRef.current = screen;
+      setScreenStream(screen);
       const screenTrack = screen.getVideoTracks()[0];
 
       const entries = Object.entries(pcsRef.current);
@@ -788,7 +791,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Core
     socket: socketRef.current,
     socketReady,
-    localStream, peers,
+    localStream, peers, screenStream,
     micMuted, hostMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
