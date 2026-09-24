@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Plus, TimerReset,
+  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Trash2,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
@@ -53,7 +53,7 @@ const lift = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { scheduledMeetings } = useMeeting();
+  const { scheduledMeetings, cancelScheduledMeeting } = useMeeting();
   const [showScheduler, setShowScheduler] = useState(false);
 
 
@@ -183,9 +183,12 @@ export default function Dashboard() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {upcoming.map((meeting) => (
-                      <motion.button
+                      <motion.div
                         key={meeting.id}
                         {...lift}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') navigate(`/join?code=${meeting.id}`); }}
                         onClick={() => navigate(`/join?code=${meeting.id}`)}
                         style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%' }}
                       >
@@ -204,9 +207,21 @@ export default function Dashboard() {
                           </p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            title="Delete scheduled meeting"
+                            aria-label={`Delete ${meeting.title}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete "${meeting.title}"?`)) cancelScheduledMeeting(meeting.id);
+                            }}
+                            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
                           <span style={{ fontSize: 13, color: GOLD, fontWeight: 600 }}>Join →</span>
                         </div>
-                      </motion.button>
+                      </motion.div>
                     ))}
                   </div>
                 )}
