@@ -44,6 +44,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState({}); // socketId → { userName, userId, stream }
   const [micMuted, setMicMuted] = useState(false);
+  const [hostMuted, setHostMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [noiseSuppressed, setNoiseSuppressed] = useState(false);
@@ -96,8 +97,21 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // screenTrack.onended handler never captures a stale closure.
   const toggleScreenShareRef = useRef(null);
 
+  // ── Per-peer remote stream registry ────────────────────────────────────────
+  // Keeps one stable MediaStream per remote peer so VideoTile's srcObject
+  // never needs to be replaced — we just mutate the track list in place and
+  // force a re-render by updating the peers state with a new stream wrapper.
+  const remoteStreamsRef = useRef({}); // socketId → MediaStream
+
   // ── Peer connection factory ─────────────────────────────────────────────────
+  // createPC creates a NEW RTCPeerConnection for socketId.
+  // For renegotiation on an EXISTING connection use the 'offer' handler below.
   const createPC = useCallback((socketId, onStream) => {
+    // Close any pre-existing PC for this peer before creating a new one
+    if (pcsRef.current[socketId]) {
+      pcsRef.current[socketId].close();
+    }
+
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     if (localStreamRef.current) {
@@ -106,10 +120,25 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       );
     }
 
-    const remoteStream = new MediaStream();
-    pc.ontrack = ({ streams }) => {
-      streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
-      onStream(remoteStream);
+    // Reuse or create a stable MediaStream for this peer.
+    // Reusing the same object means the <video> srcObject stays valid;
+    // we update its tracks in ontrack and force a re-render via onStream.
+    if (!remoteStreamsRef.current[socketId]) {
+      remoteStreamsRef.current[socketId] = new MediaStream();
+    }
+    const remoteStream = remoteStreamsRef.current[socketId];
+
+    pc.ontrack = ({ track, streams }) => {
+      // Replace any existing track of the same kind so we never accumulate
+      // stale camera/screen tracks on the same stream object.
+      remoteStream.getTracks()
+        .filter(t => t.kind === track.kind)
+        .forEach(t => remoteStream.removeTrack(t));
+      remoteStream.addTrack(track);
+      // Notify VideoTile by passing a NEW MediaStream wrapper that contains
+      // the same underlying tracks — this changes the object reference so
+      // VideoTile's useEffect re-runs and reassigns srcObject.
+      onStream(new MediaStream(remoteStream.getTracks()));
     };
 
     pc.onicecandidate = ({ candidate }) => {
@@ -123,6 +152,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         pc.close();
         delete pcsRef.current[socketId];
+        delete remoteStreamsRef.current[socketId];
       }
     };
 
@@ -186,21 +216,54 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           const pc = createPC(u.socketId, (remoteStream) => {
             setPeers(prev => ({ ...prev, [u.socketId]: { ...prev[u.socketId], stream: remoteStream } }));
           });
-          setPeers(prev => ({ ...prev, [u.socketId]: { userName: u.userName, userId: u.userId, stream: null } }));
+          setPeers(prev => ({
+            ...prev,
+            [u.socketId]: {
+              userName: u.userName,
+              userId: u.userId,
+              stream: null,
+              isMuted: !!u.selfMuted,
+              mutedByHost: !!u.hostMuted,
+            },
+          }));
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit('offer', { to: u.socketId, offer });
         }
       });
 
-      socket.on('user-joined', ({ socketId, userName: uName, userId: uId }) => {
-        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null } }));
+      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, isMuted, mutedByHost }) => {
+        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null, isMuted: !!isMuted, mutedByHost: !!mutedByHost } }));
       });
 
       socket.on('offer', async ({ from, offer }) => {
-        const pc = createPC(from, (remoteStream) => {
-          setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
-        });
+        // If a PC already exists for this peer it is a renegotiation offer
+        // (e.g. screen-share started). Reuse the existing connection instead
+        // of creating a new one — creating a new PC would destroy the
+        // established ICE connection and lose all existing tracks.
+        let pc = pcsRef.current[from];
+        if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+          pc = createPC(from, (remoteStream) => {
+            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
+          });
+        } else {
+          // Renegotiation: update the ontrack handler so new tracks from the
+          // screen-share are delivered to the correct peers state entry.
+          const onStream = (remoteStream) => {
+            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
+          };
+          if (!remoteStreamsRef.current[from]) {
+            remoteStreamsRef.current[from] = new MediaStream();
+          }
+          const remoteStream = remoteStreamsRef.current[from];
+          pc.ontrack = ({ track }) => {
+            remoteStream.getTracks()
+              .filter(t => t.kind === track.kind)
+              .forEach(t => remoteStream.removeTrack(t));
+            remoteStream.addTrack(track);
+            onStream(new MediaStream(remoteStream.getTracks()));
+          };
+        }
         await pc.setRemoteDescription(offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -218,6 +281,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       socket.on('user-left', ({ socketId }) => {
         pcsRef.current[socketId]?.close();
         delete pcsRef.current[socketId];
+        delete remoteStreamsRef.current[socketId];
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         setSpotlightId(id => id === socketId ? 'local' : id);
         // Remove from hand queue on leave
@@ -226,10 +290,18 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // ── Feature 1: Host controls ────────────────────────────────────────────
 
-      // Host has force-muted us — disable audio tracks and update state
-      socket.on('muted-by-host', () => {
-        localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
-        setMicMuted(true);
+      // Apply a server-authorized host command to the local audio track.
+      socket.on('participant-mute-command', ({ muted, mutedByHost }) => {
+        localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !muted; });
+        setMicMuted(!!muted);
+        setHostMuted(!!mutedByHost);
+      });
+
+      // Keep every remote tile synchronized with effective audio state.
+      socket.on('participant-audio-state', ({ socketId, muted, mutedByHost }) => {
+        setPeers(prev => prev[socketId]
+          ? { ...prev, [socketId]: { ...prev[socketId], isMuted: !!muted, mutedByHost: !!mutedByHost } }
+          : prev);
       });
 
       // Host has kicked us — invoke the caller-supplied callback
@@ -343,6 +415,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       cancelled = true;
       Object.values(pcsRef.current).forEach(pc => pc.close());
       pcsRef.current = {};
+      remoteStreamsRef.current = {};
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       socketRef.current?.disconnect();
@@ -378,9 +451,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Core media controls ─────────────────────────────────────────────────────
 
   const toggleMic = useCallback(() => {
+    if (hostMuted) return;
+    const nextMuted = !micMuted;
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
-    setMicMuted(m => !m);
-  }, []);
+    setMicMuted(nextMuted);
+    socketRef.current?.emit('microphone-state', { roomCode, muted: nextMuted });
+  }, [hostMuted, micMuted, roomCode]);
 
   const toggleCamera = useCallback(async () => {
     if (!cameraOff) {
@@ -490,51 +566,59 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
-      Object.values(pcsRef.current).forEach(async pc => {
-        // Find the video sender — may have a null track when camera is off
+
+      const entries = Object.entries(pcsRef.current);
+      for (const [sid, pc] of entries) {
+        // Find the video sender — may carry null track when camera is off
         const sender = pc.getSenders().find(
           s => s.track?.kind === 'video' || s.track === null
         );
-        if (!sender) return;
-        await sender.replaceTrack(camTrack || null).catch(() => {});
-        // Renegotiate so the remote peer updates its decoder
+        if (!sender) continue;
         try {
+          await sender.replaceTrack(camTrack || null);
+          // Renegotiate so the remote peer switches back to the camera decoder
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          const sid = Object.keys(pcsRef.current).find(k => pcsRef.current[k] === pc);
-          if (sid) socketRef.current?.emit('offer', { to: sid, offer });
+          socketRef.current?.emit('offer', { to: sid, offer });
         } catch { }
-      });
+      }
       setIsScreenSharing(false);
     } else {
       // ── START screen share ─────────────────────────────────────────────────
+      let screen;
       try {
-        const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        screenStreamRef.current = screen;
-        const screenTrack = screen.getVideoTracks()[0];
-        Object.values(pcsRef.current).forEach(async pc => {
-          // Match video sender OR a sender whose track is null (camera-off state)
-          let sender = pc.getSenders().find(
-            s => s.track?.kind === 'video' || s.track === null
-          );
-          // If no video sender exists at all, add the track instead
-          if (!sender) {
-            pc.addTrack(screenTrack, screen);
+        screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      } catch {
+        // User cancelled or permission denied — do nothing
+        return;
+      }
+      screenStreamRef.current = screen;
+      const screenTrack = screen.getVideoTracks()[0];
+
+      const entries = Object.entries(pcsRef.current);
+      for (const [sid, pc] of entries) {
+        // Find the video sender — matches an active video track OR a null
+        // track (camera-off state where replaceTrack(null) was called earlier)
+        const sender = pc.getSenders().find(
+          s => s.track?.kind === 'video' || s.track === null
+        );
+        try {
+          if (sender) {
+            await sender.replaceTrack(screenTrack);
           } else {
-            await sender.replaceTrack(screenTrack).catch(() => {});
+            // No video sender at all — add a new one
+            pc.addTrack(screenTrack, screen);
           }
-          // Renegotiate so the remote peer receives the new screen track
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            const sid = Object.keys(pcsRef.current).find(k => pcsRef.current[k] === pc);
-            if (sid) socketRef.current?.emit('offer', { to: sid, offer });
-          } catch { }
-        });
-        // Use a ref-based callback so onended never captures a stale closure
-        screenTrack.onended = () => toggleScreenShareRef.current?.();
-        setIsScreenSharing(true);
-      } catch { }
+          // Renegotiate so the remote peer's ontrack fires with the screen track
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socketRef.current?.emit('offer', { to: sid, offer });
+        } catch { }
+      }
+
+      // Use a ref-based callback so onended never captures a stale closure
+      screenTrack.onended = () => toggleScreenShareRef.current?.();
+      setIsScreenSharing(true);
     }
   }, [isScreenSharing]);
   // Keep the ref in sync with the latest version of the callback
@@ -544,8 +628,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   /** Host: mute a remote participant by socket ID. */
   const muteParticipant = useCallback((socketId) => {
-    socketRef.current?.emit('mute-participant', { to: socketId });
-  }, []);
+    socketRef.current?.emit('mute-participant', { roomCode, to: socketId });
+  }, [roomCode]);
+
+  /** Host: release a remote participant's host-controlled mute. */
+  const unmuteParticipant = useCallback((socketId) => {
+    socketRef.current?.emit('unmute-participant', { roomCode, to: socketId });
+  }, [roomCode]);
 
   /** Host: remove a remote participant from the room. */
   const kickParticipant = useCallback((socketId) => {
@@ -700,7 +789,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socket: socketRef.current,
     socketReady,
     localStream, peers,
-    micMuted, cameraOff, isScreenSharing,
+    micMuted, hostMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
@@ -708,7 +797,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Waiting Room / Admission
     admitted, denied, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls
-    muteParticipant, kickParticipant, setRoomLocked, roomLocked,
+    muteParticipant, unmuteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,

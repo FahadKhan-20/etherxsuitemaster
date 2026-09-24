@@ -113,10 +113,24 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.emit('existing-users', existing);
 
       // Add new joiner to room
-      room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost });
+      room.set(socket.id, {
+        socketId: socket.id,
+        userId,
+        userName,
+        isHost: roomHosts.get(roomCode) === userId,
+        selfMuted: false,
+        hostMuted: false,
+      });
 
       // Notify everyone else
-      socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName, isHost: !!isHost });
+      socket.to(roomCode).emit('user-joined', {
+        socketId: socket.id,
+        userId,
+        userName,
+        isHost: roomHosts.get(roomCode) === userId,
+        isMuted: false,
+        mutedByHost: false,
+      });
     });
 
     socket.on('offer', ({ to, offer }) => {
@@ -134,11 +148,57 @@ function setupSignaling(httpServer, allowedOrigin) {
     // ── Feature 1: Host Controls ──────────────────────────────────────────────
 
     /**
-     * Force mute a specific participant by their socket ID.
-     * Host emits this; target receives 'muted-by-host'.
+     * Apply a host-controlled microphone state to one room member. The
+     * command is only sent to the selected socket; the state broadcast keeps
+     * every participant tile synchronized without granting them control.
      */
-    socket.on('mute-participant', ({ to }) => {
-      io.to(to).emit('muted-by-host');
+    const setParticipantHostMute = ({ roomCode, to, muted }) => {
+      const room = rooms.get(roomCode);
+      const sender = room?.get(socket.id);
+      const target = room?.get(to);
+
+      if (!room || !sender || !target) return;
+      if (roomHosts.get(roomCode) !== sender.userId) return;
+
+      target.hostMuted = muted;
+      const effectiveMuted = target.hostMuted || target.selfMuted;
+      io.to(to).emit('participant-mute-command', {
+        muted: effectiveMuted,
+        mutedByHost: target.hostMuted,
+      });
+      io.to(roomCode).emit('participant-audio-state', {
+        socketId: to,
+        userId: target.userId,
+        muted: effectiveMuted,
+        mutedByHost: target.hostMuted,
+      });
+    };
+
+    socket.on('mute-participant', (payload) => {
+      setParticipantHostMute({ ...payload, muted: true });
+    });
+
+    socket.on('unmute-participant', (payload) => {
+      setParticipantHostMute({ ...payload, muted: false });
+    });
+
+    /**
+     * Track a participant's own microphone choice. A host mute remains the
+     * authoritative effective state until the host explicitly releases it.
+     */
+    socket.on('microphone-state', ({ roomCode, muted }) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!room || !member) return;
+
+      member.selfMuted = !!muted;
+      const effectiveMuted = member.hostMuted || member.selfMuted;
+      io.to(roomCode).emit('participant-audio-state', {
+        socketId: socket.id,
+        userId: member.userId,
+        muted: effectiveMuted,
+        mutedByHost: member.hostMuted,
+      });
     });
 
     /**
