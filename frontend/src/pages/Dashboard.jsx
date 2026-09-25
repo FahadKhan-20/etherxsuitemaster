@@ -187,11 +187,7 @@ export default function Dashboard() {
                       <motion.div
                         key={meeting.id}
                         {...lift}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') navigate(`/join?code=${meeting.id}`); }}
-                        onClick={() => navigate(`/join?code=${meeting.id}`)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', textAlign: 'left', width: '100%' }}
                       >
                         <div style={{ minWidth: 52, textAlign: 'center', background: 'rgba(0,0,0,0.4)', border: `1px solid ${GOLD_BORDER}`, borderRadius: 12, padding: '8px 10px' }}>
                           <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: GOLD, fontWeight: 700 }}>
@@ -244,7 +240,13 @@ export default function Dashboard() {
                               <Trash2 size={15} />
                             </button>
                           )}
-                          <span style={{ fontSize: 13, color: GOLD, fontWeight: 600 }}>Join →</span>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/join?code=${meeting.id}`)}
+                            style={{ background: 'none', border: 'none', padding: '6px 4px', fontSize: 13, color: GOLD, fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Join →
+                          </button>
                         </div>
                       </motion.div>
                     ))}
