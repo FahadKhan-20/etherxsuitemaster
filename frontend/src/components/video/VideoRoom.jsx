@@ -116,8 +116,10 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [activeDashes, setActiveDashes] = useState(0);
   const [myVotes, setMyVotes] = useState({});
   const [pollQuestion, setPollQuestion] = useState('');
-  const [pollOptions, setPollOptions] = useState(['Yes', 'No', 'Maybe']);
+  const [pollOptions, setPollOptions] = useState(['', '']);
   const [showPollForm, setShowPollForm] = useState(false);
+  const [pollView, setPollView] = useState('list'); // 'list' | 'create' | 'results'
+  const [viewingPollId, setViewingPollId] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
@@ -166,11 +168,12 @@ export default function VideoRoom({ roomCode, isHost }) {
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
-    sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
+    sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
     pollNotifications, dismissPollNotification,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
+    kickParticipant,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
@@ -343,6 +346,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
         .toolbar-wrap{transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
         @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
+        .poll-option-btn:hover{background:rgba(212,175,55,.14) !important;}
         ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
         ::-webkit-scrollbar{width:8px;}
         ::-webkit-scrollbar-track{background:transparent;}
@@ -763,44 +767,198 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab === 'polls' && (
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {polls.length === 0 && !showPollForm ? (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
-                    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.25)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                    <div style={{ textAlign: 'center', color: '#a89878', fontSize: 12.5 }}>No polls yet.<br />Ask the room a question.</div>
-                    <button onClick={() => setShowPollForm(true)} style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+                {/* ── CREATE POLL VIEW ── */}
+                {pollView === 'create' && (
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <button onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>New poll</span>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Question</label>
+                      <textarea
+                        value={pollQuestion}
+                        onChange={e => setPollQuestion(e.target.value)}
+                        placeholder="Ask the room a question…"
+                        rows={3}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Options</label>
+                      {pollOptions.map((opt, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                          <input
+                            value={opt}
+                            onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }}
+                            placeholder={`Option ${i + 1}`}
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif" }}
+                          />
+                          {pollOptions.length > 2 && (
+                            <button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                          )}
+                        </div>
+                      ))}
+                      {pollOptions.length < 6 && (
+                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px dashed rgba(212,175,55,.2)', background: 'none', color: '#a89878', fontSize: 12, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button
+                        onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                      >Cancel</button>
+                      <button
+                        onClick={() => {
+                          const q = pollQuestion.trim();
+                          const opts = pollOptions.map(o => o.trim()).filter(Boolean);
+                          if (!q || opts.length < 2) return;
+                          createPoll?.(q, opts);
+                          setPollQuestion('');
+                          setPollOptions(['', '']);
+                          setPollView('list');
+                        }}
+                        disabled={!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif", opacity: (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) ? 0.5 : 1 }}
+                      >Launch poll</button>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    {polls.map(poll => {
-                      const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
-                      return (
-                        <div key={poll.id} style={{ padding: 12, borderRadius: 10, background: 'rgba(212,175,55,.05)', border: '1px solid rgba(212,175,55,.12)' }}>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '0 0 8px' }}>{poll.question}</p>
-                          {poll.options.map((o, i) => {
-                            const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
-                            const mine = myVotes[poll.id] === i;
-                            return (<button key={i} onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }} style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: `1px solid ${mine ? '#e5c76b' : 'rgba(212,175,55,.12)'}`, background: mine ? 'rgba(212,175,55,.12)' : 'transparent', color: mine ? '#e5c76b' : 'rgba(255,255,255,.7)', fontSize: 12, cursor: 'pointer', marginBottom: 4, position: 'relative', overflow: 'hidden', fontFamily: "'Sora',sans-serif" }}>
-                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(212,175,55,.1)', transition: 'width .4s' }} />
-                              <span style={{ position: 'relative' }}>{o.text} <span style={{ opacity: .5 }}>({pct}%)</span></span>
-                            </button>);
-                          })}
-                        </div>
-                      );
-                    })}
-                    {showPollForm && (
-                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <input value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} placeholder="Poll question…" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }} />
-                        {pollOptions.map((opt, i) => (<div key={i} style={{ display: 'flex', gap: 6 }}><input value={opt} onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }} placeholder={`Option ${i + 1}`} style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12, outline: 'none', fontFamily: "'Sora',sans-serif" }} /><button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14 }}>✕</button></div>))}
-                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ background: 'none', border: '1px dashed rgba(212,175,55,.2)', borderRadius: 6, color: '#a89878', fontSize: 12, cursor: 'pointer', padding: '6px', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => setShowPollForm(false)} style={{ flex: 1, padding: 9, borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Cancel</button>
-                          <button onClick={() => { if (!pollQuestion.trim()) return; createPoll?.(pollQuestion, pollOptions.filter(o => o.trim())); setPollQuestion(''); setPollOptions(['Yes', 'No']); setShowPollForm(false); }} style={{ flex: 1, padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Launch Poll</button>
-                        </div>
+                )}
+
+                {/* ── RESULTS VIEW ── */}
+                {pollView === 'results' && (() => {
+                  const poll = polls.find(p => p.id === viewingPollId);
+                  if (!poll) return null;
+                  const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
+                  return (
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <button onClick={() => setPollView('list')} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>Poll results</span>
+                        {!poll.active && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#a89878', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 99, padding: '2px 8px' }}>CLOSED</span>}
                       </div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: 0 }}>{poll.question}</p>
+                      <p style={{ fontSize: 11, color: '#a89878', margin: 0 }}>{total} vote{total !== 1 ? 's' : ''}</p>
+                      {poll.options.map((o, i) => {
+                        const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
+                        const isWinner = poll.options.every(x => o.voters.length >= x.voters.length);
+                        return (
+                          <div key={i} style={{ borderRadius: 8, overflow: 'hidden', border: `1px solid ${isWinner && total > 0 ? 'rgba(212,175,55,.35)' : 'rgba(212,175,55,.1)'}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: isWinner && total > 0 ? 'rgba(212,175,55,.1)' : 'rgba(255,255,255,.03)', position: 'relative' }}>
+                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: isWinner && total > 0 ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.04)', transition: 'width .5s ease' }} />
+                              <span style={{ position: 'relative', fontSize: 12.5, color: isWinner && total > 0 ? '#e5c76b' : '#c9bda2', fontWeight: isWinner && total > 0 ? 600 : 400 }}>{o.text}</span>
+                              <span style={{ position: 'relative', fontSize: 12, fontWeight: 700, color: isWinner && total > 0 ? '#e5c76b' : '#a89878' }}>{pct}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {isHost && poll.active && (
+                        <button
+                          onClick={() => { endPoll?.(poll.id); }}
+                          style={{ marginTop: 4, padding: '9px', borderRadius: 9, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#f87171', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                        >End poll</button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── POLL LIST VIEW ── */}
+                {pollView === 'list' && (
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {polls.length === 0 ? (
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '32px 16px', textAlign: 'center' }}>
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.2)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                        <p style={{ margin: 0, fontSize: 13, color: '#a89878', lineHeight: 1.5 }}>No polls yet.<br />Ask the room a question.</p>
+                        {isHost && (
+                          <button onClick={() => setPollView('create')} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {polls.map(poll => {
+                          const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
+                          const voted = myVotes[poll.id] !== undefined;
+                          return (
+                            <div key={poll.id} style={{ borderRadius: 12, border: `1px solid ${poll.active ? 'rgba(212,175,55,.2)' : 'rgba(255,255,255,.08)'}`, background: poll.active ? 'rgba(212,175,55,.04)' : 'rgba(255,255,255,.02)', overflow: 'hidden' }}>
+                              {/* Poll header */}
+                              <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ margin: '0 0 2px', fontSize: 12.5, fontWeight: 600, color: '#f0e6d3', lineHeight: 1.4 }}>{poll.question}</p>
+
+                                </div>
+                                <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 99, border: `1px solid ${poll.active ? 'rgba(34,197,94,.3)' : 'rgba(255,255,255,.1)'}`, color: poll.active ? '#4ade80' : '#a89878', background: poll.active ? 'rgba(34,197,94,.08)' : 'rgba(255,255,255,.04)' }}>
+                                  {poll.active ? 'OPEN' : 'CLOSED'}
+                                </span>
+                              </div>
+
+                              {/* Voting options — shown when poll is open */}
+                              {poll.active && (
+                                <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {poll.options.map((o, i) => {
+                                    const isSelected = myVotes[poll.id] === i;
+                                    return (
+                                      <button
+                                        key={i}
+                                        className="poll-option-btn"
+                                        onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }}
+                                        style={{ width: '100%', textAlign: 'left', padding: '8px 11px', borderRadius: 7, border: `1px solid ${isSelected ? 'rgba(212,175,55,.5)' : 'rgba(212,175,55,.18)'}`, background: isSelected ? 'rgba(212,175,55,.18)' : 'rgba(212,175,55,.05)', color: isSelected ? '#e5c76b' : '#e0d4b0', fontSize: 12.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif", fontWeight: isSelected ? 600 : 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                      >
+                                        <span>{o.text}{isSelected ? ' ✓' : ''}</span>
+                                        {o.voters.length > 0 && <span style={{ fontSize: 11, color: isSelected ? '#e5c76b' : '#a89878', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{o.voters.length} vote{o.voters.length !== 1 ? 's' : ''}</span>}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Results bar — shown only when poll is closed */}
+                              {!poll.active && (
+                                <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {poll.options.map((o, i) => {
+                                    const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
+                                    const mine = myVotes[poll.id] === i;
+                                    return (
+                                      <div key={i} style={{ borderRadius: 6, overflow: 'hidden', border: `1px solid ${mine ? 'rgba(212,175,55,.3)' : 'rgba(255,255,255,.07)'}` }}>
+                                        <div style={{ position: 'relative', padding: '6px 10px', background: mine ? 'rgba(212,175,55,.08)' : 'transparent' }}>
+                                          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: mine ? 'rgba(212,175,55,.18)' : 'rgba(255,255,255,.05)', transition: 'width .5s ease' }} />
+                                          <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 12, color: mine ? '#e5c76b' : '#c9bda2', fontWeight: mine ? 600 : 400 }}>{o.text}{mine ? ' ✓' : ''}</span>
+                                            <span style={{ fontSize: 11, color: mine ? '#e5c76b' : '#a89878', fontWeight: 600 }}>{pct}%</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Footer actions */}
+                              <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6 }}>
+                                <button
+                                  onClick={() => { setViewingPollId(poll.id); setPollView('results'); }}
+                                  style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                >View results</button>
+                                {isHost && poll.active && (
+                                  <button
+                                    onClick={() => endPoll?.(poll.id)}
+                                    style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#f87171', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                  >End poll</button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {isHost && (
+                          <button onClick={() => setPollView('create')} style={{ padding: '10px', borderRadius: 10, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>
+                        )}
+                      </>
                     )}
-                    {!showPollForm && <button onClick={() => setShowPollForm(true)} style={{ padding: 10, borderRadius: 10, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>}
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -936,12 +1094,23 @@ export default function VideoRoom({ roomCode, isHost }) {
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
                   <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
+                  {isHost && !u.local && (
+                    <button
+                      onClick={() => kickParticipant(u.socketId)}
+                      title="Remove participant"
+                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '3px 8px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif", transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1179,7 +1348,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Live Q&A', divider: false, action: () => { setPanelTab('qna'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },

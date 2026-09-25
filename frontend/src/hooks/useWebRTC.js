@@ -30,10 +30,12 @@ const ICE_SERVERS = [
 export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const { account } = useWallet();
   const storedUser = getStoredUser();
-  const userName = storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous');
+  const userNameRef = useRef(storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
+  const userName = userNameRef.current;
   const fallbackIdRef = useRef(null);
   if (!fallbackIdRef.current) fallbackIdRef.current = crypto.randomUUID();
-  const userId = storedUser?.id || account || fallbackIdRef.current;
+  const userIdRef = useRef(storedUser?.id || account || fallbackIdRef.current);
+  const userId = userIdRef.current;
 
   // ── Waiting Room State ──────────────────────────────────────────────────────
   const [admitted, setAdmitted] = useState(!!isHost);
@@ -222,11 +224,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       socket.on('admitted', () => {
         setAdmitted(true);
-        socket.emit('join-room', { roomCode, userId, userName });
+        socket.emit('join-room', { roomCode, userId, userName, isHost: false });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
         socket.emit('get-agenda', { roomCode });
+        socket.emit('get-polls', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -374,6 +377,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // A new poll was created
       socket.on('poll-created', (poll) => {
+        console.log('[poll-created] received:', poll);
         setPolls(prev => [...prev, poll]);
         if (poll.createdById !== socket.id) {
           setPollNotifications(prev => [...prev, poll]);
@@ -386,6 +390,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // A poll was updated (vote or end)
       socket.on('poll-updated', (updatedPoll) => {
         setPolls(prev => prev.map(p => p.id === updatedPoll.id ? updatedPoll : p));
+      });
+
+      // Existing polls on join
+      socket.on('polls-state', ({ polls: existing }) => {
+        setPolls(existing || []);
       });
 
       // ── Feature: Meeting Agenda ──────────────────────────────────────────────
@@ -402,11 +411,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // Join the room if host (already admitted); otherwise request admission
       if (isHost) {
-        socket.emit('join-room', { roomCode, userId, userName });
+        socket.emit('join-room', { roomCode, userId, userName, isHost: true });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
         socket.emit('get-agenda', { roomCode });
+        socket.emit('get-polls', { roomCode });
       } else {
         socket.emit('request-join', { roomCode, userId, userName });
       }
@@ -730,7 +740,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   /** Host: create a new poll. options is an array of option strings. */
   const createPoll = useCallback((question, options) => {
-    socketRef.current?.emit('create-poll', { roomCode, question, options });
+    const s = socketRef.current;
+    console.log('[createPoll] socket:', s?.id, 'connected:', s?.connected, 'roomCode:', roomCode, 'q:', question, 'opts:', options);
+    s?.emit('create-poll', { roomCode, question, options });
   }, [roomCode]);
 
   /** Vote for an option in a poll by index. */
