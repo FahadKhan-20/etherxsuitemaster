@@ -186,7 +186,6 @@ export default function Dashboard() {
                     {upcoming.map((meeting) => (
                       <motion.div
                         key={meeting.id}
-                        {...lift}
                         style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', textAlign: 'left', width: '100%' }}
                       >
                         <div style={{ minWidth: 52, textAlign: 'center', background: 'rgba(0,0,0,0.4)', border: `1px solid ${GOLD_BORDER}`, borderRadius: 12, padding: '8px 10px' }}>
@@ -203,7 +202,7 @@ export default function Dashboard() {
                             {new Date(meeting.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {meeting.duration} min · {meeting.participants.length} people
                           </p>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, position: 'relative', zIndex: 5 }}>
                           {confirmDeleteId === meeting.id ? (
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button
