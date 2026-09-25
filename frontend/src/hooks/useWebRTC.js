@@ -40,6 +40,16 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [denied, setDenied] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
 
+  // ── Host / co-host authority ────────────────────────────────────────────────
+  // amHost: true if I'm the room's host — starts from the isHost prop, and stays
+  // true forever once I'm promoted via a host-transfer (I don't go back to being
+  // "just a co-host" after that).
+  const [amHost, setAmHost] = useState(!!isHost);
+  const [coHost, setCoHost] = useState(null); // { socketId, userId, userName } | null
+  const [lockedOut, setLockedOut] = useState(false);
+  const isCoHost = !!(coHost && coHost.userId === userId);
+  const canHost = amHost || isCoHost; // current host authority, host OR co-host
+
   // ── Core media state ────────────────────────────────────────────────────────
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState({}); // socketId → { userName, userId, stream }
@@ -304,6 +314,22 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Room lock state changed (by host) — broadcast to everyone including sender
       socket.on('room-locked', ({ locked }) => {
         setRoomLockedState(locked);
+      });
+
+      // This room is locked — my join/request-join was rejected before I got in.
+      socket.on('room-locked-error', () => {
+        setLockedOut(true);
+      });
+
+      // Co-host designation changed (host set or cleared it) — everyone is told.
+      socket.on('co-host-changed', ({ socketId, userId: coUserId, userName: coName }) => {
+        setCoHost(socketId ? { socketId, userId: coUserId, userName: coName } : null);
+      });
+
+      // The host disconnected and I (or someone else) was promoted to host.
+      socket.on('host-transferred', ({ newHostUserId }) => {
+        setCoHost(null);
+        if (newHostUserId === userId) setAmHost(true);
       });
 
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
@@ -671,20 +697,35 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature 1: Host control emitters ───────────────────────────────────────
 
-  /** Host: mute a remote participant by socket ID. */
+  /** Host or co-host: mute a remote participant by socket ID. */
   const muteParticipant = useCallback((socketId) => {
+    if (!canHost) return;
     socketRef.current?.emit('mute-participant', { to: socketId });
-  }, []);
+  }, [canHost]);
 
-  /** Host: remove a remote participant from the room. */
+  /** Host or co-host: remove a remote participant from the room. */
   const kickParticipant = useCallback((socketId) => {
+    if (!canHost) return;
     socketRef.current?.emit('kick-participant', { to: socketId });
-  }, []);
+  }, [canHost]);
 
-  /** Host: lock or unlock the room. */
+  /** Host or co-host: lock or unlock the room. */
   const setRoomLocked = useCallback((locked) => {
+    if (!canHost) return;
     socketRef.current?.emit('lock-room', { roomCode, locked });
-  }, [roomCode]);
+  }, [roomCode, canHost]);
+
+  /** Host only: designate a co-host. Replaces any existing co-host. */
+  const makeCoHost = useCallback((socketId) => {
+    if (!amHost) return;
+    socketRef.current?.emit('make-co-host', { roomCode, socketId });
+  }, [roomCode, amHost]);
+
+  /** Host only: revoke the current co-host. */
+  const removeCoHost = useCallback(() => {
+    if (!amHost) return;
+    socketRef.current?.emit('remove-co-host', { roomCode });
+  }, [roomCode, amHost]);
 
   // ── Feature 3: Reaction + hand emitters ────────────────────────────────────
 
@@ -745,16 +786,16 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Waiting Room Handlers ──────────────────────────────────────────────────
   const admitUser = useCallback((socketId) => {
-    if (!isHost) return;
+    if (!canHost) return;
     socketRef.current?.emit('admit-user', { toSocketId: socketId });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+  }, [canHost]);
 
   const denyUser = useCallback((socketId) => {
-    if (!isHost) return;
+    if (!canHost) return;
     socketRef.current?.emit('deny-user', { toSocketId: socketId });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+  }, [canHost]);
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 
@@ -840,9 +881,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
     // Waiting Room / Admission
-    admitted, denied, joinRequests, admitUser, denyUser,
+    admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
     // Feature 1: Host Controls
     muteParticipant, kickParticipant, setRoomLocked, roomLocked,
+    // Co-host
+    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,

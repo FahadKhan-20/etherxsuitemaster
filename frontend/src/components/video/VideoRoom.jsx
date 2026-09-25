@@ -168,7 +168,8 @@ export default function VideoRoom({ roomCode, isHost }) {
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
     pollNotifications, dismissPollNotification,
-    admitted, denied, joinRequests, admitUser, denyUser,
+    admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
+    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
@@ -250,6 +251,19 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const peerList = Object.entries(peers);
 
+  // Let the person know when they gain host authority they didn't start the meeting with.
+  const wasPrivilegedRef = useRef(isHost);
+  useEffect(() => {
+    if (!isHost && canHost && !wasPrivilegedRef.current) {
+      showToast(isCoHost ? "You're now a co-host." : 'You are now the host.');
+    }
+    wasPrivilegedRef.current = canHost;
+  }, [canHost, isCoHost, isHost]);
+
+  // Only the ORIGINAL host (or someone promoted to host via transfer) can name/replace a
+  // co-host — a co-host themselves cannot name a further co-host.
+  const canManageCoHost = canHost && !isCoHost;
+
   // When someone else starts presenting, put their screen on the main stage
   useEffect(() => {
     if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
@@ -300,11 +314,11 @@ export default function VideoRoom({ roomCode, isHost }) {
         <style>{`@keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}`}</style>
         <div style={{ maxWidth: 480, width: '100%', background: 'rgba(212,175,55,.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.12)', borderRadius: 24, padding: '40px 32px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,.5)' }}>
           <img src={etherxLogo} alt="EtherX" style={{ width: 140, marginBottom: 30 }} />
-          {denied ? (
+          {denied || lockedOut ? (
             <>
               <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: '1px solid rgba(239,68,68,.2)' }}><span style={{ fontSize: 32 }}>🛑</span></div>
-              <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>Entry Denied</h2>
-              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>The host has denied your request to join this meeting room.</p>
+              <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>{lockedOut ? 'Room Locked' : 'Entry Denied'}</h2>
+              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>{lockedOut ? 'The host has locked this meeting. No new participants can join right now.' : 'The host has denied your request to join this meeting room.'}</p>
               <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ width: '100%', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#b8860b,#e5c76b)', color: '#050505', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Return to Dashboard</button>
             </>
           ) : (
@@ -358,7 +372,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         }
       `}</style>
 
-      {isHost && joinRequests.length > 0 && (
+      {canHost && joinRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, width: '100%' }}>
           {joinRequests.map(req => (
             <div key={req.socketId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -936,10 +950,18 @@ export default function VideoRoom({ roomCode, isHost }) {
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
                   <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
+                  {coHost?.socketId === u.socketId && <span style={{ fontSize: 10, fontWeight: 700, color: '#d4af37', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)', borderRadius: 999, padding: '2px 7px' }}>Co-host</span>}
+                  {canManageCoHost && !u.local && (
+                    coHost?.socketId === u.socketId ? (
+                      <button onClick={() => removeCoHost()} title="Remove co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#a89878', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Remove co-host</button>
+                    ) : (
+                      <button onClick={() => makeCoHost(u.socketId)} title="Make co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#d4af37', background: 'rgba(212,175,55,.08)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Make co-host</button>
+                    )
+                  )}
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
                 </div>
@@ -1176,7 +1198,6 @@ export default function VideoRoom({ roomCode, isHost }) {
                     {[
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
@@ -1190,7 +1211,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'Settings', divider: false, action: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'View shortcuts', divider: false, action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'Leave feedback', divider: false, action: () => { setMoreOpen(false); setFeedbackOpen(true); } },
-                    ].map((item, idx) => (
+                    ].filter((item) => canHost || item.label !== 'Security options').map((item, idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: 'none', background: 'none', color: '#f0e6d3', fontSize: 12.5, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'Sora',sans-serif", transition: 'background .15s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,.08)'}
