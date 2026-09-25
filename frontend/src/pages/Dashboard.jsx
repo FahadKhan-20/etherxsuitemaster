@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Trash2,
+  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Trash2, Check, X,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
@@ -52,6 +52,7 @@ const lift = {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { user } = useUser();
   const { scheduledMeetings, cancelScheduledMeeting } = useMeeting();
   const [showScheduler, setShowScheduler] = useState(false);
@@ -207,18 +208,42 @@ export default function Dashboard() {
                           </p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            title="Delete scheduled meeting"
-                            aria-label={`Delete ${meeting.title}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Delete "${meeting.title}"?`)) cancelScheduledMeeting(meeting.id);
-                            }}
-                            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {confirmDeleteId === meeting.id ? (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                title="Confirm delete"
+                                aria-label={`Confirm delete ${meeting.title}`}
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); cancelScheduledMeeting(meeting.id); }}
+                                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Check size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Cancel"
+                                aria-label="Cancel delete"
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Delete scheduled meeting"
+                              aria-label={`Delete ${meeting.title}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(meeting.id);
+                                setTimeout(() => setConfirmDeleteId((cur) => (cur === meeting.id ? null : cur)), 4000);
+                              }}
+                              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                           <span style={{ fontSize: 13, color: GOLD, fontWeight: 600 }}>Join →</span>
                         </div>
                       </motion.div>
