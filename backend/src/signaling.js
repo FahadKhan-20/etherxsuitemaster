@@ -317,10 +317,15 @@ function setupSignaling(httpServer, allowedOrigin) {
 
     // ── Feature 7: Polls ──────────────────────────────────────────────────────
 
+    socket.on('get-polls', ({ roomCode }) => {
+      socket.emit('polls-state', { polls: roomPolls.get(roomCode) || [] });
+    });
+
     /**
      * Create a new poll for the room. Broadcasts the poll to all participants.
      */
     socket.on('create-poll', ({ roomCode, question, options }) => {
+      console.log('[create-poll] from:', socket.id, 'room:', roomCode, 'q:', question);
       const user = rooms.get(roomCode)?.get(socket.id);
       const poll = {
         id: Date.now(),
