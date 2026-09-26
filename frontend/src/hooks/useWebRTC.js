@@ -39,6 +39,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Waiting Room State ──────────────────────────────────────────────────────
   const [admitted, setAdmitted] = useState(!!isHost);
+  const admittedRef = useRef(!!isHost);
+  useEffect(() => { admittedRef.current = admitted; }, [admitted]);
   const [denied, setDenied] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
 
@@ -435,17 +437,28 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setAgendaItems(items);
       });
 
-      // Join the room if host (already admitted); otherwise request admission
-      if (isHost) {
-        socket.emit('join-room', { roomCode, userId, userName, isHost: true });
-        socket.emit('get-notes', { roomCode });
-        socket.emit('get-media', { roomCode });
-        socket.emit('get-files', { roomCode });
-        socket.emit('get-agenda', { roomCode });
-        socket.emit('get-polls', { roomCode });
-      } else {
-        socket.emit('request-join', { roomCode, userId, userName });
-      }
+      /**
+ * (Re)join the signaling room. Fires on the first connection AND on every
+ * automatic socket.io reconnect (dropped wifi, laptop sleep, a backgrounded
+ * tab getting throttled, etc.) — without this, a reconnected socket is never
+ * re-added to the server's room, so a teammate's join-request would silently
+ * never reach the host again, even though the host's tab looks fine.
+ */
+      const joinOrRequestJoin = () => {
+        if (isHost || admittedRef.current) {
+          socket.emit('join-room', { roomCode, userId, userName, isHost: !!isHost });
+          socket.emit('get-notes', { roomCode });
+          socket.emit('get-media', { roomCode });
+          socket.emit('get-files', { roomCode });
+          socket.emit('get-agenda', { roomCode });
+          socket.emit('get-polls', { roomCode });
+        } else {
+          socket.emit('request-join', { roomCode, userId, userName });
+        }
+      };
+      // 'connect' fires for the initial connection too, so this alone covers both cases —
+      // no separate one-off call is needed (that would double-fire on the first connect).
+      socket.on('connect', joinOrRequestJoin);
     };
 
     init().catch(() => setConnectionError('Failed to initialize video call.'));
