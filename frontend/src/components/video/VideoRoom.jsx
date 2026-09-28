@@ -168,6 +168,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     localStream,
     screenStream,
     peers,
+    userName,
     socket,
     socketReady,
     onError: showToast,
