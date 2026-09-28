@@ -8,6 +8,7 @@ import MeetingAgenda from '../MeetingAgenda';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
+import { getStoredUser } from '../../utils/auth';
 import { useMeeting } from '../../context/MeetingContext';
 import VideoTile from './VideoTile';
 import VideoCanvasProcessor from './VideoCanvasProcessor';
@@ -73,6 +74,20 @@ const CONFETTI = Array.from({ length: 80 }).map((_, i) => ({
   round: i % 3 === 0, rot: (i * 47) % 360, d: 1.5 + (i % 5) * 0.4, delay: (i * 0.05) % 2,
 }));
 
+// Plays one remote participant's audio, independent of their video tile. Tiles
+// only mount a <video> while the camera is on, so without this a teammate with
+// their camera off (or joined audio-only) would be completely silent.
+function RemoteAudio({ stream }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && stream) {
+      ref.current.srcObject = stream;
+      ref.current.play().catch(() => { });
+    }
+  }, [stream]);
+  return <audio ref={ref} autoPlay />;
+}
+
 export default function VideoRoom({ roomCode, isHost }) {
   const navigate = useNavigate();
   const { account } = useWallet();
@@ -101,8 +116,10 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [activeDashes, setActiveDashes] = useState(0);
   const [myVotes, setMyVotes] = useState({});
   const [pollQuestion, setPollQuestion] = useState('');
-  const [pollOptions, setPollOptions] = useState(['Yes', 'No', 'Maybe']);
+  const [pollOptions, setPollOptions] = useState(['', '']);
   const [showPollForm, setShowPollForm] = useState(false);
+  const [pollView, setPollView] = useState('list'); // 'list' | 'create' | 'results'
+  const [viewingPollId, setViewingPollId] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
@@ -125,8 +142,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const qnaHostClaimRef = useRef(false);
 
   useEffect(() => {
-    const start = parseInt(sessionStorage.getItem('NxtMeet_start') || sessionStorage.getItem('etherx_meet_start') || String(Date.now()), 10);
-    sessionStorage.setItem('NxtMeet_start', String(start));
+    const start = Date.now(); // stopwatch starts at 00:00 every time you enter a meeting
     const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(t);
   }, []);
@@ -148,14 +164,18 @@ export default function VideoRoom({ roomCode, isHost }) {
     localStream, peers, micMuted, hostMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
     muteParticipant, unmuteParticipant,
+    screenSharerId, screenShareNotice,
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
-    sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
-    admitted, denied, joinRequests, admitUser, denyUser,
+    sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
+    pollNotifications, dismissPollNotification,
+    admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
+    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
+    kickParticipant,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
@@ -234,6 +254,52 @@ export default function VideoRoom({ roomCode, isHost }) {
   };
 
   const peerList = Object.entries(peers);
+
+  // Let the person know when they gain host authority they didn't start the meeting with.
+  const wasPrivilegedRef = useRef(isHost);
+  useEffect(() => {
+    if (!isHost && canHost && !wasPrivilegedRef.current) {
+      showToast(isCoHost ? "You're now a co-host." : 'You are now the host.');
+    }
+    wasPrivilegedRef.current = canHost;
+  }, [canHost, isCoHost, isHost]);
+
+  // Only the ORIGINAL host (or someone promoted to host via transfer) can name/replace a
+  // co-host — a co-host themselves cannot name a further co-host.
+  const canManageCoHost = canHost && !isCoHost;
+
+  // When someone else starts presenting, put their screen on the main stage
+  useEffect(() => {
+    if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
+  }, [screenSharerId, setSpotlightId]);
+
+  // ── Live Q&A alerts ────────────────────────────────────────────────────────
+  // QnAPanel only listens for new questions while it is mounted (i.e. while the Q&A
+  // tab is open), so listen here too: popup + unread badge for questions from others.
+  const [qnaAlerts, setQnaAlerts] = useState([]);
+  const [qnaUnread, setQnaUnread] = useState(0);
+  const qnaVisibleRef = useRef(false);
+
+  useEffect(() => {
+    qnaVisibleRef.current = chatOpen && panelTab === 'qna';
+    if (qnaVisibleRef.current) { setQnaUnread(0); setQnaAlerts([]); }
+  }, [chatOpen, panelTab]);
+
+  useEffect(() => {
+    const s = socketRef?.current;
+    if (!s) return undefined;
+    const myId = String(getStoredUser()?.id || '');
+    const onQuestion = (q) => {
+      if (!q || (myId && String(q.userId) === myId)) return; // my own question
+
+      const id = String(q._id);
+      if (!qnaVisibleRef.current) setQnaUnread(n => n + 1);
+      setQnaAlerts(prev => (prev.some(a => a.id === id) ? prev : [...prev, { id, userName: q.userName, text: q.text }]));
+      setTimeout(() => setQnaAlerts(prev => prev.filter(a => a.id !== id)), 15000);
+    };
+    s.on('qna:question-created', onQuestion);
+    return () => s.off('qna:question-created', onQuestion);
+  }, [socketReady, roomCode, socketRef]);
   const totalP = 1 + peerList.length;
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
@@ -252,11 +318,11 @@ export default function VideoRoom({ roomCode, isHost }) {
         <style>{`@keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}`}</style>
         <div style={{ maxWidth: 480, width: '100%', background: 'rgba(212,175,55,.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.12)', borderRadius: 24, padding: '40px 32px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,.5)' }}>
           <img src={etherxLogo} alt="EtherX" style={{ width: 140, marginBottom: 30 }} />
-          {denied ? (
+          {denied || lockedOut ? (
             <>
               <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: '1px solid rgba(239,68,68,.2)' }}><span style={{ fontSize: 32 }}>🛑</span></div>
-              <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>Entry Denied</h2>
-              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>The host has denied your request to join this meeting room.</p>
+              <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>{lockedOut ? 'Room Locked' : 'Entry Denied'}</h2>
+              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>{lockedOut ? 'The host has locked this meeting. No new participants can join right now.' : 'The host has denied your request to join this meeting room.'}</p>
               <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ width: '100%', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#b8860b,#e5c76b)', color: '#050505', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Return to Dashboard</button>
             </>
           ) : (
@@ -300,6 +366,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
         .toolbar-wrap{transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
         @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
+        .poll-option-btn:hover{background:rgba(212,175,55,.14) !important;}
         ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
         ::-webkit-scrollbar{width:8px;}
         ::-webkit-scrollbar-track{background:transparent;}
@@ -315,7 +382,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         }
       `}</style>
 
-      {isHost && joinRequests.length > 0 && (
+      {canHost && joinRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, width: '100%' }}>
           {joinRequests.map(req => (
             <div key={req.socketId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -394,7 +461,55 @@ export default function VideoRoom({ roomCode, isHost }) {
         </button>
       )}
 
-      {/* File-share popups — auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
+      {/* Screen-share status: presenter banner (with stop button), viewer label, "already sharing" notice */}
+      {(isScreenSharing || screenSharerId || screenShareNotice) && (
+        <div style={{ position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', zIndex: 260, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 999, background: 'rgba(5,5,5,.92)', backdropFilter: 'blur(14px)', border: '1px solid rgba(212,175,55,.4)', boxShadow: '0 12px 32px -12px rgba(0,0,0,.7)', fontFamily: "'Sora',sans-serif", fontSize: 13, color: '#f0e6d3' }}>
+          {screenShareNotice ? (
+            <span>{screenShareNotice}</span>
+          ) : isScreenSharing ? (
+            <>
+              <span>🖥️ You're sharing your screen</span>
+              <button onClick={toggleScreenShare} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: '#d4af37', color: '#050505', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Stop sharing</button>
+            </>
+          ) : (
+            <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
+          )}
+        </div>
+      )}
+
+      {/* Q&A popups — new questions from other participants while the Q&A tab is closed */}
+      {qnaAlerts.length > 0 && (
+        <div style={{ position: 'fixed', top: 90, left: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+          {qnaAlerts.map(a => (
+            <div key={a.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>❓ {a.userName || 'Someone'} asked a question</span>
+                <button onClick={() => setQnaAlerts(prev => prev.filter(x => x.id !== a.id))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', margin: '8px 0 10px', wordBreak: 'break-word' }}>{(a.text || '').length > 140 ? `${a.text.slice(0, 140)}…` : a.text}</p>
+              <button onClick={() => { setPanelTab('qna'); setChatOpen(true); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>View question</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Poll popups — shown to every participant except the creator the moment a poll is launched (see useWebRTC's pollNotifications). */}
+      {pollNotifications?.length > 0 && (
+        <div style={{ position: 'fixed', top: 90, right: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+          {pollNotifications.map(poll => (
+            <div key={poll.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>📊 {poll.createdBy} started a poll</span>
+                <button onClick={() => dismissPollNotification(poll.id)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '8px 0 10px' }}>{poll.question}</p>
+              <button onClick={() => { setPanelTab('polls'); setChatOpen(true); dismissPollNotification(poll.id); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Vote now</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* File-share popups— auto-dismissing after 8s (see useWebRTC's fileNotifications), shown to everyone the moment a file is shared so nobody has to open the Files panel to notice it. */}
       {fileNotifications?.length > 0 && (
         <div style={{ position: 'fixed', top: 90, left: '50%', transform: 'translateX(-50%)', zIndex: 250, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', pointerEvents: 'none' }}>
           {fileNotifications.map(file => {
@@ -672,44 +787,198 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab === 'polls' && (
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {polls.length === 0 && !showPollForm ? (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
-                    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.25)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                    <div style={{ textAlign: 'center', color: '#a89878', fontSize: 12.5 }}>No polls yet.<br />Ask the room a question.</div>
-                    <button onClick={() => setShowPollForm(true)} style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+                {/* ── CREATE POLL VIEW ── */}
+                {pollView === 'create' && (
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <button onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>New poll</span>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Question</label>
+                      <textarea
+                        value={pollQuestion}
+                        onChange={e => setPollQuestion(e.target.value)}
+                        placeholder="Ask the room a question…"
+                        rows={3}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Options</label>
+                      {pollOptions.map((opt, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                          <input
+                            value={opt}
+                            onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }}
+                            placeholder={`Option ${i + 1}`}
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif" }}
+                          />
+                          {pollOptions.length > 2 && (
+                            <button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                          )}
+                        </div>
+                      ))}
+                      {pollOptions.length < 6 && (
+                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px dashed rgba(212,175,55,.2)', background: 'none', color: '#a89878', fontSize: 12, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button
+                        onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                      >Cancel</button>
+                      <button
+                        onClick={() => {
+                          const q = pollQuestion.trim();
+                          const opts = pollOptions.map(o => o.trim()).filter(Boolean);
+                          if (!q || opts.length < 2) return;
+                          createPoll?.(q, opts);
+                          setPollQuestion('');
+                          setPollOptions(['', '']);
+                          setPollView('list');
+                        }}
+                        disabled={!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif", opacity: (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) ? 0.5 : 1 }}
+                      >Launch poll</button>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    {polls.map(poll => {
-                      const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
-                      return (
-                        <div key={poll.id} style={{ padding: 12, borderRadius: 10, background: 'rgba(212,175,55,.05)', border: '1px solid rgba(212,175,55,.12)' }}>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '0 0 8px' }}>{poll.question}</p>
-                          {poll.options.map((o, i) => {
-                            const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
-                            const mine = myVotes[poll.id] === i;
-                            return (<button key={i} onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }} style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: `1px solid ${mine ? '#e5c76b' : 'rgba(212,175,55,.12)'}`, background: mine ? 'rgba(212,175,55,.12)' : 'transparent', color: mine ? '#e5c76b' : 'rgba(255,255,255,.7)', fontSize: 12, cursor: 'pointer', marginBottom: 4, position: 'relative', overflow: 'hidden', fontFamily: "'Sora',sans-serif" }}>
-                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(212,175,55,.1)', transition: 'width .4s' }} />
-                              <span style={{ position: 'relative' }}>{o.text} <span style={{ opacity: .5 }}>({pct}%)</span></span>
-                            </button>);
-                          })}
-                        </div>
-                      );
-                    })}
-                    {showPollForm && (
-                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <input value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} placeholder="Poll question…" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }} />
-                        {pollOptions.map((opt, i) => (<div key={i} style={{ display: 'flex', gap: 6 }}><input value={opt} onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }} placeholder={`Option ${i + 1}`} style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12, outline: 'none', fontFamily: "'Sora',sans-serif" }} /><button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14 }}>✕</button></div>))}
-                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ background: 'none', border: '1px dashed rgba(212,175,55,.2)', borderRadius: 6, color: '#a89878', fontSize: 12, cursor: 'pointer', padding: '6px', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => setShowPollForm(false)} style={{ flex: 1, padding: 9, borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Cancel</button>
-                          <button onClick={() => { if (!pollQuestion.trim()) return; createPoll?.(pollQuestion, pollOptions.filter(o => o.trim())); setPollQuestion(''); setPollOptions(['Yes', 'No']); setShowPollForm(false); }} style={{ flex: 1, padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Launch Poll</button>
-                        </div>
+                )}
+
+                {/* ── RESULTS VIEW ── */}
+                {pollView === 'results' && (() => {
+                  const poll = polls.find(p => p.id === viewingPollId);
+                  if (!poll) return null;
+                  const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
+                  return (
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <button onClick={() => setPollView('list')} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>Poll results</span>
+                        {!poll.active && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#a89878', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 99, padding: '2px 8px' }}>CLOSED</span>}
                       </div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: 0 }}>{poll.question}</p>
+                      <p style={{ fontSize: 11, color: '#a89878', margin: 0 }}>{total} vote{total !== 1 ? 's' : ''}</p>
+                      {poll.options.map((o, i) => {
+                        const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
+                        const isWinner = poll.options.every(x => o.voters.length >= x.voters.length);
+                        return (
+                          <div key={i} style={{ borderRadius: 8, overflow: 'hidden', border: `1px solid ${isWinner && total > 0 ? 'rgba(212,175,55,.35)' : 'rgba(212,175,55,.1)'}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: isWinner && total > 0 ? 'rgba(212,175,55,.1)' : 'rgba(255,255,255,.03)', position: 'relative' }}>
+                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: isWinner && total > 0 ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.04)', transition: 'width .5s ease' }} />
+                              <span style={{ position: 'relative', fontSize: 12.5, color: isWinner && total > 0 ? '#e5c76b' : '#c9bda2', fontWeight: isWinner && total > 0 ? 600 : 400 }}>{o.text}</span>
+                              <span style={{ position: 'relative', fontSize: 12, fontWeight: 700, color: isWinner && total > 0 ? '#e5c76b' : '#a89878' }}>{pct}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {isHost && poll.active && (
+                        <button
+                          onClick={() => { endPoll?.(poll.id); }}
+                          style={{ marginTop: 4, padding: '9px', borderRadius: 9, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#f87171', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                        >End poll</button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── POLL LIST VIEW ── */}
+                {pollView === 'list' && (
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {polls.length === 0 ? (
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '32px 16px', textAlign: 'center' }}>
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.2)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                        <p style={{ margin: 0, fontSize: 13, color: '#a89878', lineHeight: 1.5 }}>No polls yet.<br />Ask the room a question.</p>
+                        {isHost && (
+                          <button onClick={() => setPollView('create')} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {polls.map(poll => {
+                          const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
+                          const voted = myVotes[poll.id] !== undefined;
+                          return (
+                            <div key={poll.id} style={{ borderRadius: 12, border: `1px solid ${poll.active ? 'rgba(212,175,55,.2)' : 'rgba(255,255,255,.08)'}`, background: poll.active ? 'rgba(212,175,55,.04)' : 'rgba(255,255,255,.02)', overflow: 'hidden' }}>
+                              {/* Poll header */}
+                              <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ margin: '0 0 2px', fontSize: 12.5, fontWeight: 600, color: '#f0e6d3', lineHeight: 1.4 }}>{poll.question}</p>
+
+                                </div>
+                                <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 99, border: `1px solid ${poll.active ? 'rgba(34,197,94,.3)' : 'rgba(255,255,255,.1)'}`, color: poll.active ? '#4ade80' : '#a89878', background: poll.active ? 'rgba(34,197,94,.08)' : 'rgba(255,255,255,.04)' }}>
+                                  {poll.active ? 'OPEN' : 'CLOSED'}
+                                </span>
+                              </div>
+
+                              {/* Voting options — shown when poll is open */}
+                              {poll.active && (
+                                <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {poll.options.map((o, i) => {
+                                    const isSelected = myVotes[poll.id] === i;
+                                    return (
+                                      <button
+                                        key={i}
+                                        className="poll-option-btn"
+                                        onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }}
+                                        style={{ width: '100%', textAlign: 'left', padding: '8px 11px', borderRadius: 7, border: `1px solid ${isSelected ? 'rgba(212,175,55,.5)' : 'rgba(212,175,55,.18)'}`, background: isSelected ? 'rgba(212,175,55,.18)' : 'rgba(212,175,55,.05)', color: isSelected ? '#e5c76b' : '#e0d4b0', fontSize: 12.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif", fontWeight: isSelected ? 600 : 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                      >
+                                        <span>{o.text}{isSelected ? ' ✓' : ''}</span>
+                                        {o.voters.length > 0 && <span style={{ fontSize: 11, color: isSelected ? '#e5c76b' : '#a89878', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{o.voters.length} vote{o.voters.length !== 1 ? 's' : ''}</span>}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Results bar — shown only when poll is closed */}
+                              {!poll.active && (
+                                <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {poll.options.map((o, i) => {
+                                    const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
+                                    const mine = myVotes[poll.id] === i;
+                                    return (
+                                      <div key={i} style={{ borderRadius: 6, overflow: 'hidden', border: `1px solid ${mine ? 'rgba(212,175,55,.3)' : 'rgba(255,255,255,.07)'}` }}>
+                                        <div style={{ position: 'relative', padding: '6px 10px', background: mine ? 'rgba(212,175,55,.08)' : 'transparent' }}>
+                                          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: mine ? 'rgba(212,175,55,.18)' : 'rgba(255,255,255,.05)', transition: 'width .5s ease' }} />
+                                          <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 12, color: mine ? '#e5c76b' : '#c9bda2', fontWeight: mine ? 600 : 400 }}>{o.text}{mine ? ' ✓' : ''}</span>
+                                            <span style={{ fontSize: 11, color: mine ? '#e5c76b' : '#a89878', fontWeight: 600 }}>{pct}%</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Footer actions */}
+                              <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6 }}>
+                                <button
+                                  onClick={() => { setViewingPollId(poll.id); setPollView('results'); }}
+                                  style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                >View results</button>
+                                {isHost && poll.active && (
+                                  <button
+                                    onClick={() => endPoll?.(poll.id)}
+                                    style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#f87171', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                  >End poll</button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {isHost && (
+                          <button onClick={() => setPollView('create')} style={{ padding: '10px', borderRadius: 10, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>
+                        )}
+                      </>
                     )}
-                    {!showPollForm && <button onClick={() => setShowPollForm(true)} style={{ padding: 10, borderRadius: 10, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>}
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -846,12 +1115,32 @@ export default function VideoRoom({ roomCode, isHost }) {
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([id, p]) => ({ id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
                   <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
+                  {coHost?.socketId === u.socketId && <span style={{ fontSize: 10, fontWeight: 700, color: '#d4af37', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)', borderRadius: 999, padding: '2px 7px' }}>Co-host</span>}
+                  {canManageCoHost && !u.local && (
+                    coHost?.socketId === u.socketId ? (
+                      <button onClick={() => removeCoHost()} title="Remove co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#a89878', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Remove co-host</button>
+                    ) : (
+                      <button onClick={() => makeCoHost(u.socketId)} title="Make co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#d4af37', background: 'rgba(212,175,55,.08)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Make co-host</button>
+                    )
+                  )}
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
                   {isHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
+                  {isHost && !u.local && (
+                    <button
+                      onClick={() => kickParticipant(u.socketId)}
+                      title="Remove participant"
+                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '3px 8px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif", transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -932,6 +1221,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
                     {p.stream && !p.videoOff ? (
                       <VideoTile stream={p.stream} userName={pName} isMuted={!!p.isMuted} isCameraOff={false} />
+                    {p.stream && (!p.videoOff || id === screenSharerId) ? (
+                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
                     ) : (
                       <div style={{
                         width: 130, height: 130, borderRadius: '50%',
@@ -966,6 +1257,7 @@ export default function VideoRoom({ roomCode, isHost }) {
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
                 <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].isMuted} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
                   <VideoTile
@@ -1039,6 +1331,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
               <button onClick={() => { const open = chatOpen && panelTab === 'qna'; if (open) { setChatOpen(false); } else { setChatOpen(true); setPanelTab('qna'); } }} title="Live Q&A" id="qna-toolbar-btn" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'qna' ? 'rgba(212,175,55,.22)' : 'transparent', color: chatOpen && panelTab === 'qna' ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /></svg>
+                {qnaUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{qnaUnread > 9 ? '9+' : qnaUnread}</span>}
               </button>
 
               <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
@@ -1085,10 +1378,9 @@ export default function VideoRoom({ roomCode, isHost }) {
                     {[
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Live Q&A', divider: false, action: () => { setPanelTab('qna'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
@@ -1098,8 +1390,9 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Participant stats', divider: true, action: () => { setShowPeople(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'Settings', divider: false, action: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'View shortcuts', divider: false, action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'Leave feedback', divider: false, action: () => { setMoreOpen(false); setFeedbackOpen(true); } },
-                    ].map((item, idx) => (
+                    ].filter((item) => canHost || item.label !== 'Security options').map((item, idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: 'none', background: 'none', color: '#f0e6d3', fontSize: 12.5, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'Sora',sans-serif", transition: 'background .15s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,.08)'}
@@ -1134,6 +1427,9 @@ export default function VideoRoom({ roomCode, isHost }) {
           <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ background: '#b8860b', border: 'none', color: '#f0e6d3', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Back to Dashboard</button>
         </div>
       )}
+
+      {/* One audio element per remote peer — the only place remote voice is played. */}
+      {peerList.map(([id, p]) => (p.stream ? <RemoteAudio key={id} stream={p.stream} /> : null))}
 
       {toast && (
         <div style={{ position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1100, background: 'rgba(5,5,5,.85)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 12, padding: '12px 24px', color: '#f0e6d3', fontSize: 13, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', gap: 10, animation: 'slideDown .3s ease-out forwards', fontFamily: "'Sora',sans-serif" }}>

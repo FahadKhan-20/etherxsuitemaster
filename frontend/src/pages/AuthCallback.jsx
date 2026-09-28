@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../utils/apiClient';
+import { persistAuthSession } from '../utils/auth';
 import { ROUTES } from '../utils/constants';
 
 export default function AuthCallback() {
@@ -19,26 +20,17 @@ export default function AuthCallback() {
         return;
       }
 
-      window.localStorage.setItem('nexmeet_token', token);
-
       try {
         const response = await apiClient.get('/api/auth/me', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         const user = response.data?.data?.user;
+        if (!user) throw new Error('Unable to fetch profile after Google login.');
 
-        if (!user) {
-          throw new Error('Unable to fetch profile after Google login.');
-        }
-
-        window.localStorage.setItem('nexmeet_user', JSON.stringify(user));
+        persistAuthSession({ token, user });
         navigate(ROUTES.HOME, { replace: true });
       } catch (_error) {
-        window.localStorage.removeItem('nexmeet_token');
-        window.localStorage.removeItem('nexmeet_user');
         setStatus('Unable to complete sign-in. Redirecting to login...');
         window.setTimeout(() => navigate(ROUTES.LOGIN, { replace: true }), 1500);
       }
