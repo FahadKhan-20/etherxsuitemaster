@@ -161,8 +161,9 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const {
     socket, socketReady,
-    localStream, peers, micMuted, cameraOff, isScreenSharing,
+    localStream, peers, micMuted, hostMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
+    muteParticipant, unmuteParticipant,
     screenSharerId, screenShareNotice,
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
@@ -342,6 +343,11 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   return (
     <div onMouseMove={resetToolbarTimer} onMouseEnter={resetToolbarTimer} style={{ position: 'fixed', inset: 0, background: "radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a", fontFamily: "'Sora',sans-serif", color: '#f0e6d3', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {hostMuted && (
+        <div style={{ position: 'fixed', top: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 260, padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(239,68,68,.35)', background: 'rgba(70,15,20,.92)', color: '#fecaca', fontSize: 12, fontWeight: 600, boxShadow: '0 12px 30px rgba(0,0,0,.35)' }}>
+          The host muted your microphone.
+        </div>
+      )}
       <style>{`
         :root {
           --gold:       #d4af37;
@@ -1108,6 +1114,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([id, p]) => ({ id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
               {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
@@ -1122,6 +1129,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                   )}
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
+                  {isHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
                   {isHost && !u.local && (
                     <button
                       onClick={() => kickParticipant(u.socketId)}
@@ -1211,6 +1219,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                     overflow: 'hidden',
                     cursor: 'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
+                    {p.stream && !p.videoOff ? (
+                      <VideoTile stream={p.stream} userName={pName} isMuted={!!p.isMuted} isCameraOff={false} />
                     {p.stream && (!p.videoOff || id === screenSharerId) ? (
                       <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
                     ) : (
@@ -1246,6 +1256,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].isMuted} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
                 <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
@@ -1272,7 +1283,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {peerList.map(([id, p]) => (
                     <div key={id} onClick={() => setSpotlightId(spotlightId === id ? null : id)} style={{ width: 120, height: 80, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${spotlightId === id ? '#d4af37' : 'rgba(212,175,55,.15)'}`, flexShrink: 0 }}>
-                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={false} isCameraOff={!p.stream || !!p.videoOff} isSmall />
+                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={!!p.isMuted} isCameraOff={!p.stream || !!p.videoOff} isSmall />
                     </div>
                   ))}
                 </div>
@@ -1290,7 +1301,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                   <button onClick={() => { setShowSettingsModal(true); setModalTab('audio'); }} title="Audio settings" style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', padding: 0, display: 'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
-                  <button onClick={toggleMic} title={micMuted ? 'Unmute' : 'Mute'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: micMuted ? 'rgba(239,68,68,.18)' : 'rgba(212,175,55,.15)', color: micMuted ? '#f87171' : '#f0e6d3', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .15s' }}>
+                  <button onClick={toggleMic} disabled={hostMuted} title={hostMuted ? 'Muted by host' : (micMuted ? 'Unmute' : 'Mute')} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: micMuted ? 'rgba(239,68,68,.18)' : 'rgba(212,175,55,.15)', color: micMuted ? '#f87171' : '#f0e6d3', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: hostMuted ? 'not-allowed' : 'pointer', opacity: hostMuted ? .7 : 1, transition: 'background .15s' }}>
                     {micMuted ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8" /><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
                   </button>
                 </div>
