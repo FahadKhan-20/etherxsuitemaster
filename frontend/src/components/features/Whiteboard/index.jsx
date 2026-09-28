@@ -17,16 +17,17 @@ import {
   X,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import Button from '../../ui/Button';
 import { useWhiteboardSync } from '../../../hooks/useWhiteboardSync';
 
-const stickyPalette = ['#4F46E5', '#06B6D4', '#10B981', '#F59E0B'];
+const stickyPalette = ['#d4af37', '#b8860b', '#e5c76b', '#a89878'];
 const templates = ['blank', 'kanban', 'mindmap', 'retro', 'flow'];
+const outlineBtn = 'flex items-center justify-center gap-2 rounded-lg border border-[#d4af37]/25 bg-transparent px-4 py-2 text-base font-medium text-[#f0e6d3] transition-all hover:bg-[#d4af37]/10 hover:text-[#e5c76b]';
+const goldBtn = 'flex items-center justify-center gap-2 rounded-lg border border-[#e5c76b]/40 bg-[linear-gradient(135deg,#d4af37,#b8860b)] px-4 py-2 text-base font-bold text-[#050505] shadow-lg shadow-[#d4af37]/20 transition-all hover:brightness-110';
 
 export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomCode, isHost }) {
   const canvasRef = useRef(null);
   const [tool, setTool] = useState('pen');
-  const [color, setColor] = useState('#4F46E5');
+  const [color, setColor] = useState('#d4af37');
   const [strokeSize, setStrokeSize] = useState(4);
   const [isDrawing, setIsDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -88,12 +89,12 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
         ctx.globalAlpha = 1;
       } else if (line.tool === 'highlighter') {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = line.color || '#4F46E5';
+        ctx.strokeStyle = line.color || '#d4af37';
         ctx.lineWidth = (line.size || 4) * 2.5;
         ctx.globalAlpha = 0.24;
       } else {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = line.color || '#4F46E5';
+        ctx.strokeStyle = line.color || '#d4af37';
         ctx.lineWidth = line.size || 4;
         ctx.globalAlpha = 1;
       }
@@ -212,15 +213,15 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
   const backgroundGuide = useMemo(() => {
     switch (template) {
       case 'kanban':
-        return 'bg-[linear-gradient(90deg,transparent_0,transparent_32%,rgba(255,255,255,0.08)_32%,rgba(255,255,255,0.08)_33%,transparent_33%,transparent_66%,rgba(255,255,255,0.08)_66%,rgba(255,255,255,0.08)_67%,transparent_67%)]';
+        return 'bg-[linear-gradient(90deg,transparent_0,transparent_32%,rgba(212,175,55,0.08)_32%,rgba(212,175,55,0.08)_33%,transparent_33%,transparent_66%,rgba(212,175,55,0.08)_66%,rgba(212,175,55,0.08)_67%,transparent_67%)]';
       case 'mindmap':
-        return 'bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.12)_0,rgba(255,255,255,0.12)_2px,transparent_2px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:180px_180px,40px_40px,40px_40px]';
+        return 'bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.12)_0,rgba(212,175,55,0.12)_2px,transparent_2px),linear-gradient(rgba(212,175,55,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(212,175,55,0.06)_1px,transparent_1px)] bg-[size:180px_180px,40px_40px,40px_40px]';
       case 'retro':
         return 'bg-[linear-gradient(90deg,rgba(16,185,129,0.08)_0,rgba(16,185,129,0.08)_33%,rgba(245,158,11,0.08)_33%,rgba(245,158,11,0.08)_66%,rgba(239,68,68,0.08)_66%,rgba(239,68,68,0.08)_100%)]';
       case 'flow':
-        return 'bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:28px_28px]';
+        return 'bg-[linear-gradient(rgba(212,175,55,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(212,175,55,0.06)_1px,transparent_1px)] bg-[size:28px_28px]';
       default:
-        return 'bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:40px_40px]';
+        return 'bg-[linear-gradient(rgba(212,175,55,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(212,175,55,0.04)_1px,transparent_1px)] bg-[size:40px_40px]';
     }
   }, [template]);
 
@@ -241,27 +242,27 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[2000] bg-black/75 p-2 sm:p-3 backdrop-blur-sm"
     >
-      <div className="flex h-full flex-col rounded-[24px] sm:rounded-[36px] border border-white/10 bg-[rgba(13,13,26,0.95)] p-3 sm:p-4 shadow-[0_30px_100px_rgba(4,8,24,0.62)] backdrop-blur-2xl overflow-y-auto">
+      <div className="flex h-full flex-col rounded-[24px] sm:rounded-[36px] border border-[#d4af37]/15 bg-[#050505]/95 p-3 sm:p-4 shadow-[0_30px_100px_rgba(0,0,0,0.7)] backdrop-blur-2xl overflow-y-auto">
         <div className="mb-3 sm:mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] sm:text-xs uppercase tracking-[0.28em] text-white/35">Collaborative whiteboard</p>
-            <h2 className="mt-1 sm:mt-2 font-syne text-xl sm:text-3xl font-bold text-white">Sketch, map, and annotate</h2>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.28em] text-[#a89878]">Collaborative whiteboard</p>
+            <h2 className="mt-1 sm:mt-2 font-syne text-xl sm:text-3xl font-bold text-[#f0e6d3]">Sketch, map, and annotate</h2>
             {!canEdit && (
-              <p className="mt-0.5 text-[11px] sm:text-xs text-white/40">View-only — the host is presenting this board.</p>
+              <p className="mt-0.5 text-[11px] sm:text-xs text-[#a89878]">View-only — the host is presenting this board.</p>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close whiteboard"
-            className="relative z-10 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white/80 transition-all hover:bg-white/20 hover:text-white"
+            className="relative z-10 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[#d4af37]/25 bg-[#d4af37]/10 text-[#f0e6d3] transition-all hover:bg-[#d4af37]/20 hover:text-[#e5c76b]"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="grid flex-1 gap-3 sm:gap-4 lg:grid-cols-[auto_1fr_auto]">
-          <div className="flex flex-row overflow-x-auto gap-2 lg:flex-col lg:gap-3 rounded-[20px] lg:rounded-[28px] border border-white/10 bg-white/5 p-2 lg:p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] shrink-0">
+          <div className="flex flex-row overflow-x-auto gap-2 lg:flex-col lg:gap-3 rounded-[20px] lg:rounded-[28px] border border-[#d4af37]/15 bg-[#d4af37]/[0.04] p-2 lg:p-3 shadow-[inset_0_1px_0_rgba(212,175,55,0.1)] shrink-0">
             <ToolButton active={tool === 'pen'} icon={Paintbrush2} label="Pen" onClick={() => selectTool('pen')} />
             <ToolButton active={tool === 'highlighter'} icon={Highlighter} label="Marker" onClick={() => selectTool('highlighter')} />
             <ToolButton active={tool === 'eraser'} icon={Eraser} label="Erase" onClick={() => selectTool('eraser')} />
@@ -272,7 +273,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             {canEdit && <ToolButton active={false} icon={Trash2} label="Clear" onClick={clearBoard} />}
           </div>
 
-          <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#0b1021] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="relative overflow-hidden rounded-[32px] border border-[#d4af37]/15 bg-[#0a0a0a] shadow-[inset_0_1px_0_rgba(212,175,55,0.1)]">
             <div className="absolute left-4 top-4 z-20 flex flex-wrap gap-2">
               {templates.map((boardTemplate) => (
                 <button
@@ -280,8 +281,8 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                   onClick={() => setTemplate(boardTemplate)}
                   className={`rounded-full border px-3 py-1.5 text-xs uppercase tracking-[0.2em] ${
                     template === boardTemplate
-                      ? 'border-cyan-400/20 bg-cyan-400/12 text-cyan-100'
-                      : 'border-white/10 bg-black/20 text-white/45'
+                      ? 'border-[#d4af37]/40 bg-[#d4af37]/15 text-[#e5c76b]'
+                      : 'border-[#d4af37]/15 bg-black/30 text-[#a89878]'
                   }`}
                 >
                   {boardTemplate}
@@ -319,7 +320,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
 
               {tool === 'eraser' && cursorPos.visible && (
                 <div
-                  className="pointer-events-none absolute rounded-full border-2 border-white/80 bg-white/20 shadow-[0_0_12px_rgba(255,255,255,0.4)]"
+                  className="pointer-events-none absolute rounded-full border-2 border-[#e5c76b]/90 bg-[#d4af37]/20 shadow-[0_0_12px_rgba(212,175,55,0.5)]"
                   style={{
                     width: `${(strokeSize / 1280) * 100}%`,
                     aspectRatio: '1 / 1',
@@ -339,7 +340,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                     onDragEnd={(event, info) => {
                       moveSticky(note.id, note.x + info.offset.x, note.y + info.offset.y);
                     }}
-                    className="group absolute flex min-h-[120px] w-40 flex-col rounded-[20px] border border-white/10 p-3 text-sm text-white shadow-[0_16px_40px_rgba(4,8,24,0.35)]"
+                    className="group absolute flex min-h-[120px] w-40 flex-col rounded-[20px] border border-black/20 p-3 text-sm text-[#050505] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
                     style={{
                       left: note.x,
                       top: note.y,
@@ -363,7 +364,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                         const text = event.target.value;
                         updateSticky(note.id, text);
                       }}
-                      className="h-full w-full resize-none bg-transparent text-sm text-white focus:outline-none"
+                      className="h-full w-full resize-none bg-transparent text-sm text-[#050505] focus:outline-none"
                     />
                   </motion.div>
                 ))}
@@ -379,28 +380,28 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             </div>
           </div>
 
-          <div className="flex w-full max-w-[260px] flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="flex w-full max-w-[260px] flex-col gap-4 rounded-[28px] border border-[#d4af37]/15 bg-[#d4af37]/[0.04] p-4 shadow-[inset_0_1px_0_rgba(212,175,55,0.1)]">
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-white/35">Board controls</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-[#a89878]">Board controls</p>
               <div className="mt-3 flex items-center gap-2">
-                <Button variant="outline" onClick={() => setZoom((previous) => Math.max(0.6, previous - 0.1))}>
+                <button type="button" className={outlineBtn} onClick={() => setZoom((previous) => Math.max(0.6, previous - 0.1))}>
                   <ZoomOut className="h-4 w-4" />
-                </Button>
-                <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-2 text-sm text-white/70">
+                </button>
+                <div className="rounded-2xl border border-[#d4af37]/15 bg-black/20 px-4 py-2 text-sm text-[#f0e6d3]">
                   {Math.round(zoom * 100)}%
                 </div>
-                <Button variant="outline" onClick={() => setZoom((previous) => Math.min(1.8, previous + 0.1))}>
+                <button type="button" className={outlineBtn} onClick={() => setZoom((previous) => Math.min(1.8, previous + 0.1))}>
                   <ZoomIn className="h-4 w-4" />
-                </Button>
+                </button>
               </div>
             </div>
 
             <div>
               <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-[0.28em] text-white/35">
+                <p className="text-xs uppercase tracking-[0.28em] text-[#a89878]">
                   {tool === 'eraser' ? 'Eraser size' : 'Color & stroke'}
                 </p>
-                <span className="font-mono text-xs font-semibold text-cyan-400">{strokeSize}px</span>
+                <span className="font-mono text-xs font-semibold text-[#d4af37]">{strokeSize}px</span>
               </div>
 
               {tool === 'eraser' ? (
@@ -411,8 +412,8 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                       onClick={() => setStrokeSize(s)}
                       className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition-all ${
                         strokeSize === s
-                          ? 'border-cyan-400 bg-cyan-400/20 text-cyan-200 ring-2 ring-cyan-400/50'
-                          : 'border-white/10 bg-black/20 text-white/60 hover:text-white'
+                          ? 'border-[#d4af37] bg-[#d4af37]/20 text-[#e5c76b] ring-2 ring-[#d4af37]/50'
+                          : 'border-[#d4af37]/15 bg-black/20 text-[#c9bda2] hover:text-[#e5c76b]'
                       }`}
                     >
                       {s}
@@ -421,12 +422,12 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 </div>
               ) : (
                 <div className="mt-3 flex gap-2">
-                  {['#4F46E5', '#06B6D4', '#10B981', '#EF4444', '#F59E0B', '#FFFFFF'].map((swatch) => (
+                  {['#d4af37', '#e5c76b', '#b8860b', '#f0e6d3', '#EF4444', '#10B981'].map((swatch) => (
                     <button
                       key={swatch}
                       onClick={() => setColor(swatch)}
                       className={`h-8 w-8 rounded-full border transition-all ${
-                        color === swatch ? 'scale-110 border-white ring-2 ring-cyan-400/50' : 'border-white/10 opacity-70 hover:opacity-100'
+                        color === swatch ? 'scale-110 border-[#f0e6d3] ring-2 ring-[#d4af37]/60' : 'border-[#d4af37]/20 opacity-70 hover:opacity-100'
                       }`}
                       style={{ background: swatch }}
                     />
@@ -435,7 +436,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
               )}
 
               <input
-                className="mt-4 w-full accent-cyan-400 cursor-pointer"
+                className="mt-4 w-full accent-[#d4af37] cursor-pointer"
                 type="range"
                 min={tool === 'eraser' ? 6 : 2}
                 max={tool === 'eraser' ? 120 : 30}
@@ -445,14 +446,14 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-white/35">Layers</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-[#a89878]">Layers</p>
               <div className="mt-3 space-y-2">
                 {Object.entries(layers).map(([key, enabled]) => (
                   <button
                     key={key}
                     onClick={() => setLayers((previous) => ({ ...previous, [key]: !previous[key] }))}
                     className={`flex w-full items-center justify-between rounded-[18px] border px-3 py-2 text-sm capitalize ${
-                      enabled ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-black/10 text-white/55'
+                      enabled ? 'border-[#d4af37]/40 bg-[#d4af37]/15 text-[#e5c76b]' : 'border-[#d4af37]/15 bg-black/20 text-[#a89878]'
                     }`}
                   >
                     <span className="flex items-center gap-2">
@@ -466,7 +467,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             </div>
 
             {canEdit && (
-              <label className="cursor-pointer rounded-[22px] border border-white/10 bg-black/10 px-4 py-3 text-sm text-white/65">
+              <label className="cursor-pointer rounded-[22px] border border-[#d4af37]/15 bg-black/20 px-4 py-3 text-sm text-[#c9bda2] transition-all hover:border-[#d4af37]/40 hover:text-[#e5c76b]">
                 <div className="flex items-center gap-2">
                   <ImagePlus className="h-4 w-4" />
                   Upload image
@@ -489,14 +490,14 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             )}
 
             <div className="mt-auto flex flex-col gap-2">
-              <Button variant="outline" onClick={exportPng}>
+              <button type="button" className={outlineBtn} onClick={exportPng}>
                 <Download className="h-4 w-4" />
                 Export PNG
-              </Button>
-              <Button variant="primary" onClick={exportPdf}>
+              </button>
+              <button type="button" className={goldBtn} onClick={exportPdf}>
                 <Download className="h-4 w-4" />
                 Export PDF
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -510,7 +511,7 @@ function ToolButton({ active, icon: Icon, label, onClick }) {
     <button
       onClick={onClick}
       className={`flex items-center gap-2 lg:gap-3 rounded-[14px] lg:rounded-[20px] border px-2.5 lg:px-3 py-2 lg:py-3 text-left text-xs lg:text-sm whitespace-nowrap transition-all ${
-        active ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-black/10 text-white/60 hover:text-white'
+        active ? 'border-[#d4af37]/40 bg-[#d4af37]/15 text-[#e5c76b]' : 'border-[#d4af37]/15 bg-black/20 text-[#c9bda2] hover:text-[#e5c76b]'
       }`}
     >
       <Icon className="h-4 w-4 shrink-0" />

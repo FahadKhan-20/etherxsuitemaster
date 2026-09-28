@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Plus, TimerReset,
+  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Trash2, Check, X,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
@@ -52,8 +52,9 @@ const lift = {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { user } = useUser();
-  const { scheduledMeetings } = useMeeting();
+  const { scheduledMeetings, cancelScheduledMeeting } = useMeeting();
   const [showScheduler, setShowScheduler] = useState(false);
 
 
@@ -183,11 +184,9 @@ export default function Dashboard() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {upcoming.map((meeting) => (
-                      <motion.button
+                      <motion.div
                         key={meeting.id}
-                        {...lift}
-                        onClick={() => navigate(`/join?code=${meeting.id}`)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', textAlign: 'left', width: '100%' }}
                       >
                         <div style={{ minWidth: 52, textAlign: 'center', background: 'rgba(0,0,0,0.4)', border: `1px solid ${GOLD_BORDER}`, borderRadius: 12, padding: '8px 10px' }}>
                           <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: GOLD, fontWeight: 700 }}>
@@ -203,10 +202,52 @@ export default function Dashboard() {
                             {new Date(meeting.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {meeting.duration} min · {meeting.participants.length} people
                           </p>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          <span style={{ fontSize: 13, color: GOLD, fontWeight: 600 }}>Join →</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, position: 'relative', zIndex: 5 }}>
+                          {confirmDeleteId === meeting.id ? (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                title="Confirm delete"
+                                aria-label={`Confirm delete ${meeting.title}`}
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); cancelScheduledMeeting(meeting.id); }}
+                                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Check size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Cancel"
+                                aria-label="Cancel delete"
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Delete scheduled meeting"
+                              aria-label={`Delete ${meeting.title}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(meeting.id);
+                                setTimeout(() => setConfirmDeleteId((cur) => (cur === meeting.id ? null : cur)), 4000);
+                              }}
+                              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/join?code=${meeting.id}`)}
+                            style={{ background: 'none', border: 'none', padding: '6px 4px', fontSize: 13, color: GOLD, fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Join →
+                          </button>
                         </div>
-                      </motion.button>
+                      </motion.div>
                     ))}
                   </div>
                 )}

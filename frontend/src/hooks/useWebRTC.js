@@ -30,15 +30,29 @@ const ICE_SERVERS = [
 export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const { account } = useWallet();
   const storedUser = getStoredUser();
-  const userName = storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous');
+  const userNameRef = useRef(storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
+  const userName = userNameRef.current;
   const fallbackIdRef = useRef(null);
   if (!fallbackIdRef.current) fallbackIdRef.current = crypto.randomUUID();
-  const userId = storedUser?.id || account || fallbackIdRef.current;
+  const userIdRef = useRef(storedUser?.id || account || fallbackIdRef.current);
+  const userId = userIdRef.current;
 
   // ── Waiting Room State ──────────────────────────────────────────────────────
   const [admitted, setAdmitted] = useState(!!isHost);
+  const admittedRef = useRef(!!isHost);
+  useEffect(() => { admittedRef.current = admitted; }, [admitted]);
   const [denied, setDenied] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
+
+  // ── Host / co-host authority ────────────────────────────────────────────────
+  // amHost: true if I'm the room's host — starts from the isHost prop, and stays
+  // true forever once I'm promoted via a host-transfer (I don't go back to being
+  // "just a co-host" after that).
+  const [amHost, setAmHost] = useState(!!isHost);
+  const [coHost, setCoHost] = useState(null); // { socketId, userId, userName } | null
+  const [lockedOut, setLockedOut] = useState(false);
+  const isCoHost = !!(coHost && coHost.userId === userId);
+  const canHost = amHost || isCoHost; // current host authority, host OR co-host
 
   // ── Core media state ────────────────────────────────────────────────────────
   const [localStream, setLocalStream] = useState(null);
@@ -48,6 +62,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [cameraOff, setCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState(null);
+  const [screenSharerId, setScreenSharerId] = useState(null);   // socketId of the remote presenter, if any
+  const [screenShareNotice, setScreenShareNotice] = useState('');
   const [noiseSuppressed, setNoiseSuppressed] = useState(false);
   const [roomLocked, setRoomLockedState] = useState(false);
   const [spotlightId, setSpotlightId] = useState('local');
@@ -72,6 +88,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
+  // pollNotifications: popup shown to everyone EXCEPT the poll's creator the
+  // moment a poll is launched. Auto-dismisses after 15s.
+  const [pollNotifications, setPollNotifications] = useState([]);
 
   // ── Feature: File Sharing ──────────────────────────────────────────────────
   const [sharedFiles, setSharedFiles] = useState([]); // [{id, name, size, type, url, sharedBy, sharedAt}]
@@ -92,6 +111,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const pcsRef = useRef({});           // socketId → RTCPeerConnection
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const screenAudioMixRef = useRef(null);      // { ctx, track } — mic + screen audio mixed while sharing
   const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
   const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
   // Ref that always points to the latest toggleScreenShare so the
@@ -115,10 +135,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track =>
-        pc.addTrack(track, localStreamRef.current),
-      );
+    const local = localStreamRef.current;
+    if (local) {
+      // While presenting, new connections (late joiners) must get the screen, not the camera
+      const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
+      const mixTrack = screenAudioMixRef.current?.track || null;
+      local.getAudioTracks().forEach(track => pc.addTrack(mixTrack || track, local));
+      const videoTrack = screenTrack || local.getVideoTracks()[0];
+      if (videoTrack) pc.addTrack(videoTrack, local);
     }
 
     // Reuse or create a stable MediaStream for this peer.
@@ -161,6 +185,53 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     return pc;
   }, []);
 
+  // ── Video-sender helpers (used by camera + screen share) ────────────────────
+  // Senders are looked up through transceivers: a sender whose track is null
+  // (camera off) can't be found with getSenders().find(s => s.track?.kind === 'video').
+
+  /** Send a fresh offer on an existing connection (adds/enables a media line). */
+  const renegotiate = useCallback(async (socketId, pc) => {
+    try {
+      if (pc.signalingState !== 'stable') {
+        await new Promise((resolve) => {
+          const done = () => {
+            if (pc.signalingState === 'stable') { pc.removeEventListener('signalingstatechange', done); resolve(); }
+          };
+          pc.addEventListener('signalingstatechange', done);
+          setTimeout(resolve, 4000);
+        });
+      }
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current?.emit('offer', { to: socketId, offer });
+    } catch (err) {
+      console.error('Renegotiation failed:', err);
+    }
+  }, []);
+
+  /**
+   * Point one peer's outgoing video at `track` (camera, screen, or null to clear).
+   * Uses replaceTrack when the video line is already negotiated for sending;
+   * otherwise (peer joined while we had no camera, or the line is receive-only)
+   * it enables the line and renegotiates.
+   */
+  const setPeerVideo = useCallback(async (socketId, pc, track) => {
+    const tr = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+    const canSend = !!tr && tr.mid !== null &&
+      (tr.currentDirection === 'sendrecv' || tr.currentDirection === 'sendonly');
+    if (canSend || !track) {
+      await tr?.sender.replaceTrack(track);
+      return;
+    }
+    if (tr) {
+      tr.direction = 'sendrecv';
+      await tr.sender.replaceTrack(track);
+    } else {
+      pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+    }
+    await renegotiate(socketId, pc);
+  }, [renegotiate]);
+
   // ── Main effect: media + socket ─────────────────────────────────────────────
   useEffect(() => {
     if (!roomCode) return;
@@ -199,11 +270,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       socket.on('admitted', () => {
         setAdmitted(true);
-        socket.emit('join-room', { roomCode, userId, userName });
+        socket.emit('join-room', { roomCode, userId, userName, isHost: false });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
         socket.emit('get-agenda', { roomCode });
+        socket.emit('get-polls', { roomCode });
       });
 
       socket.on('denied', () => {
@@ -269,6 +341,22 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('answer', { to: from, answer });
+        // An offer for a connection we already have is a renegotiation (e.g. a new
+        // video line for screen share) — answer it on the existing connection.
+        let pc = pcsRef.current[from];
+        if (!pc || pc.signalingState === 'closed') {
+          pc = createPC(from, (remoteStream) => {
+            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
+          });
+        }
+        try {
+          await pc.setRemoteDescription(offer);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('answer', { to: from, answer });
+        } catch (err) {
+          console.error('Failed to answer offer:', err);
+        }
       });
 
       socket.on('answer', async ({ from, answer }) => {
@@ -285,6 +373,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         delete remoteStreamsRef.current[socketId];
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         setSpotlightId(id => id === socketId ? 'local' : id);
+        setScreenSharerId(id => id === socketId ? null : id);
         // Remove from hand queue on leave
         setHandQueue(q => q.filter(h => h.socketId !== socketId));
       });
@@ -313,6 +402,22 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Room lock state changed (by host) — broadcast to everyone including sender
       socket.on('room-locked', ({ locked }) => {
         setRoomLockedState(locked);
+      });
+
+      // This room is locked — my join/request-join was rejected before I got in.
+      socket.on('room-locked-error', () => {
+        setLockedOut(true);
+      });
+
+      // Co-host designation changed (host set or cleared it) — everyone is told.
+      socket.on('co-host-changed', ({ socketId, userId: coUserId, userName: coName }) => {
+        setCoHost(socketId ? { socketId, userId: coUserId, userName: coName } : null);
+      });
+
+      // The host disconnected and I (or someone else) was promoted to host.
+      socket.on('host-transferred', ({ newHostUserId }) => {
+        setCoHost(null);
+        if (newHostUserId === userId) setAmHost(true);
       });
 
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
@@ -350,6 +455,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           : prev);
       });
 
+      // ── Screen share sync ─────────────────────────────────────────────────
+      socket.on('screen-share-started', ({ socketId }) => setScreenSharerId(socketId));
+      socket.on('screen-share-stopped', ({ socketId }) => setScreenSharerId(id => (id === socketId ? null : id)));
+      socket.on('screen-share-state', ({ socketId }) => setScreenSharerId(socketId));
+
       // ── Feature 6: Collaborative Notes ─────────────────────────────────────
 
       // Receive current notes state on connect
@@ -378,12 +488,24 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // A new poll was created
       socket.on('poll-created', (poll) => {
+        console.log('[poll-created] received:', poll);
         setPolls(prev => [...prev, poll]);
+        if (poll.createdById !== socket.id) {
+          setPollNotifications(prev => [...prev, poll]);
+          setTimeout(() => {
+            setPollNotifications(prev => prev.filter(p => p.id !== poll.id));
+          }, 15000);
+        }
       });
 
       // A poll was updated (vote or end)
       socket.on('poll-updated', (updatedPoll) => {
         setPolls(prev => prev.map(p => p.id === updatedPoll.id ? updatedPoll : p));
+      });
+
+      // Existing polls on join
+      socket.on('polls-state', ({ polls: existing }) => {
+        setPolls(existing || []);
       });
 
       // ── Feature: Meeting Agenda ──────────────────────────────────────────────
@@ -398,16 +520,28 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setAgendaItems(items);
       });
 
-      // Join the room if host (already admitted); otherwise request admission
-      if (isHost) {
-        socket.emit('join-room', { roomCode, userId, userName });
-        socket.emit('get-notes', { roomCode });
-        socket.emit('get-media', { roomCode });
-        socket.emit('get-files', { roomCode });
-        socket.emit('get-agenda', { roomCode });
-      } else {
-        socket.emit('request-join', { roomCode, userId, userName });
-      }
+      /**
+ * (Re)join the signaling room. Fires on the first connection AND on every
+ * automatic socket.io reconnect (dropped wifi, laptop sleep, a backgrounded
+ * tab getting throttled, etc.) — without this, a reconnected socket is never
+ * re-added to the server's room, so a teammate's join-request would silently
+ * never reach the host again, even though the host's tab looks fine.
+ */
+      const joinOrRequestJoin = () => {
+        if (isHost || admittedRef.current) {
+          socket.emit('join-room', { roomCode, userId, userName, isHost: !!isHost });
+          socket.emit('get-notes', { roomCode });
+          socket.emit('get-media', { roomCode });
+          socket.emit('get-files', { roomCode });
+          socket.emit('get-agenda', { roomCode });
+          socket.emit('get-polls', { roomCode });
+        } else {
+          socket.emit('request-join', { roomCode, userId, userName });
+        }
+      };
+      // 'connect' fires for the initial connection too, so this alone covers both cases —
+      // no separate one-off call is needed (that would double-fire on the first connect).
+      socket.on('connect', joinOrRequestJoin);
     };
 
     init().catch(() => setConnectionError('Failed to initialize video call.'));
@@ -419,6 +553,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       remoteStreamsRef.current = {};
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      screenAudioMixRef.current?.ctx.close().catch(() => { });
       socketRef.current?.disconnect();
     };
   }, [roomCode, userId, userName, createPC]); // onKicked intentionally excluded to avoid reconnect loop
@@ -467,10 +602,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         localStreamRef.current.removeTrack(t);
       });
       // Tell all peers: send a null/black track so their UI updates
-      Object.values(pcsRef.current).forEach(pc => {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(null).catch(() => { });
-      });
+      // (While presenting, the video sender carries the screen — leave it alone.)
+      if (!screenStreamRef.current) {
+        Object.values(pcsRef.current).forEach(pc => {
+          const sender = pc.getTransceivers().find(t => t.receiver.track.kind === 'video')?.sender;
+          sender?.replaceTrack(null).catch(() => { });
+        });
+      }
       // Tell peers explicitly so they show the avatar instead of a frozen frame
       socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
       setCameraOff(true);
@@ -486,10 +624,12 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         });
         localStreamRef.current?.addTrack(newTrack);
         // Replace track in all peer connections
-        Object.values(pcsRef.current).forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
-          if (sender) sender.replaceTrack(newTrack).catch(() => { });
-        });
+        // (While presenting, keep sending the screen; the camera is restored when sharing stops.)
+        if (!screenStreamRef.current) {
+          Object.entries(pcsRef.current).forEach(([id, pc]) => {
+            setPeerVideo(id, pc, newTrack).catch(() => { });
+          });
+        }
         // Update the local stream state so VideoTile re-renders with new track
         setLocalStream(prev => {
           if (!prev) return prev;
@@ -502,7 +642,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         console.error('Camera re-acquire failed:', err);
       }
     }
-  }, [cameraOff, roomCode]);
+  }, [cameraOff, roomCode, setPeerVideo]);
 
   /**
    * Basic noise suppression: routes the mic track through a Web Audio
@@ -626,10 +766,113 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   }, [isScreenSharing]);
   // Keep the ref in sync with the latest version of the callback
   toggleScreenShareRef.current = toggleScreenShare;
+  // ── Screen sharing ─────────────────────────────────────────────────────────
+
+  const showScreenNotice = useCallback((msg) => {
+    setScreenShareNotice(msg);
+    setTimeout(() => setScreenShareNotice(''), 4000);
+  }, []);
+
+  /** Stop presenting. Refs only, so it is safe from the browser's own "Stop sharing" bar. */
+  const stopScreenShare = useCallback(async () => {
+    const screen = screenStreamRef.current;
+    if (!screen) return;
+    screenStreamRef.current = null;
+    screen.getTracks().forEach(t => { t.onended = null; t.stop(); });
+
+    const mix = screenAudioMixRef.current;
+    screenAudioMixRef.current = null;
+    const micTrack = localStreamRef.current?.getAudioTracks()[0] || null;
+    // Back to the camera — or null when the camera is off, which clears the ended screen frame.
+    const camTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+
+    await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
+      try {
+        if (mix && micTrack) {
+          await pc.getTransceivers().find(t => t.receiver.track.kind === 'audio')?.sender.replaceTrack(micTrack);
+        }
+        await setPeerVideo(id, pc, camTrack);
+      } catch (err) {
+        console.warn('Could not restore outgoing tracks for', id, err);
+      }
+    }));
+
+    mix?.ctx.close().catch(() => { });
+    socketRef.current?.emit('screen-share-stop', { roomCode });
+    setIsScreenSharing(false);
+  }, [roomCode, setPeerVideo]);
+
+  const startScreenShare = useCallback(async () => {
+    if (screenStreamRef.current) return;
+    if (screenSharerId) {
+      showScreenNotice('Someone else is already sharing their screen');
+      return;
+    }
+
+    let screen;
+    try {
+      screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch {
+      return; // picker cancelled or permission denied
+    }
+    const screenTrack = screen.getVideoTracks()[0];
+
+    // One presenter at a time — the server decides.
+    const reply = await new Promise((resolve) => {
+      const socket = socketRef.current;
+      if (!socket) { resolve({ ok: true }); return; }
+      const timer = setTimeout(() => resolve({ ok: true }), 2500); // server without this event
+      socket.emit('screen-share-start', { roomCode }, (res) => { clearTimeout(timer); resolve(res || { ok: true }); });
+    });
+    if (!reply.ok) {
+      screen.getTracks().forEach(t => t.stop());
+      showScreenNotice(`${reply.by || 'Someone else'} is already sharing their screen`);
+      return;
+    }
+
+    screenTrack.contentHint = 'detail';                 // favour sharp text over frame rate
+    screenStreamRef.current = screen;
+    screenTrack.onended = () => { stopScreenShare(); }; // browser "Stop sharing" bar
+
+    // Screen/tab audio: mix it with the mic and send it through the existing audio line.
+    const screenAudio = screen.getAudioTracks()[0];
+    const mic = localStreamRef.current?.getAudioTracks()[0];
+    let mixTrack = null;
+    if (screenAudio && mic) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        ctx.resume().catch(() => { });
+        const dest = ctx.createMediaStreamDestination();
+        ctx.createMediaStreamSource(new MediaStream([mic])).connect(dest);
+        ctx.createMediaStreamSource(new MediaStream([screenAudio])).connect(dest);
+        mixTrack = dest.stream.getAudioTracks()[0];
+        screenAudioMixRef.current = { ctx, track: mixTrack };
+      } catch (err) {
+        console.warn('Screen audio mix failed, sharing video only:', err);
+      }
+    }
+
+    await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
+      try {
+        await setPeerVideo(id, pc, screenTrack);
+        if (mixTrack) {
+          await pc.getTransceivers().find(t => t.receiver.track.kind === 'audio')?.sender.replaceTrack(mixTrack);
+        }
+      } catch (err) {
+        console.warn('Could not send screen to', id, err);
+      }
+    }));
+    setIsScreenSharing(true);
+  }, [roomCode, screenSharerId, setPeerVideo, stopScreenShare, showScreenNotice]);
+
+  const toggleScreenShare = useCallback(
+    () => (screenStreamRef.current ? stopScreenShare() : startScreenShare()),
+    [startScreenShare, stopScreenShare],
+  );
 
   // ── Feature 1: Host control emitters ───────────────────────────────────────
 
-  /** Host: mute a remote participant by socket ID. */
+  /** Host or co-host: mute a remote participant by socket ID. */
   const muteParticipant = useCallback((socketId) => {
     socketRef.current?.emit('mute-participant', { roomCode, to: socketId });
   }, [roomCode]);
@@ -638,16 +881,33 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const unmuteParticipant = useCallback((socketId) => {
     socketRef.current?.emit('unmute-participant', { roomCode, to: socketId });
   }, [roomCode]);
+    if (!canHost) return;
+    socketRef.current?.emit('mute-participant', { to: socketId });
+  }, [canHost]);
 
-  /** Host: remove a remote participant from the room. */
+  /** Host or co-host: remove a remote participant from the room. */
   const kickParticipant = useCallback((socketId) => {
+    if (!canHost) return;
     socketRef.current?.emit('kick-participant', { to: socketId });
-  }, []);
+  }, [canHost]);
 
-  /** Host: lock or unlock the room. */
+  /** Host or co-host: lock or unlock the room. */
   const setRoomLocked = useCallback((locked) => {
+    if (!canHost) return;
     socketRef.current?.emit('lock-room', { roomCode, locked });
-  }, [roomCode]);
+  }, [roomCode, canHost]);
+
+  /** Host only: designate a co-host. Replaces any existing co-host. */
+  const makeCoHost = useCallback((socketId) => {
+    if (!amHost) return;
+    socketRef.current?.emit('make-co-host', { roomCode, socketId });
+  }, [roomCode, amHost]);
+
+  /** Host only: revoke the current co-host. */
+  const removeCoHost = useCallback(() => {
+    if (!amHost) return;
+    socketRef.current?.emit('remove-co-host', { roomCode });
+  }, [roomCode, amHost]);
 
   // ── Feature 3: Reaction + hand emitters ────────────────────────────────────
 
@@ -693,7 +953,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   /** Host: create a new poll. options is an array of option strings. */
   const createPoll = useCallback((question, options) => {
-    socketRef.current?.emit('create-poll', { roomCode, question, options });
+    const s = socketRef.current;
+    console.log('[createPoll] socket:', s?.id, 'connected:', s?.connected, 'roomCode:', roomCode, 'q:', question, 'opts:', options);
+    s?.emit('create-poll', { roomCode, question, options });
   }, [roomCode]);
 
   /** Vote for an option in a poll by index. */
@@ -708,16 +970,16 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Waiting Room Handlers ──────────────────────────────────────────────────
   const admitUser = useCallback((socketId) => {
-    if (!isHost) return;
+    if (!canHost) return;
     socketRef.current?.emit('admit-user', { toSocketId: socketId });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+  }, [canHost]);
 
   const denyUser = useCallback((socketId) => {
-    if (!isHost) return;
+    if (!canHost) return;
     socketRef.current?.emit('deny-user', { toSocketId: socketId });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+  }, [canHost]);
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 
@@ -758,6 +1020,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socket.emit('share-file', { roomCode, file });
   }, [roomCode]);
 
+  /** Dismiss a poll popup notification before its 15s auto-timeout. */
+  const dismissPollNotification = useCallback((id) => {
+    setPollNotifications(prev => prev.filter(p => p.id !== id));
+  }, []);
+
   /** Dismiss a file-share popup notification before its 8s auto-timeout. */
   const dismissFileNotification = useCallback((id) => {
     setFileNotifications(prev => prev.filter(f => f.id !== id));
@@ -793,14 +1060,18 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socketReady,
     localStream, peers, screenStream,
     micMuted, hostMuted, cameraOff, isScreenSharing,
+    micMuted, cameraOff, isScreenSharing, screenSharerId, screenShareNotice,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
     // Waiting Room / Admission
-    admitted, denied, joinRequests, admitUser, denyUser,
+    admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
     // Feature 1: Host Controls
     muteParticipant, unmuteParticipant, kickParticipant, setRoomLocked, roomLocked,
+    muteParticipant, kickParticipant, setRoomLocked, roomLocked,
+    // Co-host
+    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,
@@ -811,9 +1082,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Feature: Media Share
     sharedMediaUrl, shareMedia,
     // Feature 7: Polls
-    polls, createPoll, votePoll, endPoll,
+    polls, createPoll, votePoll, endPoll, pollNotifications, dismissPollNotification,
     // Feature: File Sharing
-    sharedFiles, shareFile,
+    sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     // Feature: Meeting Agenda
     agendaItems, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
     // Socket ref — exposed so panels can subscribe to room-scoped events
