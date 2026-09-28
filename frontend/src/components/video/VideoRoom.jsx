@@ -8,6 +8,7 @@ import MeetingAgenda from '../MeetingAgenda';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
+import { useMeetingRecording } from '../../hooks/useMeetingRecording';
 import { getStoredUser } from '../../utils/auth';
 import { useMeeting } from '../../context/MeetingContext';
 import VideoTile from './VideoTile';
@@ -91,8 +92,6 @@ function RemoteAudio({ stream }) {
 export default function VideoRoom({ roomCode, isHost }) {
   const navigate = useNavigate();
   const { account } = useWallet();
-  const { isRecording, stopRecording } = useMeeting();
-
   const [chatOpen, setChatOpen] = useState(false);
   const [panelTab, setPanelTab] = useState('chat');
   const [showPeople, setShowPeople] = useState(false);
@@ -161,7 +160,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const {
     socket, socketReady,
-    localStream, peers, micMuted, hostMuted, cameraOff, isScreenSharing,
+    localStream, peers, screenStream, micMuted, hostMuted, cameraOff, isScreenSharing,
     spotlightId, setSpotlightId, toggleMic, toggleCamera, toggleScreenShare,
     muteParticipant, unmuteParticipant,
     screenSharerId, screenShareNotice,
@@ -177,6 +176,24 @@ export default function VideoRoom({ roomCode, isHost }) {
     socketRef,
     kickParticipant,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+
+  const {
+    recordingState,
+    recordingError,
+    isRecording,
+    startRecording,
+    stopRecording,
+  } = useMeetingRecording({
+    roomCode,
+    isHost,
+    localStream,
+    screenStream,
+    peers,
+    userName,
+    socket,
+    socketReady,
+    onError: showToast,
+  });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
@@ -741,7 +758,8 @@ export default function VideoRoom({ roomCode, isHost }) {
           </button>
           <span style={{ width: 1, height: 14, background: 'rgba(212,175,55,.22)', flexShrink: 0 }} />
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'IBM Plex Mono',monospace", fontSize: 11.5, color: '#c9bda2', flexShrink: 0 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', animation: isRecording ? 'chainPulse 1.5s infinite' : undefined, display: 'inline-block' }} />
+            {isRecording && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', animation: 'chainPulse 1.5s infinite', display: 'inline-block' }} />}
+            {isRecording && <span style={{ color: '#f87171', fontWeight: 600 }}>Recording</span>}
             {fmtTime(elapsed)}
           </span>
         </div>
@@ -1321,6 +1339,15 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {isScreenSharing ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg> : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
               </button>
 
+              {isHost && <button
+                onClick={() => { if (isRecording) stopRecording(); else startRecording(); }}
+                disabled={recordingState === 'stopping'}
+                title={isRecording ? 'Stop recording' : 'Start recording'}
+                style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isRecording ? 'rgba(239,68,68,.2)' : 'transparent', color: isRecording ? '#f87171' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: recordingState === 'stopping' ? 'wait' : 'pointer', opacity: recordingState === 'stopping' ? .6 : 1 }}
+              >
+                <span style={{ width: 14, height: 14, borderRadius: isRecording ? 3 : '50%', background: 'currentColor', display: 'block' }} />
+              </button>}
+
               {/* Divider */}
               <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
 
@@ -1428,6 +1455,11 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
+      {recordingError && (
+        <div style={{ position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)', zIndex: 105, background: 'rgba(70,15,20,.94)', border: '1px solid rgba(239,68,68,.35)', borderRadius: 10, padding: '9px 14px', color: '#fecaca', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+          {recordingError}
+        </div>
+      )}
       {/* One audio element per remote peer — the only place remote voice is played. */}
       {peerList.map(([id, p]) => (p.stream ? <RemoteAudio key={id} stream={p.stream} /> : null))}
 

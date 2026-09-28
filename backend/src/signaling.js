@@ -39,6 +39,8 @@ function isPrivileged(roomCode, userId) {
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
 
+// roomCode -> { startedAt, startedBy } for the browser-side recording session
+const roomRecordings = new Map();
 // roomCode -> socketId of the participant currently sharing their screen (one presenter at a time)
 const roomScreenShares = new Map();
 
@@ -172,6 +174,10 @@ function setupSignaling(httpServer, allowedOrigin) {
         selfMuted: false,
         hostMuted: false,
       });
+
+      if (roomRecordings.has(roomCode)) {
+        socket.emit('recording-state', { state: 'recording', startedAt: roomRecordings.get(roomCode).startedAt });
+      }
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', {
@@ -563,6 +569,29 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
     });
 
+    // Recording commands use server-side membership and host state. Client
+    // role flags are intentionally ignored.
+    socket.on('recording-start', ({ roomCode }, acknowledge = () => {}) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
+      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can start recording.' });
+      if (roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'Recording is already active.' });
+      const recording = { startedAt: Date.now(), startedBy: member.userId };
+      roomRecordings.set(roomCode, recording);
+      io.to(roomCode).emit('recording-state', { state: 'recording', startedAt: recording.startedAt });
+      acknowledge({ ok: true });
+    });
+
+    socket.on('recording-stop', ({ roomCode }, acknowledge = () => {}) => {
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
+      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can stop recording.' });
+      if (!roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'No recording is active.' });
+      roomRecordings.delete(roomCode);
+      io.to(roomCode).emit('recording-state', { state: 'idle' });
+      acknowledge({ ok: true });
     /**
      * Screen sharing: one presenter at a time. The client asks for the slot with an
      * acknowledgement callback; everyone else is told who is presenting.
@@ -623,7 +652,18 @@ function setupSignaling(httpServer, allowedOrigin) {
     // ── Disconnect ────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
+      const room = currentRoom ? rooms.get(currentRoom) : null;
+      const departing = room?.get(socket.id);
+      const hostLeftWhileRecording = departing
+        && roomHosts.get(currentRoom) === departing.userId
+        && roomRecordings.has(currentRoom);
+
+      if (hostLeftWhileRecording) {
+        roomRecordings.delete(currentRoom);
+      }
+
       if (currentRoom && rooms.has(currentRoom)) {
+        room.delete(socket.id);
         const room = rooms.get(currentRoom);
         const leavingMember = room.get(socket.id);
         room.delete(socket.id);
@@ -676,6 +716,7 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomHosts.delete(currentRoom);
           roomCoHosts.delete(currentRoom);
           roomWhiteboards.delete(currentRoom);
+          roomRecordings.delete(currentRoom);
           roomScreenShares.delete(currentRoom);
 
           delete roomLocks[currentRoom];
@@ -686,6 +727,9 @@ function setupSignaling(httpServer, allowedOrigin) {
         socket.to(currentRoom).emit('screen-share-stopped', { socketId: socket.id });
       }
       if (currentRoom) {
+        if (hostLeftWhileRecording) {
+          socket.to(currentRoom).emit('recording-state', { state: 'idle', error: 'Recording stopped because the host left.' });
+        }
         socket.to(currentRoom).emit('user-left', { socketId: socket.id });
         // Lower hand on disconnect
         socket.to(currentRoom).emit('hand-lowered', { socketId: socket.id });
