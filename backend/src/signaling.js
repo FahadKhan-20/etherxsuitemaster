@@ -215,7 +215,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       const target = room?.get(to);
 
       if (!room || !sender || !target) return;
-      if (roomHosts.get(roomCode) !== sender.userId) return;
+      if (!isPrivileged(roomCode, sender.userId)) return;
 
       target.hostMuted = muted;
       const effectiveMuted = target.hostMuted || target.selfMuted;
@@ -256,10 +256,6 @@ function setupSignaling(httpServer, allowedOrigin) {
         muted: effectiveMuted,
         mutedByHost: member.hostMuted,
       });
-    socket.on('mute-participant', ({ to }) => {
-      const me = currentRoom && rooms.get(currentRoom)?.get(socket.id);
-      if (!me || !isPrivileged(currentRoom, me.userId)) return;
-      io.to(to).emit('muted-by-host');
     });
 
     /**
@@ -575,7 +571,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
-      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can start recording.' });
+      if (!isPrivileged(roomCode, member.userId)) return acknowledge({ ok: false, error: 'Only the host can start recording.' });
       if (roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'Recording is already active.' });
       const recording = { startedAt: Date.now(), startedBy: member.userId };
       roomRecordings.set(roomCode, recording);
@@ -587,11 +583,13 @@ function setupSignaling(httpServer, allowedOrigin) {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
-      if (roomHosts.get(roomCode) !== member.userId) return acknowledge({ ok: false, error: 'Only the host can stop recording.' });
+      if (!isPrivileged(roomCode, member.userId)) return acknowledge({ ok: false, error: 'Only the host can stop recording.' });
       if (!roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'No recording is active.' });
       roomRecordings.delete(roomCode);
       io.to(roomCode).emit('recording-state', { state: 'idle' });
       acknowledge({ ok: true });
+    });
+
     /**
      * Screen sharing: one presenter at a time. The client asks for the slot with an
      * acknowledgement callback; everyone else is told who is presenting.
@@ -663,9 +661,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       }
 
       if (currentRoom && rooms.has(currentRoom)) {
-        room.delete(socket.id);
-        const room = rooms.get(currentRoom);
-        const leavingMember = room.get(socket.id);
+        const leavingMember = departing;
         room.delete(socket.id);
 
         // If the co-host disconnects, the badge/authority goes with them.

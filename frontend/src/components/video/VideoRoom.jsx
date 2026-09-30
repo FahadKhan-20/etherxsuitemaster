@@ -1132,8 +1132,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([id, p]) => ({ id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ id, socketId: id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
                   <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
@@ -1147,8 +1146,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                   )}
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
-                  {isHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
-                  {isHost && !u.local && (
+                  {canHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
+                  {canHost && !u.local && (
                     <button
                       onClick={() => kickParticipant(u.socketId)}
                       title="Remove participant"
@@ -1237,10 +1236,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                     overflow: 'hidden',
                     cursor: 'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                    {p.stream && !p.videoOff ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={!!p.isMuted} isCameraOff={false} />
                     {p.stream && (!p.videoOff || id === screenSharerId) ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
+                      <VideoTile stream={p.stream} userName={pName} isMuted={!!p.isMuted} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
                     ) : (
                       <div style={{
                         width: 130, height: 130, borderRadius: '50%',
@@ -1274,8 +1271,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].isMuted} isCameraOff={!spotlight[1].stream || !!spotlight[1].videoOff} /></div>
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].isMuted} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
                   <VideoTile
