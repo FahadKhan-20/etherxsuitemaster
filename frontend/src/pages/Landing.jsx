@@ -493,13 +493,6 @@ export default function Landing() {
             </motion.section>
           </div>
         </main>
-
-        <footer className="meet-footer" aria-label="Footer links">
-          <a href="#">Privacy</a>
-          <a href="#">Terms</a>
-          <a href="#">About</a>
-          <a href="#">Help</a>
-        </footer>
       </div>
 
       {/* ── QR Scanner Modal ── */}

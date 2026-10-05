@@ -4,7 +4,7 @@ import {
   MessageSquare, Hand, Users, LayoutGrid,
   UserPlus, MoreHorizontal, Maximize, Minimize,
   Settings, Copy, Flag, FileText, BarChart2,
-  List, SmilePlus, Film, PenLine, Timer, HelpCircle,
+  List, SmilePlus, Film, PenLine, Timer,
   Sparkles, Layers, FolderOpen, Image, Vote, Wallet,
   Crosshair, Download, Palette, PartyPopper,
   CheckSquare, BarChart3, Award, Shuffle, ThumbsUp, PictureInPicture2,
@@ -303,7 +303,6 @@ export default function VideoControls({
   mediaOpen, onToggleMedia,
   whiteboardOpen, onToggleWhiteboard,
   timerVisible, onToggleTimer,
-  qaOpen, onToggleQA,
   aiSummaryOpen, onToggleAISummary,
   breakoutOpen, onToggleBreakout,
   fileShareOpen, onToggleFileShare,
@@ -479,9 +478,6 @@ export default function VideoControls({
           </CtrlBtn>
           <CtrlBtn onClick={onToggleTimer} label="Meeting timer" active={timerVisible}>
             <Timer size={20} />
-          </CtrlBtn>
-          <CtrlBtn onClick={onToggleQA} label="Q&A" active={qaOpen}>
-            <HelpCircle size={20} />
           </CtrlBtn>
           <CtrlBtn onClick={onRaiseHand} label={handRaised ? 'Lower hand' : 'Raise hand'} active={handRaised}>
             <Hand size={20} />

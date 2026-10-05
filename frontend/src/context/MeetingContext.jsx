@@ -317,6 +317,10 @@ export function MeetingProvider({ children }) {
     ]);
   };
 
+  const cancelScheduledMeeting = (id) => {
+    setScheduledMeetings((previousMeetings) => previousMeetings.filter((meeting) => meeting.id !== id));
+  };
+
   const saveAsyncMessage = (payload) => {
     setSavedAsyncMessages((previousMessages) => [
       {
@@ -445,6 +449,7 @@ export function MeetingProvider({ children }) {
       startRecording,
       stopRecording,
       scheduleMeeting,
+      cancelScheduledMeeting,
       saveAsyncMessage,
       markAsyncMessageRead,
       markNotificationRead,

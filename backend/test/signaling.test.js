@@ -46,6 +46,7 @@ class FakeServer {
   constructor() {
     this.handlers = new Map();
     this.sockets = { sockets: new Map() };
+    this.emittedEvents = [];
   }
 
   on(event, handler) {
@@ -55,6 +56,7 @@ class FakeServer {
   to(socketId) {
     return {
       emit: (event, payload) => {
+        this.emittedEvents.push({ target: socketId, event, payload });
         this.sockets.sockets.get(socketId)?.emit(event, payload);
       },
     };
@@ -145,14 +147,17 @@ test('only the registered room host can assign a co-host', (t) => {
 
   host.trigger('join-room', { roomCode, userId: 'host-user', userName: 'Host', isHost: true });
   participant.trigger('join-room', { roomCode, userId: 'participant-user', userName: 'Participant' });
-  registerRoomHost(roomCode.toUpperCase(), { toString: () => 'host-user' });
+  registerRoomHost(roomCode, { toString: () => 'host-user' });
 
-  participant.trigger('set-co-host', { roomCode, to: participant.id, isCoHost: true });
-  assert.equal(rooms.get(roomCode).get(participant.id).isCoHost, false);
-  assert.ok(participant.clientEvents.some(({ event }) => event === 'meeting-permission-denied'));
+  participant.trigger('make-co-host', { roomCode, socketId: participant.id });
+  assert.equal(io.emittedEvents.filter(({ event }) => event === 'co-host-changed').length, 0);
 
-  host.trigger('set-co-host', { roomCode, to: participant.id, isCoHost: true });
-  assert.equal(rooms.get(roomCode).get(participant.id).isCoHost, true);
+  host.trigger('make-co-host', { roomCode, socketId: participant.id });
+  assert.deepEqual(io.emittedEvents.find(({ event }) => event === 'co-host-changed'), {
+    target: roomCode,
+    event: 'co-host-changed',
+    payload: { socketId: participant.id, userId: 'participant-user', userName: 'Participant' },
+  });
 
   host.disconnect();
   participant.disconnect();
