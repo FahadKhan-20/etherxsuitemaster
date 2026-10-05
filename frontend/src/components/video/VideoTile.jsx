@@ -24,6 +24,7 @@ export default function VideoTile({
   filter = 'none',
   bgImage = 'none',
   fit = 'cover',
+  isHandRaised = false,
 }) {
   const videoRef = useRef(null);
   const initial = (userName || 'A').charAt(0).toUpperCase();
@@ -61,6 +62,23 @@ export default function VideoTile({
             fontSize: 9, fontWeight: 700, color: '#fff', letterSpacing: '0.05em',
             pointerEvents: 'none',
           }}>✦ Verified</div>
+        )}
+        {isHandRaised && (
+          <div
+            aria-label={`${userName} raised their hand`}
+            title="Hand raised"
+            style={{
+              position: 'absolute', top: 6, left: 6, zIndex: 10,
+              width: 28, height: 28, borderRadius: 999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#111', background: '#fbbc04',
+              boxShadow: '0 2px 10px rgba(0,0,0,.35)',
+            }}
+          >
+            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" aria-hidden="true">
+              <path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
         )}
         {hasVideo && !isCameraOff ? (
           hasEffects ? (
@@ -117,6 +135,23 @@ export default function VideoTile({
       background: bgImage === 'none' ? 'transparent' : `url(${bgImage}) center/cover`,
       transition: 'background 0.3s'
     }}>
+      {isHandRaised && (
+        <div
+          aria-label={`${userName} raised their hand`}
+          title="Hand raised"
+          style={{
+            position: 'absolute', top: 24, left: 24, zIndex: 10,
+            width: 36, height: 36, borderRadius: 999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#111', background: '#fbbc04',
+            boxShadow: '0 2px 12px rgba(0,0,0,.4)',
+          }}
+        >
+          <svg viewBox="0 0 24 24" width={20} height={20} fill="none" aria-hidden="true">
+            <path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
 
       {hasVideo && !isCameraOff ? (
         hasEffects ? (

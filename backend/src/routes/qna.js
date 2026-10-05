@@ -3,7 +3,7 @@ const router = express.Router();
 const Question = require('../models/Question');
 const MeetingRoom = require('../models/MeetingRoom');
 const auth = require('../middleware/auth');
-const { getSessionStart } = require('../signaling');
+const { getSessionStart, rooms } = require('../signaling');
 
 const MAX_QUESTION_LENGTH = 500;
 const MIN_QUESTION_LENGTH = 3;
@@ -176,10 +176,16 @@ router.patch('/questions/:questionId/answer', auth, async (req, res, next) => {
       });
     }
 
-    if (String(room.hostUserId) !== String(req.user.id)) {
+    const activeRoom = rooms.get(question.roomCode)
+      || Array.from(rooms.entries())
+        .find(([roomCode]) => roomCode.toLowerCase() === String(question.roomCode).toLowerCase())?.[1];
+    const isCoHost = Array.from(activeRoom?.values() || [])
+      .some((participant) => participant.isCoHost && String(participant.userId) === String(req.user.id));
+
+    if (String(room.hostUserId) !== String(req.user.id) && !isCoHost) {
       return res.status(403).json({
         success: false,
-        message: 'Only the host can mark questions as answered.',
+        message: 'Only the host or a co-host can mark questions as answered.',
       });
     }
 

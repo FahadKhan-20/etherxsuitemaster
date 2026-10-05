@@ -54,6 +54,10 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [roomLocked, setRoomLockedState] = useState(false);
   const [spotlightId, setSpotlightId] = useState('local');
   const [connectionError, setConnectionError] = useState('');
+  const [isCoHost, setIsCoHost] = useState(false);
+  const [permissionNotice, setPermissionNotice] = useState(null);
+  const isRoomHost = !!isHost;
+  const canManageMeeting = isRoomHost || isCoHost;
 
   // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────────
   // reactions: [{id, emoji, socketId, userName}] — floating emoji overlays
@@ -190,6 +194,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   useEffect(() => {
     if (!roomCode) return;
     let cancelled = false;
+    setIsCoHost(false);
+    setPermissionNotice(null);
 
     const init = async () => {
       let stream;
@@ -243,16 +249,25 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           const pc = createPC(u.socketId, (remoteStream) => {
             setPeers(prev => ({ ...prev, [u.socketId]: { ...prev[u.socketId], stream: remoteStream } }));
           });
-          setPeers(prev => ({ ...prev, [u.socketId]: { userName: u.userName, userId: u.userId, stream: null } }));
+          setPeers(prev => ({ ...prev, [u.socketId]: { userName: u.userName, userId: u.userId, stream: null, isCoHost: !!u.isCoHost } }));
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit('offer', { to: u.socketId, offer });
         }
       });
 
-      socket.on('user-joined', ({ socketId, userName: uName, userId: uId }) => {
-        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null } }));
+      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, isCoHost: coHost }) => {
+        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null, isCoHost: !!coHost } }));
       });
+
+      socket.on('co-host-updated', ({ socketId, isCoHost: assigned }) => {
+        setPeers(prev => prev[socketId]
+          ? { ...prev, [socketId]: { ...prev[socketId], isCoHost: assigned } }
+          : prev);
+        if (socketId === socket.id) setIsCoHost(assigned);
+      });
+
+      socket.on('meeting-permission-denied', (notice) => setPermissionNotice(notice));
 
       socket.on('offer', async ({ from, offer }) => {
         // An offer for a connection we already have is a renegotiation (e.g. a new
@@ -301,6 +316,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // Host has kicked us — invoke the caller-supplied callback
       socket.on('removed-from-room', () => {
+        socket.disconnect();
         if (typeof onKicked === 'function') onKicked();
       });
 
@@ -433,7 +449,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       screenAudioMixRef.current?.ctx.close().catch(() => { });
       socketRef.current?.disconnect();
     };
-  }, [roomCode, userId, userName, createPC]); // onKicked intentionally excluded to avoid reconnect loop
+  }, [roomCode, userId, userName, createPC, isHost]); // onKicked intentionally excluded to avoid reconnect loop
 
   // ── Feature 4: Network Quality polling (every 5s) ───────────────────────────
   useEffect(() => {
@@ -691,6 +707,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socketRef.current?.emit('kick-participant', { to: socketId });
   }, []);
 
+  const setCoHost = useCallback((socketId, assigned) => {
+    if (!isRoomHost) return;
+    socketRef.current?.emit('set-co-host', { roomCode, to: socketId, isCoHost: assigned });
+  }, [isRoomHost, roomCode]);
+
   /** Host: lock or unlock the room. */
   const setRoomLocked = useCallback((locked) => {
     socketRef.current?.emit('lock-room', { roomCode, locked });
@@ -855,6 +876,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     admitted, denied, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls
     muteParticipant, kickParticipant, setRoomLocked, roomLocked,
+    isRoomHost, isCoHost, canManageMeeting, setCoHost, permissionNotice,
     // Feature 3: Reactions + Hand Queue
     reactions, handQueue,
     sendReaction, sendHandRaise, sendHandLower,

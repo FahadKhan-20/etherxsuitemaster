@@ -38,10 +38,16 @@ const roomScreenShares = new Map();
 const SESSION_GRACE_MS = Number(process.env.SESSION_GRACE_MS) || 10 * 60 * 1000;
 const roomSessions = new Map();
 
+const roomHostKey = (roomCode) => String(roomCode || '').trim().toLowerCase();
+
 /** Start time of the room's current session, or null if nobody is (recently) in the room. */
 function getSessionStart(roomCode) {
   const sess = roomSessions.get(String(roomCode || '').toLowerCase());
   return sess ? sess.startedAt : null;
+}
+
+function registerRoomHost(roomCode, userId) {
+  roomHosts.set(roomHostKey(roomCode), String(userId));
 }
 
 /**
@@ -101,8 +107,8 @@ function applyWhiteboardOp(board, op) {
 }
 
 
-function setupSignaling(httpServer, allowedOrigin) {
-  const io = new Server(httpServer, {
+function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
+  const io = new SocketServer(httpServer, {
     cors: {
       origin: allowedOrigin,
       methods: ['GET', 'POST'],
@@ -132,8 +138,9 @@ function setupSignaling(httpServer, allowedOrigin) {
       }
 
       // First participant to join becomes the host/presenter
-      if (!roomHosts.has(roomCode)) {
-        roomHosts.set(roomCode, userId);
+      const hostKey = roomHostKey(roomCode);
+      if (!roomHosts.has(hostKey)) {
+        roomHosts.set(hostKey, String(userId));
       }
 
       // Send existing participants to the new joiner
@@ -147,7 +154,8 @@ function setupSignaling(httpServer, allowedOrigin) {
       }
 
       // Add new joiner to room
-      room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost });
+      room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost, isCoHost: false });
+      console.info(`[participants] ${roomCode}: ${room.size} participant(s) in room`);
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName, isHost: !!isHost });
@@ -181,6 +189,19 @@ function setupSignaling(httpServer, allowedOrigin) {
      */
     socket.on('kick-participant', ({ to }) => {
       io.to(to).emit('removed-from-room');
+    });
+
+    socket.on('set-co-host', ({ roomCode, to, isCoHost }) => {
+      const room = rooms.get(roomCode);
+      const actor = room?.get(socket.id);
+      const target = room?.get(to);
+      if (!actor?.userId || roomHosts.get(roomHostKey(roomCode)) !== String(actor.userId) || !target || target.isHost) {
+        socket.emit('meeting-permission-denied', { message: 'Only the host can assign co-hosts.' });
+        return;
+      }
+
+      target.isCoHost = !!isCoHost;
+      io.to(roomCode).emit('co-host-updated', { socketId: to, isCoHost: target.isCoHost });
     });
 
     /**
@@ -481,7 +502,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!member) return; // not a room member
-      if (roomHosts.get(roomCode) !== member.userId) return; // not the host
+      if (roomHosts.get(roomHostKey(roomCode)) !== String(member.userId)) return; // not the host
 
       if (!roomWhiteboards.has(roomCode)) {
         roomWhiteboards.set(roomCode, { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } });
@@ -506,8 +527,10 @@ function setupSignaling(httpServer, allowedOrigin) {
 
     socket.on('disconnect', () => {
       if (currentRoom && rooms.has(currentRoom)) {
-        rooms.get(currentRoom).delete(socket.id);
-        if (rooms.get(currentRoom).size === 0) {
+        const room = rooms.get(currentRoom);
+        room.delete(socket.id);
+        console.info(`[participants] ${currentRoom}: ${room.size} participant(s) in room`);
+        if (room.size === 0) {
           rooms.delete(currentRoom);
 
           // Room is empty: remember when, so a quick rejoin keeps the session and a later one starts fresh
@@ -529,7 +552,7 @@ function setupSignaling(httpServer, allowedOrigin) {
 
           roomAgenda.delete(currentRoom);
 
-          roomHosts.delete(currentRoom);
+          roomHosts.delete(roomHostKey(currentRoom));
           roomWhiteboards.delete(currentRoom);
           roomScreenShares.delete(currentRoom);
 
@@ -551,4 +574,4 @@ function setupSignaling(httpServer, allowedOrigin) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms, getSessionStart };
+module.exports = { setupSignaling, rooms, getSessionStart, registerRoomHost };

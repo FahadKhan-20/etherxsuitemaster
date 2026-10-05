@@ -2,7 +2,7 @@
 // UI exactly matches EtherX Meet.dc.html
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, UserMinus } from 'lucide-react';
 import MeetingAgenda from '../MeetingAgenda';
 
 import { useWebRTC } from '../../hooks/useWebRTC';
@@ -139,7 +139,6 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const moreRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
-  const qnaHostClaimRef = useRef(false);
 
   useEffect(() => {
     const start = Date.now(); // stopwatch starts at 00:00 every time you enter a meeting
@@ -168,13 +167,18 @@ export default function VideoRoom({ roomCode, isHost }) {
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
-    sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
+    handQueue, sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
     pollNotifications, dismissPollNotification,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
-    kickParticipant,
+    kickParticipant, setCoHost,
+    isRoomHost, isCoHost, canManageMeeting, permissionNotice,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+
+  useEffect(() => {
+    if (permissionNotice) showToast(permissionNotice.message);
+  }, [permissionNotice]);
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
@@ -191,27 +195,6 @@ export default function VideoRoom({ roomCode, isHost }) {
   }, [sharedMediaUrl]);
 
   useEffect(() => {
-    if (!isHost || !roomCode || qnaHostClaimRef.current) {
-      return undefined;
-    }
-
-    qnaHostClaimRef.current = true;
-
-    const claimRoom = async () => {
-      try {
-        await apiClient.post('/api/rooms', { roomCode });
-      } catch (error) {
-        qnaHostClaimRef.current = false;
-        console.error('Failed to register room host for Q&A:', error);
-      }
-    };
-
-    claimRoom();
-
-    return undefined;
-  }, [isHost, roomCode]);
-
-  useEffect(() => {
     if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
     const iv = setInterval(() => setActiveDashes(Math.floor(Math.random() * 8) + 1), 120);
     return () => clearInterval(iv);
@@ -225,7 +208,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const handleEnd = () => {
     if (isRecording) stopRecording();
-    if (isHost) { setShowNotes(true); return; }
+    if (isRoomHost) { setShowNotes(true); return; }
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
   };
@@ -286,6 +269,8 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => s.off('qna:question-created', onQuestion);
   }, [socketReady, roomCode, socketRef]);
   const totalP = 1 + peerList.length;
+  const raisedHandIds = new Set(handQueue.map(hand => hand.socketId));
+  const raisedHandCount = handQueue.length + (raised ? 1 : 0);
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
   const spotlight = peerList.find(([id]) => id === spotlightId);
@@ -362,7 +347,7 @@ export default function VideoRoom({ roomCode, isHost }) {
         }
       `}</style>
 
-      {isHost && joinRequests.length > 0 && (
+      {canManageMeeting && joinRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, width: '100%' }}>
           {joinRequests.map(req => (
             <div key={req.socketId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -533,7 +518,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {confettiActive && (<div style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none', overflow: 'hidden' }}>{CONFETTI.map((p, i) => (<div key={i} style={{ position: 'absolute', left: `${p.x}%`, top: '-20px', width: p.w, height: p.h, background: p.color, borderRadius: p.round ? '50%' : 2, transform: `rotate(${p.rot}deg)`, animation: `confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
 
-      {inviteOpen && (
+      {inviteOpen && canManageMeeting && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
           <div style={{ width: 380, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)', animation: 'fadeIn .18s ease-out' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -577,7 +562,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           socket={socket}
           socketReady={socketReady}
           roomCode={roomCode}
-          isHost={isHost}
+          isHost={canManageMeeting}
         />
       )}
 
@@ -770,7 +755,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
                 {/* ── CREATE POLL VIEW ── */}
-                {pollView === 'create' && (
+                {pollView === 'create' && canManageMeeting && (
                   <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <button onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
@@ -857,7 +842,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                           </div>
                         );
                       })}
-                      {isHost && poll.active && (
+                      {canManageMeeting && poll.active && (
                         <button
                           onClick={() => { endPoll?.(poll.id); }}
                           style={{ marginTop: 4, padding: '9px', borderRadius: 9, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#f87171', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
@@ -874,7 +859,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '32px 16px', textAlign: 'center' }}>
                         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.2)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
                         <p style={{ margin: 0, fontSize: 13, color: '#a89878', lineHeight: 1.5 }}>No polls yet.<br />Ask the room a question.</p>
-                        {isHost && (
+                        {canManageMeeting && (
                           <button onClick={() => setPollView('create')} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
                         )}
                       </div>
@@ -943,7 +928,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                                   onClick={() => { setViewingPollId(poll.id); setPollView('results'); }}
                                   style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
                                 >View results</button>
-                                {isHost && poll.active && (
+                                {canManageMeeting && poll.active && (
                                   <button
                                     onClick={() => endPoll?.(poll.id)}
                                     style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#f87171', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
@@ -953,7 +938,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                             </div>
                           );
                         })}
-                        {isHost && (
+                        {canManageMeeting && (
                           <button onClick={() => setPollView('create')} style={{ padding: '10px', borderRadius: 10, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>
                         )}
                       </>
@@ -967,7 +952,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <QnAPanel
                 roomCode={roomCode}
                 userName={userName}
-                isHost={isHost}
+                isHost={canManageMeeting}
                 socket={socketRef}
               />
             )}
@@ -982,13 +967,13 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab === 'agenda' && (
-              <MeetingAgenda isHost={isHost} meetingStarted={true} topics={agendaTopics} onTopicsChange={handleAgendaChange} />
+              <MeetingAgenda isHost={canManageMeeting} meetingStarted={true} topics={agendaTopics} onTopicsChange={handleAgendaChange} />
             )}
 
             {panelTab === 'files' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Drop zone / upload button */}
-                <div
+                {canManageMeeting && <div
                   onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#d4af37'; e.currentTarget.style.background = 'rgba(212,175,55,.12)'; }}
                   onDragLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(212,175,55,.2)'; e.currentTarget.style.background = 'rgba(212,175,55,.04)'; }}
                   onDrop={(e) => {
@@ -1025,7 +1010,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.5)', margin: '0 auto 8px', display: 'block' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
                   <p style={{ margin: 0, fontSize: 12.5, color: '#a89878', fontWeight: 500 }}>Click or drag files here</p>
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(168,152,120,.6)' }}>Max 10 MB per file</p>
-                </div>
+                </div>}
                 {/* File list */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(sharedFiles || []).length === 0 ? (
@@ -1084,32 +1069,66 @@ export default function VideoRoom({ roomCode, isHost }) {
           <div className="room-side-panel" style={{ width: 290, flexShrink: 0, background: '#050505', borderLeft: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 18px 12px' }}>
               <span style={{ fontSize: 14, fontWeight: 700 }}>Participants ({totalP})</span>
+              {raisedHandCount > 0 && (
+                <span style={{ borderRadius: 999, padding: '4px 8px', background: 'rgba(251,188,4,.14)', color: '#fbbc04', fontSize: 11, fontWeight: 700 }}>
+                  {raisedHandCount} hand{raisedHandCount === 1 ? '' : 's'} raised
+                </span>
+              )}
               <button onClick={() => setShowPeople(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>
+              {canManageMeeting && <button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
                 Invite someone
-              </button>
+              </button>}
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id }))].map((u, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
+              {raisedHandCount > 0 && (
+                <section aria-label="Raised hands" style={{ marginBottom: 10, padding: 12, borderRadius: 12, background: 'rgba(251,188,4,.08)', border: '1px solid rgba(251,188,4,.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, color: '#fbbc04', fontSize: 12, fontWeight: 700 }}>
+                    <span aria-hidden="true">✋</span>
+                    <span>Raised hands</span>
+                  </div>
+                  {[...handQueue, ...(raised ? [{ socketId: null, userName: userName || 'You' }] : [])].map((hand, i) => (
+                    <div key={hand.socketId || 'local-hand'} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', color: '#f0e6d3', fontSize: 12 }}>
+                      <span style={{ width: 20, height: 20, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(251,188,4,.18)', color: '#fbbc04', fontSize: 11, fontWeight: 700 }}>{i + 1}</span>
+                      <span>{hand.userName || 'Guest'}{hand.socketId === null ? ' (you)' : ''}</span>
+                    </div>
+                  ))}
+                </section>
+              )}
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null, handRaised: raised, isHost: isRoomHost, isCoHost }, ...peerList.map(([id, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff, socketId: id, handRaised: raisedHandIds.has(id), isHost: !!p.isHost, isCoHost: !!p.isCoHost }))].map((u, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
-                  <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
+                  <span style={{ fontSize: 13, flex: '1 1 90px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
+                  {(u.isHost || u.isCoHost) && <span style={{ fontSize: 9, fontWeight: 700, color: '#e5c76b', border: '1px solid rgba(212,175,55,.25)', borderRadius: 999, padding: '3px 6px' }}>{u.isHost ? 'HOST' : 'CO-HOST'}</span>}
+                  {u.handRaised && <span title="Hand raised" aria-label="Hand raised" style={{ width: 26, height: 26, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(251,188,4,.16)', color: '#fbbc04', fontSize: 15 }}>✋</span>}
                   {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
-                  {isHost && !u.local && (
-                    <button
-                      onClick={() => kickParticipant(u.socketId)}
-                      title="Remove participant"
-                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '3px 8px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif", transition: 'background 0.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
-                    >
-                      Remove
-                    </button>
+                  {canManageMeeting && !u.local && !u.isHost && (isRoomHost || !u.isCoHost) && (
+                    <div style={{ display: 'flex', flexBasis: '100%', justifyContent: 'flex-end', gap: 6, paddingLeft: 40 }}>
+                      <button
+                        onClick={() => kickParticipant(u.socketId)}
+                        title={`Remove ${u.name} from the meeting`}
+                        aria-label={`Remove ${u.name} from the meeting`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: '#fca5a5', cursor: 'pointer', padding: '6px 10px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif", transition: 'background 0.15s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                      >
+                        <UserMinus size={14} aria-hidden="true" />
+                        Remove participant
+                      </button>
+                    {isRoomHost && !u.isHost && (
+                      <button
+                        onClick={() => setCoHost(u.socketId, !u.isCoHost)}
+                        title={u.isCoHost ? 'Remove co-host' : 'Make co-host'}
+                        style={{ background: 'rgba(212,175,55,.1)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, color: '#e5c76b', cursor: 'pointer', padding: '5px 8px', fontSize: 10, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif" }}
+                      >
+                        {u.isCoHost ? 'Remove co-host' : 'Make co-host'}
+                      </button>
+                    )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -1146,6 +1165,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                     isLocal
                     isMuted={micMuted}
                     isCameraOff={cameraOff}
+                    isHandRaised={raised}
                     filter={activeFilter}
                     bgImage={selectedBgImage}
                   />
@@ -1190,7 +1210,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                     cursor: 'pointer',
                   }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
                     {p.stream && (!p.videoOff || id === screenSharerId) ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
+                      <VideoTile stream={p.stream} userName={pName} isMuted={false} isCameraOff={false} isHandRaised={raisedHandIds.has(id)} fit={id === screenSharerId ? 'contain' : 'cover'} />
                     ) : (
                       <div style={{
                         width: 130, height: 130, borderRadius: '50%',
@@ -1224,7 +1244,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           {!gridView && (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {spotlight ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
+                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={false} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} isHandRaised={raisedHandIds.has(spotlight[0])} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
               ) : localStream && !cameraOff ? (
                 <div style={{ width: '100%', height: '100%' }}>
                   <VideoTile
@@ -1233,6 +1253,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                     isLocal
                     isMuted={micMuted}
                     isCameraOff={cameraOff}
+                    isHandRaised={raised}
                     filter={activeFilter}
                     bgImage={selectedBgImage}
                   />
@@ -1250,7 +1271,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {peerList.map(([id, p]) => (
                     <div key={id} onClick={() => setSpotlightId(spotlightId === id ? null : id)} style={{ width: 120, height: 80, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${spotlightId === id ? '#d4af37' : 'rgba(212,175,55,.15)'}`, flexShrink: 0 }}>
-                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={false} isCameraOff={!p.stream || !!p.videoOff} isSmall />
+                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={false} isCameraOff={!p.stream || !!p.videoOff} isHandRaised={raisedHandIds.has(id)} isSmall />
                     </div>
                   ))}
                 </div>
@@ -1281,15 +1302,15 @@ export default function VideoRoom({ roomCode, isHost }) {
               </div>
 
               {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
+              {canManageMeeting && <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />}
 
               {/* Group 2 — Screen share */}
-              <button onClick={toggleScreenShare} title={isScreenSharing ? 'Stop sharing' : 'Share screen'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isScreenSharing ? 'rgba(212,175,55,.25)' : 'transparent', color: isScreenSharing ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canManageMeeting && <button onClick={toggleScreenShare} title={isScreenSharing ? 'Stop sharing' : 'Share screen'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isScreenSharing ? 'rgba(212,175,55,.25)' : 'transparent', color: isScreenSharing ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 {isScreenSharing ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg> : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-              </button>
+              </button>}
 
               {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
+              {canManageMeeting && <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />}
 
               {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
               <button onClick={() => { setChatOpen(v => !v); if (!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'chat' ? 'rgba(212,175,55,.15)' : 'transparent', color: chatOpen && panelTab === 'chat' ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -1301,15 +1322,15 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {qnaUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{qnaUnread > 9 ? '9+' : qnaUnread}</span>}
               </button>
 
-              <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
+              <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} aria-label={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                {raised && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>1</span>}
+                {raisedHandCount > 0 && <span aria-label={`${raisedHandCount} hands raised`} style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#fbbc04', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{raisedHandCount > 9 ? '9+' : raisedHandCount}</span>}
               </button>
 
-              <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: (chatOpen && panelTab === 'agenda') ? 'rgba(212,175,55,.22)' : 'transparent', color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2, position: 'relative' }}>
+              {canManageMeeting && <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: (chatOpen && panelTab === 'agenda') ? 'rgba(212,175,55,.22)' : 'transparent', color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2, position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
                 <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.02em', lineHeight: 1, color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878' }}>Agenda</span>
-              </button>
+              </button>}
 
               <button onClick={() => setShowPeople(v => !v)} title="Participants" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: showPeople ? 'rgba(212,175,55,.15)' : 'transparent', color: showPeople ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
@@ -1324,13 +1345,13 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /></svg>
               </button>
 
-              <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canManageMeeting && <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
-              </button>
+              </button>}
 
-              <button onClick={() => setWhiteboardOpen(v => !v)} title="Whiteboard" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: whiteboardOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: whiteboardOpen ? '#f0e6d3' : '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canManageMeeting && <button onClick={() => setWhiteboardOpen(v => !v)} title="Whiteboard" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: whiteboardOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: whiteboardOpen ? '#f0e6d3' : '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 20h16M6 20V8l6-4 6 4v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
+              </button>}
 
               <div style={{ position: 'relative' }} ref={moreRef}>
                 <button onClick={() => setMoreOpen(v => !v)} title="More" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: moreOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -1345,21 +1366,21 @@ export default function VideoRoom({ roomCode, isHost }) {
                     {[
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, hostOnly: true, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, hostOnly: true, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Live Q&A', divider: false, action: () => { setPanelTab('qna'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, hostOnly: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5" /><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Noise suppression', divider: false, action: () => { setMoreOpen(false); toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Select background', divider: false, action: () => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Participant stats', divider: true, action: () => { setShowPeople(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'Settings', divider: false, action: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'View shortcuts', divider: false, action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'Leave feedback', divider: false, action: () => { setMoreOpen(false); setFeedbackOpen(true); } },
-                    ].map((item, idx) => (
+                    ].filter(item => canManageMeeting || !item.hostOnly).map((item, idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: 'none', background: 'none', color: '#f0e6d3', fontSize: 12.5, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'Sora',sans-serif", transition: 'background .15s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,.08)'}

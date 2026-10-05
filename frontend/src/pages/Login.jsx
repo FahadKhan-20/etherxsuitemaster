@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiClient, { getApiErrorMessage } from '../utils/apiClient'
 import { persistAuthSession, isAuthenticated } from '../utils/auth'
@@ -35,6 +35,7 @@ export default function Login() {
   const [forgotError, setForgotError]     = useState('')
 
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     if (isAuthenticated()) { navigate('/', { replace: true }); return }
@@ -60,7 +61,7 @@ export default function Login() {
         persistAuthSession({ token: res.data.data.token, user: res.data.data.user })
         if (rememberMe) localStorage.setItem('etherxmeet_remember_email', email)
         else localStorage.removeItem('etherxmeet_remember_email')
-        navigate('/', { replace: true })
+        navigate(location.state?.from || '/', { replace: true })
         return
       }
       setError('Login failed. Please try again.')

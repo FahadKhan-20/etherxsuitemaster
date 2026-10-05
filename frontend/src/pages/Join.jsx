@@ -24,6 +24,36 @@ const AVATAR_COLORS = [
   { name: 'lime', bg: 'bg-lime-600', glow: 'shadow-lime-500/50' },
 ];
 
+function extractMeetingCode(value) {
+  const input = value.trim();
+  let candidate = input;
+
+  try {
+    const url = new URL(input, window.location.origin);
+    const roomPathMatch = url.pathname.match(/\/room\/([^/]+)/i);
+    if (roomPathMatch) {
+      candidate = decodeURIComponent(roomPathMatch[1]);
+    } else if (/\/join\/?$/i.test(url.pathname)) {
+      candidate = url.searchParams.get('code') || input;
+    }
+  } catch {
+    // Treat non-URL input as a meeting code.
+  }
+
+  return candidate.trim().replace(/\s+/g, '');
+}
+
+function formatMeetingCode(value) {
+  const code = extractMeetingCode(value);
+  const etherxCode = code.match(/^etherx-([a-z0-9]{8})$/i);
+  if (etherxCode) return `etherx-${etherxCode[1].toLowerCase()}`;
+
+  const cleaned = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (cleaned.length <= 3) return cleaned;
+  if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+  return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 10)}`;
+}
+
 export default function Join() {
   const navigate = useNavigate();
   const { logout } = useWallet();
@@ -78,13 +108,6 @@ export default function Join() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const formatMeetingCode = (code) => {
-    const cleaned = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    if (cleaned.length <= 3) return cleaned;
-    if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 10)}`;
-  };
-
   const handleCodeChange = (e) => {
     const formatted = formatMeetingCode(e.target.value);
     setMeetingCode(formatted);
@@ -111,11 +134,12 @@ export default function Join() {
     }
 
     const codePattern = /^[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{3}$/;
+    const etherxCodePattern = /^etherx-[a-z0-9]{8}$/i;
     if (!meetingCode.trim()) {
       setCodeError('Meeting code is required');
       isValid = false;
-    } else if (!codePattern.test(meetingCode)) {
-      setCodeError('Invalid format (use XXX-XXXX-XXX)');
+    } else if (!codePattern.test(meetingCode) && !etherxCodePattern.test(meetingCode)) {
+      setCodeError('Enter a valid meeting code or invite link');
       isValid = false;
     }
 
@@ -135,7 +159,10 @@ export default function Join() {
 
     // Simulate a brief delay for better UX
     setTimeout(() => {
-      const cleanCode = meetingCode.replace(/-/g, '').toLowerCase();
+      const enteredCode = extractMeetingCode(meetingCode);
+      const cleanCode = /^etherx-[a-z0-9]{8}$/i.test(enteredCode)
+        ? enteredCode.toLowerCase()
+        : enteredCode.replace(/-/g, '').toLowerCase();
       if (isHostFromUrl) {
         sessionStorage.setItem('etherx_host_room', cleanCode);
         sessionStorage.setItem('etherx_meet_start', String(Date.now()));
@@ -367,13 +394,13 @@ export default function Join() {
                 <Input
                   label="Meeting Code"
                   type="text"
-                  placeholder="XXX-XXXX-XXX"
+                  placeholder="Meeting code or invite link"
                   value={meetingCode}
                   onChange={handleCodeChange}
                   error={codeError}
                 />
                 <p style={{ marginTop: '6px', fontSize: '11px', color: 'rgba(212,175,55,0.5)' }}>
-                  Format: XXX-XXXX-XXX (e.g., ABC-1234-XYZ)
+                  Paste a meeting code or invite link
                 </p>
               </div>
 
