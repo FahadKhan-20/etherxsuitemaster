@@ -45,7 +45,7 @@ const roomRecordings = new Map();
 const roomScreenShares = new Map();
 
 // roomCode (lowercase) -> { startedAt: Date, emptySince: number|null }
-// A "session" begins when the first person joins an EMPTY room. Chat and Q&A are shown per session,
+// A "session" begins when the first person joins an EMPTY room. Chat is shown per session,
 // so re-using a room code (e.g. "Open My Room") doesn't bring back the previous meeting's history.
 // A quick rejoin (page refresh) within the grace period continues the same session.
 const SESSION_GRACE_MS = Number(process.env.SESSION_GRACE_MS) || 10 * 60 * 1000;

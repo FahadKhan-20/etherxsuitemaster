@@ -9,14 +9,12 @@ import { useWebRTC } from '../../hooks/useWebRTC';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
 import { useMeetingRecording } from '../../hooks/useMeetingRecording';
-import { getStoredUser } from '../../utils/auth';
 import { useMeeting } from '../../context/MeetingContext';
 import VideoTile from './VideoTile';
 import VideoCanvasProcessor from './VideoCanvasProcessor';
 import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
-import LiveTranscript from '../room/LiveTranscript';
-import QnAPanel from '../meeting/QnAPanel';
+import CaptionsOverlay from '../room/CaptionsOverlay';
 import Whiteboard from '../features/Whiteboard';
 import { ROUTES } from '../../utils/constants';
 import apiClient from '../../utils/apiClient';
@@ -138,7 +136,6 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const moreRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
-  const qnaHostClaimRef = useRef(false);
 
   useEffect(() => {
     const start = Date.now(); // stopwatch starts at 00:00 every time you enter a meeting
@@ -173,7 +170,6 @@ export default function VideoRoom({ roomCode, isHost }) {
     admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
     canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
-    socketRef,
     kickParticipant,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
 
@@ -208,27 +204,6 @@ export default function VideoRoom({ roomCode, isHost }) {
   useEffect(() => {
     if (sharedMediaUrl) setMediaStageMinimized(false);
   }, [sharedMediaUrl]);
-
-  useEffect(() => {
-    if (!isHost || !roomCode || qnaHostClaimRef.current) {
-      return undefined;
-    }
-
-    qnaHostClaimRef.current = true;
-
-    const claimRoom = async () => {
-      try {
-        await apiClient.post('/api/rooms', { roomCode });
-      } catch (error) {
-        qnaHostClaimRef.current = false;
-        console.error('Failed to register room host for Q&A:', error);
-      }
-    };
-
-    claimRoom();
-
-    return undefined;
-  }, [isHost, roomCode]);
 
   useEffect(() => {
     if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
@@ -290,33 +265,6 @@ export default function VideoRoom({ roomCode, isHost }) {
     if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
   }, [screenSharerId, setSpotlightId]);
 
-  // ── Live Q&A alerts ────────────────────────────────────────────────────────
-  // QnAPanel only listens for new questions while it is mounted (i.e. while the Q&A
-  // tab is open), so listen here too: popup + unread badge for questions from others.
-  const [qnaAlerts, setQnaAlerts] = useState([]);
-  const [qnaUnread, setQnaUnread] = useState(0);
-  const qnaVisibleRef = useRef(false);
-
-  useEffect(() => {
-    qnaVisibleRef.current = chatOpen && panelTab === 'qna';
-    if (qnaVisibleRef.current) { setQnaUnread(0); setQnaAlerts([]); }
-  }, [chatOpen, panelTab]);
-
-  useEffect(() => {
-    const s = socketRef?.current;
-    if (!s) return undefined;
-    const myId = String(getStoredUser()?.id || '');
-    const onQuestion = (q) => {
-      if (!q || (myId && String(q.userId) === myId)) return; // my own question
-
-      const id = String(q._id);
-      if (!qnaVisibleRef.current) setQnaUnread(n => n + 1);
-      setQnaAlerts(prev => (prev.some(a => a.id === id) ? prev : [...prev, { id, userName: q.userName, text: q.text }]));
-      setTimeout(() => setQnaAlerts(prev => prev.filter(a => a.id !== id)), 15000);
-    };
-    s.on('qna:question-created', onQuestion);
-    return () => s.off('qna:question-created', onQuestion);
-  }, [socketReady, roomCode, socketRef]);
   const totalP = 1 + peerList.length;
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
@@ -491,22 +439,6 @@ export default function VideoRoom({ roomCode, isHost }) {
           ) : (
             <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
           )}
-        </div>
-      )}
-
-      {/* Q&A popups — new questions from other participants while the Q&A tab is closed */}
-      {qnaAlerts.length > 0 && (
-        <div style={{ position: 'fixed', top: 90, left: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
-          {qnaAlerts.map(a => (
-            <div key={a.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>❓ {a.userName || 'Someone'} asked a question</span>
-                <button onClick={() => setQnaAlerts(prev => prev.filter(x => x.id !== a.id))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
-              </div>
-              <p style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', margin: '8px 0 10px', wordBreak: 'break-word' }}>{(a.text || '').length > 140 ? `${a.text.slice(0, 140)}…` : a.text}</p>
-              <button onClick={() => { setPanelTab('qna'); setChatOpen(true); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>View question</button>
-            </div>
-          ))}
         </div>
       )}
 
@@ -782,15 +714,13 @@ export default function VideoRoom({ roomCode, isHost }) {
         {chatOpen && (
           <div className="room-side-panel" style={{ width: 320, flexShrink: 0, background: '#050505', border: 'none', borderRight: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 10px' }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{panelTab === 'chat' ? 'Chat' : panelTab === 'polls' ? 'Polls' : panelTab === 'cc' ? 'Captions' : panelTab === 'qna' ? 'Q&A' : panelTab === 'agenda' ? 'Agenda' : 'Files'}</span>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{panelTab === 'chat' ? 'Chat' : panelTab === 'polls' ? 'Polls' : panelTab === 'agenda' ? 'Agenda' : 'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 14px 12px', borderBottom: '1px solid rgba(212,175,55,.12)' }}>
               {[
                 { id: 'chat', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>, title: 'Chat' },
                 { id: 'polls', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>, title: 'Polls' },
-                { id: 'qna', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /></svg>, title: 'Q&A' },
-                { id: 'cc', node: <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.02em' }}>CC</span>, title: 'Captions' },
                 { id: 'files', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, title: 'Files' },
                 { id: 'agenda', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, title: 'Agenda' },
               ].map(t => (
@@ -998,24 +928,6 @@ export default function VideoRoom({ roomCode, isHost }) {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {panelTab === 'qna' && (
-              <QnAPanel
-                roomCode={roomCode}
-                userName={userName}
-                isHost={isHost}
-                socket={socketRef}
-              />
-            )}
-
-            {panelTab === 'cc' && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
-                <div style={{ width: 52, height: 40, border: '2px solid rgba(212,175,55,.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, letterSpacing: '.05em', color: '#a89878' }}>CC</div>
-                <div style={{ textAlign: 'center', color: '#a89878', fontSize: 12.5 }}>{captionsOn ? 'Captions are on.' : 'Captions are off.'}<br />{captionsOn ? 'Click below to disable.' : 'Turn them on for this call.'}</div>
-                {captionsOn && <LiveTranscript stream={localStream} />}
-                <button onClick={() => setCaptionsOn(v => !v)} style={{ width: '100%', padding: 12, borderRadius: 12, border: '1px solid rgba(212,175,55,.2)', background: captionsOn ? 'rgba(212,175,55,.25)' : 'rgba(212,175,55,.07)', color: '#f0e6d3', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{captionsOn ? 'Turn off captions' : 'Turn on captions'}</button>
               </div>
             )}
 
@@ -1307,6 +1219,9 @@ export default function VideoRoom({ roomCode, isHost }) {
 
 
 
+          {/* LIVE CAPTIONS — subtitle bar at the bottom of the meeting screen (sits above the toolbar) */}
+          {captionsOn && <CaptionsOverlay bottom={toolbarVisible ? 112 : 28} onUnavailable={() => setCaptionsOn(false)} />}
+
           {/* BOTTOM TOOLBAR */}
           <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(16px)', padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(212,175,55,.35)', boxShadow: '0 20px 48px -16px rgba(0,0,0,.65)', background: 'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
@@ -1352,9 +1267,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
               </button>
 
-              <button onClick={() => { const open = chatOpen && panelTab === 'qna'; if (open) { setChatOpen(false); } else { setChatOpen(true); setPanelTab('qna'); } }} title="Live Q&A" id="qna-toolbar-btn" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'qna' ? 'rgba(212,175,55,.22)' : 'transparent', color: chatOpen && panelTab === 'qna' ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /></svg>
-                {qnaUnread > 0 && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{qnaUnread > 9 ? '9+' : qnaUnread}</span>}
+              <button onClick={() => setCaptionsOn(v => !v)} title={captionsOn ? 'Turn off live captions' : 'Turn on live captions'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: captionsOn ? 'rgba(212,175,55,.22)' : 'transparent', color: captionsOn ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.02em' }}>CC</span>
               </button>
 
               <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
@@ -1402,9 +1316,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setPanelTab('cc'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setCaptionsOn(v => !v); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Live Q&A', divider: false, action: () => { setPanelTab('qna'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },

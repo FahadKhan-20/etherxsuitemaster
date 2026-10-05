@@ -18,7 +18,6 @@ const recordingRoutes = require('./routes/recordings');
 const livekitRoutes = require('./routes/livekit');
 const feedbackRoutes = require('./routes/feedback');
 const meetingAgendaRoutes = require('./routes/meetingAgendaRoutes');
-const qnaRoutes = require('./routes/qna');
 
 const errorHandler = require('./middleware/errorHandler');
 
@@ -106,7 +105,6 @@ app.use('/api/recordings', recordingRoutes);
 app.use('/api/livekit', livekitRoutes);
 
 app.use('/api/feedback', feedbackRoutes);
-app.use('/api/qna', qnaRoutes);
 
 // Meeting Agenda Routes
 app.use('/api/meeting-agenda', meetingAgendaRoutes);
