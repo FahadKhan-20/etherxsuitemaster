@@ -28,6 +28,12 @@ const roomHosts = new Map();
 // roomCode -> { userId, socketId, userName } | undefined — the one co-host, if any
 const roomCoHosts = new Map();
 
+// roomCode -> Set<socketId> — participants who currently have live captions switched on.
+// While this is non-empty, everyone's browser transcribes its own mic (unless muted) for the captions.
+const roomCaptionViewers = new Map();
+const CAPTION_MAX_CHARS = 300;        // longest caption line relayed
+const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) caption updates
+
 /** True if userId currently holds host or co-host authority in roomCode. */
 function isPrivileged(roomCode, userId) {
   if (!userId) return false;
@@ -122,6 +128,21 @@ function setupSignaling(httpServer, allowedOrigin) {
     },
   });
 
+  /** Add/remove a caption viewer; tells the room when captions switch on (first viewer) or off (last viewer gone). */
+  function setCaptionViewer(roomCode, socketId, on) {
+    let viewers = roomCaptionViewers.get(roomCode);
+    const wasActive = !!viewers && viewers.size > 0;
+    if (on) {
+      if (!viewers) { viewers = new Set(); roomCaptionViewers.set(roomCode, viewers); }
+      viewers.add(socketId);
+    } else if (viewers) {
+      viewers.delete(socketId);
+      if (viewers.size === 0) roomCaptionViewers.delete(roomCode);
+    }
+    const isActive = roomCaptionViewers.has(roomCode);
+    if (isActive !== wasActive) io.to(roomCode).emit('captions-demand', { active: isActive });
+  }
+
   io.on('connection', (socket) => {
     let currentRoom = null;
 
@@ -178,6 +199,11 @@ function setupSignaling(httpServer, allowedOrigin) {
       if (roomRecordings.has(roomCode)) {
         socket.emit('recording-state', { state: 'recording', startedAt: roomRecordings.get(roomCode).startedAt });
       }
+
+      // Live captions: apply this socket's caption-viewer choice (made before it was admitted / before a
+      // reconnect finished joining), and tell the joiner if captions are already on in this room.
+      if (socket.data.captionsOn) setCaptionViewer(roomCode, socket.id, true);
+      if (roomCaptionViewers.has(roomCode)) socket.emit('captions-demand', { active: true });
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', {
@@ -649,6 +675,34 @@ function setupSignaling(httpServer, allowedOrigin) {
 
     // ── Disconnect ────────────────────────────────────────────────────────────
 
+    /**
+     * Live captions. Anyone can switch captions on for themselves. While at least one participant has
+     * them on, every participant's browser transcribes its own microphone and sends the text here,
+     * and we relay it to the room. Muted participants (self or host) are never captioned.
+     */
+    socket.on('captions-set', (payload) => {
+      const { roomCode, on } = payload || {};
+      socket.data.captionsOn = !!on; // remembered so it also takes effect once this socket (re)joins the room
+      const room = rooms.get(roomCode);
+      if (!room || !room.has(socket.id)) return;
+      setCaptionViewer(roomCode, socket.id, !!on);
+      socket.emit('captions-demand', { active: roomCaptionViewers.has(roomCode) });
+    });
+
+    socket.on('caption', (payload) => {
+      const { roomCode, text, final } = payload || {};
+      const member = rooms.get(roomCode)?.get(socket.id);
+      if (!member || !roomCaptionViewers.has(roomCode)) return;
+      if (member.selfMuted || member.hostMuted) return;
+      if (typeof text !== 'string') return;
+      const clean = text.replace(/\s+/g, ' ').trim().slice(-CAPTION_MAX_CHARS);
+      if (!clean) return;
+      const now = Date.now();
+      if (!final && socket.data.lastCaptionAt && now - socket.data.lastCaptionAt < CAPTION_MIN_INTERVAL_MS) return;
+      socket.data.lastCaptionAt = now;
+      socket.to(roomCode).emit('caption', { socketId: socket.id, userName: member.userName, text: clean, final: !!final });
+    });
+
     socket.on('disconnect', () => {
       const room = currentRoom ? rooms.get(currentRoom) : null;
       const departing = room?.get(socket.id);
@@ -726,6 +780,7 @@ function setupSignaling(httpServer, allowedOrigin) {
         if (hostLeftWhileRecording) {
           socket.to(currentRoom).emit('recording-state', { state: 'idle', error: 'Recording stopped because the host left.' });
         }
+        setCaptionViewer(currentRoom, socket.id, false);
         socket.to(currentRoom).emit('user-left', { socketId: socket.id });
         // Lower hand on disconnect
         socket.to(currentRoom).emit('hand-lowered', { socketId: socket.id });

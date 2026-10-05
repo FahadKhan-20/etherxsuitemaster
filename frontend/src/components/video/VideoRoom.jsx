@@ -106,6 +106,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const [handToastDismissed, setHandToastDismissed] = useState(false);
   const [confettiActive, setConfettiActive] = useState(false);
   const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionsDemand, setCaptionsDemand] = useState(false); // someone in the room has captions on
   const [toast, setToast] = useState(null);
   const [activeFilter, setActiveFilter] = useState('none');
   const [selectedBgImage, setSelectedBgImage] = useState('none');
@@ -265,6 +266,25 @@ export default function VideoRoom({ roomCode, isHost }) {
     if (screenSharerId) { setSpotlightId(screenSharerId); setGridView(false); }
   }, [screenSharerId, setSpotlightId]);
 
+  // ── Live captions (room-wide) ──────────────────────────────────────────────
+  // The server tells everyone when captions are switched on/off in the room. While they are on,
+  // CaptionsOverlay transcribes this user's own mic (unless muted) so everyone's speech is captioned.
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onDemand = (d) => setCaptionsDemand(!!(d && d.active));
+    const onOffline = () => setCaptionsDemand(false); // the server re-announces it when we rejoin
+    socket.on('captions-demand', onDemand);
+    socket.on('disconnect', onOffline);
+    return () => { socket.off('captions-demand', onDemand); socket.off('disconnect', onOffline); };
+  }, [socket]);
+
+  const prevCaptionsDemandRef = useRef(false);
+  useEffect(() => {
+    if (captionsDemand && !prevCaptionsDemandRef.current && !captionsOn) {
+      showToast('Live captions were turned on for this meeting — your speech is captioned while your mic is on.');
+    }
+    prevCaptionsDemandRef.current = captionsDemand;
+  }, [captionsDemand]);
   const totalP = 1 + peerList.length;
   const initial = (userName || 'Y').charAt(0).toUpperCase();
   const userColor = avatarColor(userName || 'Y');
@@ -1220,7 +1240,15 @@ export default function VideoRoom({ roomCode, isHost }) {
 
 
           {/* LIVE CAPTIONS — subtitle bar at the bottom of the meeting screen (sits above the toolbar) */}
-          {captionsOn && <CaptionsOverlay bottom={toolbarVisible ? 112 : 28} onUnavailable={() => setCaptionsOn(false)} />}
+          {(captionsOn || captionsDemand) && (
+            <CaptionsOverlay
+              socket={socket}
+              roomCode={roomCode}
+              show={captionsOn}
+              transcribe={captionsDemand && !micMuted && !hostMuted}
+              bottom={toolbarVisible ? 112 : 28}
+            />
+          )}
 
           {/* BOTTOM TOOLBAR */}
           <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
