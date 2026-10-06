@@ -152,7 +152,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     sharedMediaUrl, shareMedia,
     userName, connectionError, reactions,
     sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
-    admitted, denied, joinRequests, admitUser, denyUser,
+    admitted, denied, waitingRoomStatus, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
   } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
@@ -258,7 +258,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>The host has denied your request to join this meeting room.</p>
               <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ width: '100%', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#b8860b,#e5c76b)', color: '#050505', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Return to Dashboard</button>
             </>
-          ) : (
+          ) : waitingRoomStatus === 'waiting' ? (
             <>
               {localStream && (<div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: 16, overflow: 'hidden', background: '#0a0a0a', marginBottom: 24, border: '1px solid rgba(212,175,55,.15)' }}><video ref={el => { if (el) el.srcObject = localStream; }} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', bottom: 12, left: 12, fontSize: 11, background: 'rgba(0,0,0,.6)', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,.8)' }}>Self View Preview</div></div>)}
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 99, background: 'rgba(212,175,55,.1)', border: '1px solid rgba(212,175,55,.2)', color: '#e5c76b', fontSize: 12, fontWeight: 500, marginBottom: 20 }}>
@@ -267,6 +267,16 @@ export default function VideoRoom({ roomCode, isHost }) {
               <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Waiting to be Admitted...</h2>
               <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.6, marginBottom: 10 }}>Hi, <strong>{userName}</strong>. The host will let you in shortly.</p>
               <p style={{ fontSize: 12, color: '#a89878', fontStyle: 'italic' }}>Please keep this tab open and make sure your camera and microphone are ready.</p>
+            </>
+          ) : (
+            <>
+              <div style={{ width: 64, height: 64, borderRadius: 32, background: waitingRoomStatus === 'error' ? 'rgba(239,68,68,.1)' : 'rgba(212,175,55,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: `1px solid ${waitingRoomStatus === 'error' ? 'rgba(239,68,68,.2)' : 'rgba(212,175,55,.2)'}` }}>
+                <span style={{ fontSize: 28 }}>{waitingRoomStatus === 'error' ? '!' : '…'}</span>
+              </div>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>{waitingRoomStatus === 'error' ? 'Unable to join' : 'Joining meeting...'}</h2>
+              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.6, marginBottom: 10 }}>
+                {waitingRoomStatus === 'error' ? (connectionError || 'The meeting could not be joined. Please try again.') : 'Connecting securely to the meeting…'}
+              </p>
             </>
           )}
         </div>
@@ -312,11 +322,11 @@ export default function VideoRoom({ roomCode, isHost }) {
       {isHost && joinRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, width: '100%' }}>
           {joinRequests.map(req => (
-            <div key={req.socketId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div key={req.requestId || req.userId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div><h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600 }}>Join Request</h4><p style={{ margin: 0, fontSize: 12, color: '#a89878' }}><strong>{req.userName}</strong> wants to join.</p></div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => admitUser(req.socketId)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#22c55e', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Admit</button>
-                <button onClick={() => denyUser(req.socketId)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Deny</button>
+                <button onClick={() => admitUser(req)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#22c55e', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Admit</button>
+                <button onClick={() => denyUser(req)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Deny</button>
               </div>
             </div>
           ))}
@@ -838,6 +848,21 @@ export default function VideoRoom({ roomCode, isHost }) {
               </button>
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
+            {isHost && joinRequests.length > 0 && (
+              <div style={{ margin: '0 14px 12px', padding: 10, borderRadius: 10, background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ color: '#fca5a5', fontSize: 12, fontWeight: 700 }}>Waiting to join ({joinRequests.length})</span>
+                  <button onClick={() => joinRequests.forEach(admitUser)} style={{ border: 'none', borderRadius: 6, padding: '4px 7px', background: '#22c55e', color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Admit All</button>
+                </div>
+                {joinRequests.map(request => (
+                  <div key={request.requestId || request.userId} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderTop: '1px solid rgba(239,68,68,.12)' }}>
+                    <span style={{ flex: 1, minWidth: 0, color: '#f0e6d3', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{request.userName}</span>
+                    <button onClick={() => admitUser(request)} style={{ border: 'none', borderRadius: 5, padding: '4px 6px', background: '#22c55e', color: '#fff', fontSize: 10, cursor: 'pointer' }}>Admit</button>
+                    <button onClick={() => denyUser(request)} style={{ border: 'none', borderRadius: 5, padding: '4px 6px', background: '#ef4444', color: '#fff', fontSize: 10, cursor: 'pointer' }}>Deny</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff }, ...peerList.map(([, p]) => ({ name: p.userName || 'Guest', local: false, muted: false, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
@@ -1047,6 +1072,7 @@ export default function VideoRoom({ roomCode, isHost }) {
               <button onClick={() => setShowPeople(v => !v)} title="Participants" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: showPeople ? 'rgba(212,175,55,.15)' : 'transparent', color: showPeople ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
                 <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#d4af37', color: '#0a0a0a', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{totalP}</span>
+                {isHost && joinRequests.length > 0 && <span style={{ position: 'absolute', top: -5, left: -5, minWidth: 16, height: 16, padding: '0 3px', borderRadius: 9, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{joinRequests.length}</span>}
               </button>
 
               {/* Divider */}
