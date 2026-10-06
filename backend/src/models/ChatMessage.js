@@ -14,11 +14,33 @@ const chatMessageSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
+        senderUserId: {
+            type: String,
+            required: false,
+            trim: true,
+            index: true,
+        },
         message: {
             type: String,
             required: true,
             trim: true,
             maxlength: 1000,
+        },
+        audience: {
+            type: String,
+            enum: ['everyone', 'host'],
+            default: 'everyone',
+            index: true,
+        },
+        sequence: {
+            type: Number,
+            required: false,
+            index: true,
+        },
+        clientMessageId: {
+            type: String,
+            required: false,
+            trim: true,
         },
     },
     {

@@ -1,4 +1,5 @@
 const { Server } = require('socket.io');
+const ChatMessage = require('./models/ChatMessage');
 
 // roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
 const rooms = new Map();
@@ -27,6 +28,18 @@ const roomHosts = new Map();
 
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
+const roomChatSequences = new Map();
+const roomChatQueues = new Map();
+
+function enqueueRoomChat(roomCode, task) {
+  const previous = roomChatQueues.get(roomCode) || Promise.resolve();
+  const next = previous.then(task, task);
+  const queued = next.finally(() => {
+    if (roomChatQueues.get(roomCode) === queued) roomChatQueues.delete(roomCode);
+  });
+  roomChatQueues.set(roomCode, queued);
+  return next;
+}
 
 /**
  * Apply a whiteboard operation to the in-memory room state. This mirrors the
@@ -117,6 +130,84 @@ function setupSignaling(httpServer, allowedOrigin) {
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName, isHost: !!isHost });
+    });
+
+    socket.on('chat:send', (payload = {}, acknowledge = () => {}) => {
+      const roomCode = typeof payload.roomCode === 'string' ? payload.roomCode.trim() : '';
+      const room = rooms.get(roomCode);
+      const member = room?.get(socket.id);
+      const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+      const audience = payload.audience === 'host' ? 'host' : payload.audience === 'everyone' ? 'everyone' : '';
+      const clientMessageId = typeof payload.clientMessageId === 'string' ? payload.clientMessageId.trim().slice(0, 100) : '';
+
+      if (!room || roomCode !== currentRoom || !member) {
+        return acknowledge({ ok: false, error: 'You are not a member of this room.' });
+      }
+      if (!text || text.length > 1000) {
+        return acknowledge({ ok: false, error: 'Message must be between 1 and 1000 characters.' });
+      }
+      if (!audience) {
+        return acknowledge({ ok: false, error: 'A valid chat audience is required.' });
+      }
+
+      enqueueRoomChat(roomCode, async () => {
+        const existing = clientMessageId
+          ? await ChatMessage.findOne({ roomCode, senderUserId: String(member.userId), clientMessageId }).lean()
+          : null;
+        if (existing) {
+          const existingMessage = {
+            id: String(existing._id),
+            roomCode,
+            address: existing.address,
+            senderUserId: existing.senderUserId,
+            message: existing.message,
+            audience: existing.audience,
+            sequence: existing.sequence,
+            createdAt: existing.createdAt,
+            clientMessageId: existing.clientMessageId,
+          };
+          const existingRecipients = existing.audience === 'host'
+            ? Array.from(room.values())
+              .filter(user => user.userId === roomHosts.get(roomCode) || user.socketId === socket.id)
+              .map(user => user.socketId)
+            : Array.from(room.keys());
+          io.to(existingRecipients).emit('chat:message', existingMessage);
+          return acknowledge({ ok: true, message: existingMessage });
+        }
+
+        const sequence = (roomChatSequences.get(roomCode) || 0) + 1;
+        roomChatSequences.set(roomCode, sequence);
+        const chatMessage = await ChatMessage.create({
+          roomCode,
+          address: member.userName || 'Participant',
+          senderUserId: String(member.userId),
+          message: text,
+          audience,
+          sequence,
+          clientMessageId: clientMessageId || undefined,
+        });
+        const message = {
+          id: String(chatMessage._id),
+          roomCode,
+          address: chatMessage.address,
+          senderUserId: chatMessage.senderUserId,
+          message: chatMessage.message,
+          audience: chatMessage.audience,
+          sequence: chatMessage.sequence,
+          createdAt: chatMessage.createdAt,
+          clientMessageId: chatMessage.clientMessageId,
+        };
+        const recipientSocketIds = audience === 'host'
+          ? Array.from(room.values())
+            .filter(user => user.userId === roomHosts.get(roomCode) || user.socketId === socket.id)
+            .map(user => user.socketId)
+          : Array.from(room.keys());
+        io.to(recipientSocketIds).emit('chat:message', message);
+        acknowledge({ ok: true, message });
+      }).catch(error => {
+        console.error('chat:send failed', error);
+        acknowledge({ ok: false, error: 'Unable to send chat message.' });
+      });
     });
 
     socket.on('offer', ({ to, offer }) => {
@@ -448,6 +539,8 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomPolls.delete(currentRoom);
           roomMedia.delete(currentRoom);
           roomFiles.delete(currentRoom);
+          roomChatSequences.delete(currentRoom);
+          roomChatQueues.delete(currentRoom);
 
           roomAgenda.delete(currentRoom);
 

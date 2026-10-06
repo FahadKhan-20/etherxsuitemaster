@@ -79,6 +79,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   const { isRecording, stopRecording } = useMeeting();
 
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
   const [panelTab, setPanelTab] = useState('chat');
   const [showPeople, setShowPeople] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -640,8 +641,7 @@ export default function VideoRoom({ roomCode, isHost }) {
       <div style={{ position: 'absolute', inset: 0, display: 'flex', gap: 0 }}>
 
         {/* LEFT CHAT PANEL */}
-        {chatOpen && (
-          <div className="room-side-panel" style={{ width: 320, flexShrink: 0, background: '#050505', border: 'none', borderRight: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
+        <div className="room-side-panel" style={{ width: 320, flexShrink: 0, background: '#050505', border: 'none', borderRight: '1px solid rgba(212,175,55,.12)', display: chatOpen ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 10px' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{panelTab === 'chat' ? 'Chat' : panelTab === 'polls' ? 'Polls' : panelTab === 'cc' ? 'Captions' : panelTab === 'qna' ? 'Q&A' : panelTab === 'agenda' ? 'Agenda' : 'Files'}</span>
               <button onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
@@ -661,7 +661,14 @@ export default function VideoRoom({ roomCode, isHost }) {
 
             {panelTab === 'chat' && (
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <VerifiedChat roomCode={roomCode} userName={userName} embedded={true} />
+                <VerifiedChat
+                  roomCode={roomCode}
+                  userName={userName}
+                  socketRef={socketRef}
+                  socketReady={socketReady}
+                  visible={chatOpen && panelTab === 'chat'}
+                  onUnreadChange={setChatUnread}
+                />
               </div>
             )}
 
@@ -822,7 +829,6 @@ export default function VideoRoom({ roomCode, isHost }) {
               </div>
             )}
           </div>
-        )}
 
         {/* PARTICIPANTS RIGHT PANEL */}
         {showPeople && (
@@ -1026,8 +1032,9 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
 
               {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
-              <button onClick={() => { setChatOpen(v => !v); if (!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'chat' ? 'rgba(212,175,55,.15)' : 'transparent', color: chatOpen && panelTab === 'chat' ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button onClick={() => { setChatOpen(v => !v); if (!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'chat' ? 'rgba(212,175,55,.15)' : 'transparent', color: chatOpen && panelTab === 'chat' ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+                {chatUnread > 0 && !chatOpen && <span style={{ position: 'absolute', top: 1, right: 1, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 9, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
               </button>
 
               <button onClick={() => { const open = chatOpen && panelTab === 'qna'; if (open) { setChatOpen(false); } else { setChatOpen(true); setPanelTab('qna'); } }} title="Live Q&A" id="qna-toolbar-btn" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'qna' ? 'rgba(212,175,55,.22)' : 'transparent', color: chatOpen && panelTab === 'qna' ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
