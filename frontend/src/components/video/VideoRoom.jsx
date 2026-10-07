@@ -143,6 +143,11 @@ export default function VideoRoom({ roomCode, isHost }) {
     navigate(ROUTES.DASHBOARD);
   }, [navigate]);
 
+  const handleMeetingEnded = useCallback(() => {
+    sessionStorage.removeItem('etherx_host_room');
+    navigate(ROUTES.DASHBOARD);
+  }, [navigate]);
+
   const {
     socket, socketReady,
     localStream, peers, micMuted, cameraOff, isScreenSharing,
@@ -150,12 +155,12 @@ export default function VideoRoom({ roomCode, isHost }) {
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
-    userName, connectionError, reactions,
+    userName, userId, connectionError, reactions,
     sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
     admitted, denied, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     socketRef,
-  } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+  } = useWebRTC(roomCode, { onKicked: handleKicked, onMeetingEnded: handleMeetingEnded, isHost });
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
@@ -212,6 +217,7 @@ export default function VideoRoom({ roomCode, isHost }) {
   };
   const handleNotesDone = () => {
     setShowNotes(false);
+    if (isHost) socketRef.current?.emit('end-meeting', { roomCode });
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
   };

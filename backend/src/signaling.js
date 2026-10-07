@@ -27,6 +27,99 @@ const roomHosts = new Map();
 
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
+const waitingRooms = new Map();
+const admittedUsers = new Map();
+const bannedUsers = new Map();
+const endedMeetings = new Set();
+const pendingJoiners = new Map();
+
+function normalizedRoomCode(roomCode) {
+  return typeof roomCode === 'string' ? roomCode.trim().toLowerCase() : '';
+}
+
+function waitingSnapshot(roomCode) {
+  return Array.from(waitingRooms.get(roomCode)?.values() || []).filter(item => item.status === 'waiting');
+}
+
+function usersForRoom(map, roomCode) {
+  if (!map.has(roomCode)) map.set(roomCode, new Set());
+  return map.get(roomCode);
+}
+
+function emitAdmissionError(socket, code, message) {
+  socket.emit('waiting-room-error', { code, message });
+}
+
+function clearMeetingAdmissionState(roomCode) {
+  waitingRooms.delete(roomCode);
+  admittedUsers.delete(roomCode);
+  bannedUsers.delete(roomCode);
+  roomHosts.delete(roomCode);
+}
+
+function addWaitingUser(roomCode, userId, userName, socketId) {
+  if (!waitingRooms.has(roomCode)) waitingRooms.set(roomCode, new Map());
+  const requests = waitingRooms.get(roomCode);
+  const stableUserId = String(userId);
+  const existing = requests.get(stableUserId);
+  if (existing) {
+    existing.socketId = socketId;
+    existing.userName = userName;
+    return existing;
+  }
+  const request = {
+    requestId: `${stableUserId}:${roomCode}`,
+    userId: stableUserId,
+    userName,
+    socketId,
+    requestedAt: new Date().toISOString(),
+    status: 'waiting',
+  };
+  requests.set(stableUserId, request);
+  return request;
+}
+
+function admitUser(roomCode, userId) {
+  usersForRoom(admittedUsers, roomCode).add(String(userId));
+  waitingRooms.get(roomCode)?.delete(String(userId));
+}
+
+function denyUser(roomCode, userId) {
+  waitingRooms.get(roomCode)?.delete(String(userId));
+}
+
+function banUser(roomCode, userId) {
+  usersForRoom(bannedUsers, roomCode).add(String(userId));
+  admittedUsers.get(roomCode)?.delete(String(userId));
+  waitingRooms.get(roomCode)?.delete(String(userId));
+}
+
+function endMeeting(roomCode, socket, io) {
+  if (endedMeetings.has(roomCode)) return true;
+  const room = rooms.get(roomCode);
+  const requester = room?.get(socket.id);
+  if (!requester || String(requester.userId) !== String(roomHosts.get(roomCode))) {
+    return false;
+  }
+  clearMeetingAdmissionState(roomCode);
+  rooms.delete(roomCode);
+  endedMeetings.add(roomCode);
+  io.to(roomCode).emit('meeting-ended');
+  return true;
+}
+
+function emitWaitingRoomUpdate(io, roomCode) {
+  const room = rooms.get(roomCode);
+  const hostUserId = roomHosts.get(roomCode);
+  if (!room || !hostUserId) return;
+  const snapshot = waitingSnapshot(roomCode);
+  for (const member of room.values()) {
+    if (String(member.userId) === String(hostUserId)) {
+      io.to(member.socketId).emit('waiting-room-update', snapshot);
+    }
+
+  }
+}
 
 /**
  * Apply a whiteboard operation to the in-memory room state. This mirrors the
@@ -96,27 +189,59 @@ function setupSignaling(httpServer, allowedOrigin) {
   io.on('connection', (socket) => {
     let currentRoom = null;
 
-    socket.on('join-room', ({ roomCode, userId, userName, isHost }) => {
+    socket.on('register-joiner', ({ roomCode: rawRoomCode, userId, userName } = {}) => {
+      const roomCode = normalizedRoomCode(rawRoomCode);
+      if (!roomCode || !userId) return;
+      pendingJoiners.set(socket.id, {
+        roomCode,
+        userId: String(userId),
+        userName: typeof userName === 'string' && userName.trim() ? userName.trim().slice(0, 100) : 'Guest',
+      });
+    });
+
+    socket.on('join-room', ({ roomCode: rawRoomCode, userId, userName, isHost }) => {
+      const roomCode = normalizedRoomCode(rawRoomCode);
+      const stableUserId = userId && String(userId);
+      if (!roomCode || !stableUserId) return;
+      if (!rooms.has(roomCode) && !roomHosts.has(roomCode)) endedMeetings.delete(roomCode);
+
+      const banned = bannedUsers.get(roomCode);
+      if (banned?.has(stableUserId)) {
+        return emitAdmissionError(socket, 'banned', 'You have been removed from this meeting.');
+      }
+
+      const existingRoom = rooms.get(roomCode);
+      const hostUserId = roomHosts.get(roomCode);
+      const isAuthoritativeHost = hostUserId && String(hostUserId) === stableUserId;
+      const activeMember = existingRoom && Array.from(existingRoom.values())
+        .some(member => String(member.userId) === stableUserId);
+      const isNewHost = !hostUserId && !!isHost;
+      if (existingRoom && !isAuthoritativeHost && !admittedUsers.get(roomCode)?.has(stableUserId) && !activeMember) {
+        return emitAdmissionError(socket, 'waiting', 'Please wait for the host to admit you.');
+      }
+      if (!existingRoom && !isAuthoritativeHost && !isNewHost && !admittedUsers.get(roomCode)?.has(stableUserId)) {
+        return emitAdmissionError(socket, 'waiting', 'Please wait for the host to admit you.');
+      }
+
       currentRoom = roomCode;
       socket.join(roomCode);
-
       if (!rooms.has(roomCode)) rooms.set(roomCode, new Map());
       const room = rooms.get(roomCode);
-
-      // First participant to join becomes the host/presenter
-      if (!roomHosts.has(roomCode)) {
-        roomHosts.set(roomCode, userId);
-      }
+      if (!roomHosts.has(roomCode)) roomHosts.set(roomCode, stableUserId);
+      usersForRoom(admittedUsers, roomCode).add(stableUserId);
 
       // Send existing participants to the new joiner
       const existing = Array.from(room.values());
       socket.emit('existing-users', existing);
 
       // Add new joiner to room
-      room.set(socket.id, { socketId: socket.id, userId, userName, isHost: !!isHost });
+      room.set(socket.id, { socketId: socket.id, userId: stableUserId, userName, isHost: isAuthoritativeHost || isNewHost });
+      const waiting = waitingRooms.get(roomCode);
+      if (waiting?.delete(String(userId)) && waiting.size === 0) waitingRooms.delete(roomCode);
 
       // Notify everyone else
       socket.to(roomCode).emit('user-joined', { socketId: socket.id, userId, userName, isHost: !!isHost });
+      emitWaitingRoomUpdate(io, roomCode);
     });
 
     socket.on('offer', ({ to, offer }) => {
@@ -146,7 +271,22 @@ function setupSignaling(httpServer, allowedOrigin) {
      * Host emits this; target receives 'removed-from-room'.
      */
     socket.on('kick-participant', ({ to }) => {
-      io.to(to).emit('removed-from-room');
+      const room = currentRoom && rooms.get(currentRoom);
+      const requester = room?.get(socket.id);
+      const target = room?.get(to);
+      if (!requester || !target || String(requester.userId) !== String(roomHosts.get(currentRoom))) {
+        return socket.emit('waiting-room-error', { code: 'not-authorized', message: 'Only the host can remove participants.' });
+      }
+      const targetUserId = String(target.userId);
+      banUser(currentRoom, targetUserId);
+      for (const [socketId, member] of room.entries()) {
+        if (String(member.userId) !== targetUserId) continue;
+        const targetSocket = io.sockets.sockets.get(socketId);
+        targetSocket?.emit('removed-from-room');
+        room.delete(socketId);
+        targetSocket?.disconnect(true);
+      }
+      emitWaitingRoomUpdate(io, currentRoom);
     });
 
     /**
@@ -159,20 +299,84 @@ function setupSignaling(httpServer, allowedOrigin) {
     });
 
     // ── Feature: Waiting Room / Admission ────────────────────────────────────
-    socket.on('request-join', ({ roomCode, userId, userName }) => {
-      socket.to(roomCode).emit('join-request', {
-        socketId: socket.id,
-        userId,
-        userName
+    socket.on('request-join', ({ roomCode: rawRoomCode, userId, userName }) => {
+      const roomCode = normalizedRoomCode(rawRoomCode);
+      const room = rooms.get(roomCode);
+      const hostUserId = roomHosts.get(roomCode);
+      const stableUserId = userId && String(userId);
+      const registeredJoiner = pendingJoiners.get(socket.id);
+      const hostSocketId = room
+        ? Array.from(room.values()).find(member => String(member.userId) === String(hostUserId))?.socketId
+        : null;
+      if (!roomCode || !stableUserId) {
+        return emitAdmissionError(socket, 'invalid-request', 'A valid meeting and user identity are required.');
+      }
+      if (bannedUsers.get(roomCode)?.has(stableUserId)) {
+        return emitAdmissionError(socket, 'banned', 'You have been removed from this meeting.');
+      }
+      if (admittedUsers.get(roomCode)?.has(stableUserId) || String(hostUserId) === stableUserId) {
+        pendingJoiners.delete(socket.id);
+        socket.emit('admitted', { requestId: `${stableUserId}:${roomCode}` });
+        return;
+      }
+      const rejectionReason = !room
+        ? 'invalid-room-code'
+        : registeredJoiner && (registeredJoiner.roomCode !== roomCode || registeredJoiner.userId !== stableUserId)
+            ? 'joiner-identity-mismatch'
+            : !hostUserId ? 'host-not-registered' : null;
+      if (rejectionReason) {
+        return socket.emit('waiting-room-error', { message: 'This meeting is not accepting join requests.' });
+      }
+      pendingJoiners.set(socket.id, {
+        roomCode,
+        userId: stableUserId,
+        userName: typeof userName === 'string' && userName.trim() ? userName.trim().slice(0, 100) : 'Guest',
       });
+      const normalizedUserName = typeof userName === 'string' && userName.trim() ? userName.trim().slice(0, 100) : 'Guest';
+      const request = addWaitingUser(roomCode, stableUserId, normalizedUserName, socket.id);
+      socket.emit('waiting-room-state', { status: 'waiting', requestId: request.requestId });
+      for (const member of room.values()) {
+        if (String(member.userId) === String(hostUserId)) {
+          io.to(member.socketId).emit('participant-waiting', request);
+        }
+      }
+      emitWaitingRoomUpdate(io, roomCode);
     });
 
-    socket.on('admit-user', ({ toSocketId }) => {
-      io.to(toSocketId).emit('admitted');
+    socket.on('admit-user', ({ roomCode: rawRoomCode, requestId, userId, toSocketId }) => {
+      const roomCode = normalizedRoomCode(rawRoomCode || currentRoom);
+      const room = rooms.get(roomCode);
+      const requester = room?.get(socket.id);
+      if (!requester || String(requester.userId) !== String(roomHosts.get(roomCode))) {
+        return socket.emit('waiting-room-error', { message: 'Only the host can admit participants.' });
+      }
+      const waiting = waitingRooms.get(roomCode);
+      const request = waiting && Array.from(waiting.values()).find(item =>
+        (requestId && item.requestId === requestId)
+        || (userId && item.userId === String(userId))
+        || (toSocketId && item.socketId === toSocketId));
+      if (!request) return;
+      admitUser(roomCode, request.userId);
+      io.to(request.socketId).emit('admitted', { requestId: request.requestId });
+      emitWaitingRoomUpdate(io, roomCode);
     });
 
-    socket.on('deny-user', ({ toSocketId }) => {
-      io.to(toSocketId).emit('denied');
+    socket.on('deny-user', ({ roomCode: rawRoomCode, requestId, userId, toSocketId }) => {
+      const roomCode = normalizedRoomCode(rawRoomCode || currentRoom);
+      const room = rooms.get(roomCode);
+      const requester = room?.get(socket.id);
+      if (!requester || String(requester.userId) !== String(roomHosts.get(roomCode))) {
+        return socket.emit('waiting-room-error', { message: 'Only the host can deny participants.' });
+      }
+      const waiting = waitingRooms.get(roomCode);
+      const request = waiting && Array.from(waiting.values()).find(item =>
+        (requestId && item.requestId === requestId)
+        || (userId && item.userId === String(userId))
+        || (toSocketId && item.socketId === toSocketId));
+      if (!request) return;
+      denyUser(roomCode, request.userId);
+      io.to(request.socketId).emit('denied', { requestId: request.requestId });
+      emitWaitingRoomUpdate(io, roomCode);
     });
 
     // ── Feature 3: Reactions + Hand Queue ────────────────────────────────────
@@ -426,6 +630,13 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.to(roomCode).emit('whiteboard-op', op);
     });
 
+    socket.on('end-meeting', ({ roomCode: rawRoomCode } = {}) => {
+      const roomCode = normalizedRoomCode(rawRoomCode || currentRoom);
+      if (!endMeeting(roomCode, socket, io)) {
+        return emitAdmissionError(socket, 'not-authorized', 'Only the host can end the meeting.');
+      }
+    });
+
     /**
      * Request the current whiteboard state for the room.
      * Returns it only to the requesting socket (used by late joiners).
@@ -439,6 +650,7 @@ function setupSignaling(httpServer, allowedOrigin) {
     // ── Disconnect ────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
+      pendingJoiners.delete(socket.id);
       if (currentRoom && rooms.has(currentRoom)) {
         rooms.get(currentRoom).delete(socket.id);
         if (rooms.get(currentRoom).size === 0) {
@@ -450,11 +662,10 @@ function setupSignaling(httpServer, allowedOrigin) {
           roomFiles.delete(currentRoom);
 
           roomAgenda.delete(currentRoom);
-
-          roomHosts.delete(currentRoom);
           roomWhiteboards.delete(currentRoom);
-
           delete roomLocks[currentRoom];
+        } else {
+          emitWaitingRoomUpdate(io, currentRoom);
         }
       }
       if (currentRoom) {
@@ -468,4 +679,17 @@ function setupSignaling(httpServer, allowedOrigin) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms };
+module.exports = {
+  setupSignaling,
+  rooms,
+  waitingRooms,
+  admittedUsers,
+  bannedUsers,
+  roomHosts,
+  clearMeetingAdmissionState,
+  endMeeting,
+  addWaitingUser,
+  admitUser,
+  denyUser,
+  banUser,
+};

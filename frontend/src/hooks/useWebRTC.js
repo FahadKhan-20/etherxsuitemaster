@@ -26,8 +26,9 @@ const ICE_SERVERS = [
  * @param {string} roomCode  - The meeting room code.
  * @param {object} [opts]    - Options object.
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
+ * @param {Function} [opts.onMeetingEnded] - Called when the host ends the meeting.
  */
-export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
+export function useWebRTC(roomCode, { onKicked, onMeetingEnded, isHost } = {}) {
   const { account } = useWallet();
   const storedUser = getStoredUser();
   const userName = storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous');
@@ -39,6 +40,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [admitted, setAdmitted] = useState(!!isHost);
   const [denied, setDenied] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
+  const [waitingRoomStatus, setWaitingRoomStatus] = useState(isHost ? 'admitted' : 'connecting');
+  const admittedRef = useRef(!!isHost);
+  const lastAdmissionRequestSocketRef = useRef(null);
 
   // ── Core media state ────────────────────────────────────────────────────────
   const [localStream, setLocalStream] = useState(null);
@@ -154,26 +158,61 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       setSocketReady(true);
 
       // ── Waiting Room Signaling ─────────────────────────────────────────────
-      socket.on('join-request', ({ socketId, userId: uId, userName: uName }) => {
-        if (isHost) {
-          setJoinRequests(prev => {
-            if (prev.some(r => r.socketId === socketId)) return prev;
-            return [...prev, { socketId, userId: uId, userName: uName }];
-          });
-        }
-      });
-
-      socket.on('admitted', () => {
-        setAdmitted(true);
-        socket.emit('join-room', { roomCode, userId, userName });
+      const joinActiveRoom = () => {
+        socket.emit('join-room', { roomCode, userId, userName, isHost: !!isHost });
         socket.emit('get-notes', { roomCode });
         socket.emit('get-media', { roomCode });
         socket.emit('get-files', { roomCode });
         socket.emit('get-agenda', { roomCode });
+      };
+
+      const requestAdmission = () => {
+        if (!isHost && socket.connected && lastAdmissionRequestSocketRef.current !== socket.id) {
+          setWaitingRoomStatus('requesting');
+          lastAdmissionRequestSocketRef.current = socket.id;
+          socket.emit('register-joiner', { roomCode, userId, userName });
+          socket.emit('request-join', { roomCode, userId, userName });
+        }
+      };
+
+      socket.on('participant-waiting', request => {
+        if (!isHost) return;
+        setJoinRequests(prev => [
+          ...prev.filter(item => item.userId !== request.userId),
+          request,
+        ]);
+      });
+
+      socket.on('waiting-room-update', requests => {
+        if (isHost) setJoinRequests(Array.isArray(requests) ? requests : []);
+      });
+
+      socket.on('waiting-room-error', ({ code, message }) => {
+        setWaitingRoomStatus(code === 'banned' ? 'banned' : 'error');
+        if (!isHost) setConnectionError(message || 'Unable to join the waiting room.');
+      });
+
+      socket.on('waiting-room-state', ({ status }) => {
+        if (status === 'waiting') setWaitingRoomStatus('waiting');
+      });
+
+      socket.on('admitted', () => {
+        admittedRef.current = true;
+        setWaitingRoomStatus('admitted');
+        setAdmitted(true);
+        joinActiveRoom();
       });
 
       socket.on('denied', () => {
+        admittedRef.current = false;
+        setWaitingRoomStatus('denied');
         setDenied(true);
+      });
+
+      socket.on('connect', () => {
+        lastAdmissionRequestSocketRef.current = null;
+        if (isHost) joinActiveRoom();
+        else requestAdmission();
       });
 
       // ── Core WebRTC signaling events ────────────────────────────────────────
@@ -232,6 +271,10 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Host has kicked us — invoke the caller-supplied callback
       socket.on('removed-from-room', () => {
         if (typeof onKicked === 'function') onKicked();
+      });
+
+      socket.on('meeting-ended', () => {
+        if (typeof onMeetingEnded === 'function') onMeetingEnded();
       });
 
       // Room lock state changed (by host) — broadcast to everyone including sender
@@ -322,15 +365,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setAgendaItems(items);
       });
 
-      // Join the room if host (already admitted); otherwise request admission
-      if (isHost) {
-        socket.emit('join-room', { roomCode, userId, userName });
-        socket.emit('get-notes', { roomCode });
-        socket.emit('get-media', { roomCode });
-        socket.emit('get-files', { roomCode });
-        socket.emit('get-agenda', { roomCode });
-      } else {
-        socket.emit('request-join', { roomCode, userId, userName });
+      if (socket.connected) {
+        if (isHost) joinActiveRoom();
+        else requestAdmission();
       }
     };
 
@@ -581,17 +618,29 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   }, [roomCode]);
 
   // ── Waiting Room Handlers ──────────────────────────────────────────────────
-  const admitUser = useCallback((socketId) => {
+  const admitUser = useCallback((request) => {
     if (!isHost) return;
-    socketRef.current?.emit('admit-user', { toSocketId: socketId });
-    setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+    if (!request) return;
+    socketRef.current?.emit('admit-user', {
+      roomCode,
+      requestId: request.requestId,
+      userId: request.userId,
+      toSocketId: request.socketId,
+    });
+    setJoinRequests(prev => prev.filter(r => r.userId !== request.userId));
+  }, [isHost, roomCode]);
 
-  const denyUser = useCallback((socketId) => {
+  const denyUser = useCallback((request) => {
     if (!isHost) return;
-    socketRef.current?.emit('deny-user', { toSocketId: socketId });
-    setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [isHost]);
+    if (!request) return;
+    socketRef.current?.emit('deny-user', {
+      roomCode,
+      requestId: request.requestId,
+      userId: request.userId,
+      toSocketId: request.socketId,
+    });
+    setJoinRequests(prev => prev.filter(r => r.userId !== request.userId));
+  }, [isHost, roomCode]);
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 
@@ -671,8 +720,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
+    userId,
     // Waiting Room / Admission
-    admitted, denied, joinRequests, admitUser, denyUser,
+    admitted, denied, waitingRoomStatus, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls
     muteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Feature 3: Reactions + Hand Queue
