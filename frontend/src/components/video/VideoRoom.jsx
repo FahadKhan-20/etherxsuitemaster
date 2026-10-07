@@ -182,7 +182,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     stopRecording,
   } = useMeetingRecording({
     roomCode,
-    isHost,
+    isHost: canHost,
     localStream,
     screenStream,
     peers,
@@ -454,7 +454,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           ) : isScreenSharing ? (
             <>
               <span>🖥️ You're sharing your screen</span>
-              <button onClick={toggleScreenShare} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: '#d4af37', color: '#050505', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Stop sharing</button>
+              {canHost && <button onClick={toggleScreenShare} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: '#d4af37', color: '#050505', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Stop sharing</button>}
             </>
           ) : (
             <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
@@ -522,7 +522,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {confettiActive && (<div style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none', overflow: 'hidden' }}>{CONFETTI.map((p, i) => (<div key={i} style={{ position: 'absolute', left: `${p.x}%`, top: '-20px', width: p.w, height: p.h, background: p.color, borderRadius: p.round ? '50%' : 2, transform: `rotate(${p.rot}deg)`, animation: `confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
 
-      {inviteOpen && (
+      {inviteOpen && canHost && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
           <div style={{ width: 380, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)', animation: 'fadeIn .18s ease-out' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -566,7 +566,7 @@ export default function VideoRoom({ roomCode, isHost }) {
           socket={socket}
           socketReady={socketReady}
           roomCode={roomCode}
-          isHost={isHost}
+          isHost={canHost}
         />
       )}
 
@@ -952,13 +952,13 @@ export default function VideoRoom({ roomCode, isHost }) {
             )}
 
             {panelTab === 'agenda' && (
-              <MeetingAgenda isHost={isHost} meetingStarted={true} topics={agendaTopics} onTopicsChange={handleAgendaChange} />
+              <MeetingAgenda isHost={canHost} meetingStarted={true} topics={agendaTopics} onTopicsChange={handleAgendaChange} />
             )}
 
             {panelTab === 'files' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Drop zone / upload button */}
-                <div
+                {canHost && <div
                   onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#d4af37'; e.currentTarget.style.background = 'rgba(212,175,55,.12)'; }}
                   onDragLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(212,175,55,.2)'; e.currentTarget.style.background = 'rgba(212,175,55,.04)'; }}
                   onDrop={(e) => {
@@ -995,7 +995,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.5)', margin: '0 auto 8px', display: 'block' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
                   <p style={{ margin: 0, fontSize: 12.5, color: '#a89878', fontWeight: 500 }}>Click or drag files here</p>
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(168,152,120,.6)' }}>Max 10 MB per file</p>
-                </div>
+                </div>}
                 {/* File list */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(sharedFiles || []).length === 0 ? (
@@ -1057,10 +1057,10 @@ export default function VideoRoom({ roomCode, isHost }) {
               <button onClick={() => setShowPeople(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>
+              {canHost && <button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
                 Invite someone
-              </button>
+              </button>}
               <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1274,11 +1274,11 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
 
               {/* Group 2 — Screen share */}
-              <button onClick={toggleScreenShare} title={isScreenSharing ? 'Stop sharing' : 'Share screen'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isScreenSharing ? 'rgba(212,175,55,.25)' : 'transparent', color: isScreenSharing ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canHost && <button onClick={toggleScreenShare} title={isScreenSharing ? 'Stop sharing' : 'Share screen'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isScreenSharing ? 'rgba(212,175,55,.25)' : 'transparent', color: isScreenSharing ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 {isScreenSharing ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg> : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-              </button>
+              </button>}
 
-              {isHost && <button
+              {canHost && <button
                 onClick={() => { if (isRecording) stopRecording(); else startRecording(); }}
                 disabled={recordingState === 'stopping'}
                 title={isRecording ? 'Stop recording' : 'Start recording'}
@@ -1304,10 +1304,10 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {raised && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>1</span>}
               </button>
 
-              <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: (chatOpen && panelTab === 'agenda') ? 'rgba(212,175,55,.22)' : 'transparent', color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2, position: 'relative' }}>
+              {canHost && <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: (chatOpen && panelTab === 'agenda') ? 'rgba(212,175,55,.22)' : 'transparent', color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2, position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
                 <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.02em', lineHeight: 1, color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878' }}>Agenda</span>
-              </button>
+              </button>}
 
               <button onClick={() => setShowPeople(v => !v)} title="Participants" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: showPeople ? 'rgba(212,175,55,.15)' : 'transparent', color: showPeople ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
@@ -1322,13 +1322,13 @@ export default function VideoRoom({ roomCode, isHost }) {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /></svg>
               </button>
 
-              <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canHost && <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
-              </button>
+              </button>}
 
-              <button onClick={() => setWhiteboardOpen(v => !v)} title="Whiteboard" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: whiteboardOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: whiteboardOpen ? '#f0e6d3' : '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {canHost && <button onClick={() => setWhiteboardOpen(v => !v)} title="Whiteboard" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: whiteboardOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: whiteboardOpen ? '#f0e6d3' : '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 20h16M6 20V8l6-4 6 4v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
+              </button>}
 
               <div style={{ position: 'relative' }} ref={moreRef}>
                 <button onClick={() => setMoreOpen(v => !v)} title="More" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: moreOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -1343,20 +1343,20 @@ export default function VideoRoom({ roomCode, isHost }) {
                     {[
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, hostOnly: true, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setCaptionsOn(v => !v); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, hostOnly: true, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, hostOnly: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5" /><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Noise suppression', divider: false, action: () => { setMoreOpen(false); toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Select background', divider: false, action: () => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Participant stats', divider: true, action: () => { setShowPeople(true); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'Settings', divider: false, action: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'View shortcuts', divider: false, action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
+                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
                       { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'Leave feedback', divider: false, action: () => { setMoreOpen(false); setFeedbackOpen(true); } },
-                    ].filter((item) => canHost || item.label !== 'Security options').map((item, idx) => (
+                    ].filter((item) => canHost || !item.hostOnly).map((item, idx) => (
                       <div key={idx}>
                         <button onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: 'none', background: 'none', color: '#f0e6d3', fontSize: 12.5, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'Sora',sans-serif", transition: 'background .15s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,.08)'}

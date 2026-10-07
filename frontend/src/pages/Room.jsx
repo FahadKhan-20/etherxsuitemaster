@@ -1,5 +1,5 @@
 // frontend/src/pages/Room.jsx
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '../context/UserContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
@@ -7,10 +7,24 @@ import VideoRoom from '../components/video/VideoRoom';
 import VideoCanvasProcessor from '../components/video/VideoCanvasProcessor';
 import etherxLogo from '../assets/etherx_transparent.png';
 import { ROUTES } from '../utils/constants';
+import apiClient from '../utils/apiClient';
+import { clearAuthSession, getAuthToken } from '../utils/auth';
 import {
   Mic, MicOff, Video, VideoOff, UserPlus, Image as ImageIcon, Settings, PhoneOff, ChevronDown, Sparkles, Check,
   Volume2, Bell, User, Keyboard, X, Plus
 } from 'lucide-react';
+
+function normalizeRoomCode(value) {
+  const input = typeof value === 'string' ? value.trim() : '';
+  try {
+    const url = new URL(input, window.location.origin);
+    const roomPathMatch = url.pathname.match(/\/room\/([^/]+)/i);
+    if (roomPathMatch) return decodeURIComponent(roomPathMatch[1]);
+  } catch {
+    // Keep non-URL room codes unchanged.
+  }
+  return input;
+}
 
 // Formatter for room code: e.g. "etherx-pi9gce9w" -> "Etherx Pi 9 Gce 9 W"
 function formatLobbyCode(code) {
@@ -61,11 +75,16 @@ const playTestSound = () => {
 export default function Room() {
 
 
-  const { code } = useParams();
+  const { code: routeCode } = useParams();
+  const code = normalizeRoomCode(routeCode);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, updateUser } = useUser();
 
   const [hasJoined, setHasJoined] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
+  const [reauthRequired, setReauthRequired] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [copied, setCopied] = useState(false);
   const [time, setTime] = useState(new Date());
@@ -127,7 +146,7 @@ export default function Room() {
     if (hasJoined || !code) return;
     const fetchParticipants = async () => {
       try {
-        const res = await fetch(`/api/rooms/${code.toLowerCase()}/participants`);
+        const res = await fetch(`/api/rooms/${encodeURIComponent(code.toLowerCase())}/participants`);
         const data = await res.json();
         if (data.success) {
           setActiveParticipants(data.participants || []);
@@ -165,8 +184,26 @@ export default function Room() {
     return () => clearInterval(t);
   }, []);
 
-  const handleJoin = () => {
-    if (!displayName.trim()) return;
+  const handleJoin = async () => {
+    if (!displayName.trim() || isJoining) return;
+    setIsJoining(true);
+    setJoinError('');
+
+    if (isHost && getAuthToken()) {
+      try {
+        await apiClient.post('/api/rooms', { roomCode: code, hostName: displayName.trim() });
+      } catch (error) {
+        if (error.response?.status === 401) {
+          setReauthRequired(true);
+          setJoinError('Your saved sign-in session was rejected by this backend. Sign in again to verify host access.');
+        } else {
+          console.error('Failed to register meeting host:', error);
+          setJoinError(error.response?.data?.message || 'Could not verify host access. Please try again.');
+        }
+        setIsJoining(false);
+        return;
+      }
+    }
     
     // Save chosen display name
     updateUser({ name: displayName.trim() });
@@ -437,7 +474,7 @@ export default function Room() {
           <button
             className="join-btn"
             onClick={handleJoin}
-            disabled={!displayName.trim()}
+            disabled={!displayName.trim() || isJoining}
             style={{
               width: "100%",
               maxWidth: "340px",
@@ -448,8 +485,8 @@ export default function Room() {
               padding: "14px 20px",
               fontSize: 15,
               fontWeight: 700,
-              cursor: displayName.trim() ? "pointer" : "not-allowed",
-              opacity: displayName.trim() ? 1 : 0.6,
+              cursor: displayName.trim() && !isJoining ? "pointer" : "not-allowed",
+              opacity: displayName.trim() && !isJoining ? 1 : 0.6,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -457,9 +494,25 @@ export default function Room() {
               minHeight: 48,
             }}
           >
-            <span>Join meeting</span>
+            <span>{isJoining ? 'Verifying host…' : 'Join meeting'}</span>
             <ChevronDown size={18} strokeWidth={2.5} />
           </button>
+          {joinError && (
+            <div style={{ width: '100%', maxWidth: 340, margin: '10px auto 0', textAlign: 'center' }}>
+              <p role="alert" style={{ margin: 0, color: '#fca5a5', fontSize: 13 }}>{joinError}</p>
+              {reauthRequired && (
+                <button
+                  onClick={() => {
+                    clearAuthSession();
+                    navigate(ROUTES.LOGIN, { state: { from: location }, replace: true });
+                  }}
+                  style={{ marginTop: 10, border: '1px solid rgba(212,175,55,.35)', borderRadius: 8, background: 'rgba(212,175,55,.12)', color: '#e5c76b', padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Sign in again
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Floating settings / effects overlays */}

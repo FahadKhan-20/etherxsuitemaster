@@ -2,7 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const MeetingRoom = require('../models/MeetingRoom');
 const ChatMessage = require('../models/ChatMessage');
-const { getSessionStart } = require('../signaling');
+const { getSessionStart, registerRoomHost } = require('../signaling');
 
 const router = express.Router();
 
@@ -84,6 +84,7 @@ router.post('/', auth, async (req, res, next) => {
       existingRoom.hostName = hostName;
       existingRoom.lastActiveAt = new Date();
       await existingRoom.save();
+      registerRoomHost(roomCode, req.user.id, req.app.get('io'));
 
       return res.json({
         success: true,
@@ -103,6 +104,7 @@ router.post('/', auth, async (req, res, next) => {
       hostName,
       lastActiveAt: new Date(),
     });
+    registerRoomHost(roomCode, req.user.id, req.app.get('io'));
 
     return res.status(201).json({
       success: true,

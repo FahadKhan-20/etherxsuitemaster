@@ -37,7 +37,7 @@ const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) ca
 /** True if userId currently holds host or co-host authority in roomCode. */
 function isPrivileged(roomCode, userId) {
   if (!userId) return false;
-  if (roomHosts.get(roomCode) === userId) return true;
+  if (String(roomHosts.get(roomCode)) === String(userId)) return true;
   const co = roomCoHosts.get(roomCode);
   return !!(co && co.userId === userId);
 }
@@ -61,6 +61,10 @@ const roomSessions = new Map();
 function getSessionStart(roomCode) {
   const sess = roomSessions.get(String(roomCode || '').toLowerCase());
   return sess ? sess.startedAt : null;
+}
+
+function registerRoomHost(roomCode, userId) {
+  roomHosts.set(roomCode, String(userId));
 }
 
 /**
@@ -120,8 +124,8 @@ function applyWhiteboardOp(board, op) {
 }
 
 
-function setupSignaling(httpServer, allowedOrigin) {
-  const io = new Server(httpServer, {
+function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
+  const io = new SocketServer(httpServer, {
     cors: {
       origin: allowedOrigin,
       methods: ['GET', 'POST'],
@@ -173,7 +177,7 @@ function setupSignaling(httpServer, allowedOrigin) {
 
       // First participant to join becomes the host/presenter
       if (!roomHosts.has(roomCode)) {
-        roomHosts.set(roomCode, userId);
+        roomHosts.set(roomCode, String(userId));
       }
 
       // Send existing participants to the new joiner
@@ -191,10 +195,11 @@ function setupSignaling(httpServer, allowedOrigin) {
         socketId: socket.id,
         userId,
         userName,
-        isHost: roomHosts.get(roomCode) === userId,
+        isHost: String(roomHosts.get(roomCode)) === String(userId),
         selfMuted: false,
         hostMuted: false,
       });
+      console.info(`[participants] ${roomCode}: ${room.size} participant(s) in room`);
 
       if (roomRecordings.has(roomCode)) {
         socket.emit('recording-state', { state: 'recording', startedAt: roomRecordings.get(roomCode).startedAt });
@@ -210,7 +215,7 @@ function setupSignaling(httpServer, allowedOrigin) {
         socketId: socket.id,
         userId,
         userName,
-        isHost: roomHosts.get(roomCode) === userId,
+        isHost: String(roomHosts.get(roomCode)) === String(userId),
         isMuted: false,
         mutedByHost: false,
       });
@@ -314,7 +319,7 @@ function setupSignaling(httpServer, allowedOrigin) {
     socket.on('make-co-host', ({ roomCode, socketId }) => {
       const room = rooms.get(roomCode);
       const me = room?.get(socket.id);
-      if (!room || !me || roomHosts.get(roomCode) !== me.userId) return; // host-only
+      if (!room || !me || String(roomHosts.get(roomCode)) !== String(me.userId)) return; // host-only
       const target = room.get(socketId);
       if (!target) return;
       roomCoHosts.set(roomCode, { userId: target.userId, socketId: target.socketId, userName: target.userName });
@@ -325,7 +330,7 @@ function setupSignaling(httpServer, allowedOrigin) {
     socket.on('remove-co-host', ({ roomCode }) => {
       const room = rooms.get(roomCode);
       const me = room?.get(socket.id);
-      if (!room || !me || roomHosts.get(roomCode) !== me.userId) return; // host-only
+      if (!room || !me || String(roomHosts.get(roomCode)) !== String(me.userId)) return; // host-only
       roomCoHosts.delete(roomCode);
       io.to(roomCode).emit('co-host-changed', { socketId: null, userId: null, userName: null });
     });
@@ -707,7 +712,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       const room = currentRoom ? rooms.get(currentRoom) : null;
       const departing = room?.get(socket.id);
       const hostLeftWhileRecording = departing
-        && roomHosts.get(currentRoom) === departing.userId
+        && String(roomHosts.get(currentRoom)) === String(departing.userId)
         && roomRecordings.has(currentRoom);
 
       if (hostLeftWhileRecording) {
@@ -717,6 +722,7 @@ function setupSignaling(httpServer, allowedOrigin) {
       if (currentRoom && rooms.has(currentRoom)) {
         const leavingMember = departing;
         room.delete(socket.id);
+        console.info(`[participants] ${currentRoom}: ${room.size} participant(s) in room`);
 
         // If the co-host disconnects, the badge/authority goes with them.
         const co = roomCoHosts.get(currentRoom);
@@ -726,7 +732,7 @@ function setupSignaling(httpServer, allowedOrigin) {
         }
 
         // If the HOST disconnects and a co-host is present, promote them automatically.
-        if (leavingMember && room.size > 0 && roomHosts.get(currentRoom) === leavingMember.userId) {
+        if (leavingMember && room.size > 0 && String(roomHosts.get(currentRoom)) === String(leavingMember.userId)) {
           const newHost = roomCoHosts.get(currentRoom);
           if (newHost && room.has(newHost.socketId)) {
             roomHosts.set(currentRoom, newHost.userId);
@@ -791,4 +797,4 @@ function setupSignaling(httpServer, allowedOrigin) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms, getSessionStart };
+module.exports = { setupSignaling, rooms, getSessionStart, registerRoomHost };
