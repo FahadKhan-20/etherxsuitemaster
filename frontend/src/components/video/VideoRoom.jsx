@@ -150,7 +150,7 @@ export default function VideoRoom({ roomCode, isHost }) {
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
-    userName, connectionError, reactions,
+    userName, userId, connectionError, reactions,
     sendHandRaise, sendHandLower, polls, createPoll, votePoll, updateNotes,
     admitted, denied, waitingRoomStatus, joinRequests, admitUser, denyUser,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
@@ -671,7 +671,7 @@ export default function VideoRoom({ roomCode, isHost }) {
 
             {panelTab === 'chat' && (
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <VerifiedChat roomCode={roomCode} userName={userName} embedded={true} />
+                <VerifiedChat roomCode={roomCode} userName={userName} userId={userId} isHost={isHost} socketRef={socketRef} socketReady={socketReady} embedded={true} />
               </div>
             )}
 

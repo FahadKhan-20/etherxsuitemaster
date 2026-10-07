@@ -715,6 +715,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
     userName, connectionError,
+    userId,
     // Waiting Room / Admission
     admitted, denied, waitingRoomStatus, joinRequests, admitUser, denyUser,
     // Feature 1: Host Controls

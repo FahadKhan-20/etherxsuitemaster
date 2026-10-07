@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const MeetingRoom = require('../models/MeetingRoom');
 const ChatMessage = require('../models/ChatMessage');
+const { createRoomChatMessage } = require('../services/roomChat');
 
 const router = express.Router();
 
@@ -13,7 +14,15 @@ router.get('/chat/:roomCode', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid room code.' });
     }
 
-    const messages = await ChatMessage.find({ roomCode }).sort({ createdAt: 1 }).lean();
+    const isHost = await MeetingRoom.exists({ roomCode, hostUserId: req.user.id });
+    const messages = await ChatMessage.find({
+      roomCode,
+      $or: [
+        { audience: { $in: ['everyone', null] } },
+        ...(isHost ? [{ audience: 'host' }] : []),
+        { senderUserId: String(req.user.id) },
+      ],
+    }).sort({ sequence: 1, createdAt: 1 }).lean();
 
     return res.json({ success: true, data: messages });
   } catch (error) {
@@ -36,16 +45,16 @@ router.post('/chat/:roomCode', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Message must not exceed 1000 characters.' });
     }
 
-    const chatMessage = await ChatMessage.create({
+    const isHost = await MeetingRoom.exists({ roomCode, hostUserId: req.user.id });
+    const chatMessage = await createRoomChatMessage({
       roomCode,
+      senderUserId: req.user.id,
       address: req.user.name || 'Participant',
       message: sanitizedMessage,
+      audience: isHost && req.body?.audience === 'host' ? 'host' : 'everyone',
+      clientMessageId: req.body?.clientMessageId,
+      emit: message => req.app.get('io')?.to(roomCode).emit('chat:message-created', message),
     });
-
-    const io = req.app.get('io');
-    if (io) {
-      io.to(roomCode).emit('chat:message-created', chatMessage);
-    }
 
     return res.status(201).json({ success: true, data: chatMessage });
   } catch (error) {

@@ -1,4 +1,11 @@
 const { Server } = require('socket.io');
+const {
+  createRoomChatMessage,
+  clearRoomChatState,
+  enqueueRoomChat,
+  roomChatQueues,
+  roomChatSequences,
+} = require('./services/roomChat');
 
 // roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
 const rooms = new Map();
@@ -27,20 +34,8 @@ const roomHosts = new Map();
 
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
-const roomChatSequences = new Map();
-const roomChatQueues = new Map();
 const waitingRooms = new Map();
 const pendingJoiners = new Map();
-
-function enqueueRoomChat(roomCode, task) {
-  const previous = roomChatQueues.get(roomCode) || Promise.resolve();
-  const next = previous.then(task, task);
-  const queued = next.finally(() => {
-    if (roomChatQueues.get(roomCode) === queued) roomChatQueues.delete(roomCode);
-  });
-  roomChatQueues.set(roomCode, queued);
-  return next;
-}
 
 function normalizedRoomCode(roomCode) {
   return typeof roomCode === 'string' ? roomCode.trim().toLowerCase() : '';
@@ -563,6 +558,25 @@ function setupSignaling(httpServer, allowedOrigin) {
       socket.emit('whiteboard-state', {
         board: roomWhiteboards.get(roomCode) || { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } },
       });
+
+      socket.on('chat:send', ({ roomCode: rawRoomCode, message, audience, clientMessageId } = {}) => {
+        const roomCode = normalizedRoomCode(rawRoomCode || currentRoom);
+        const member = rooms.get(roomCode)?.get(socket.id);
+        const sanitizedMessage = typeof message === 'string' ? message.trim() : '';
+        if (!member || !sanitizedMessage || sanitizedMessage.length > 1000) return;
+
+        createRoomChatMessage({
+          roomCode,
+          senderUserId: member.userId,
+          address: member.userName || 'Participant',
+          message: sanitizedMessage,
+          audience: String(roomHosts.get(roomCode)) === String(member.userId) && audience === 'host'
+            ? 'host'
+            : 'everyone',
+          clientMessageId,
+          emit: chatMessage => io.to(roomCode).emit('chat:message-created', chatMessage),
+        }).catch(error => socket.emit('chat:error', { message: error.message }));
+      });
     });
 
     // ── Disconnect ────────────────────────────────────────────────────────────
@@ -584,6 +598,7 @@ function setupSignaling(httpServer, allowedOrigin) {
 
           roomHosts.delete(currentRoom);
           roomWhiteboards.delete(currentRoom);
+          clearRoomChatState(currentRoom);
 
           delete roomLocks[currentRoom];
         } else {
@@ -601,4 +616,4 @@ function setupSignaling(httpServer, allowedOrigin) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms };
+module.exports = { setupSignaling, rooms, enqueueRoomChat, roomChatQueues, roomChatSequences };

@@ -20,6 +20,23 @@ const chatMessageSchema = new mongoose.Schema(
             trim: true,
             maxlength: 1000,
         },
+        sequence: {
+            type: Number,
+            required: true,
+        },
+        clientMessageId: {
+            type: String,
+            required: true,
+        },
+        senderUserId: {
+            type: String,
+            required: true,
+        },
+        audience: {
+            type: String,
+            enum: ['everyone', 'host'],
+            default: 'everyone',
+        },
     },
     {
         timestamps: true,
@@ -28,5 +45,7 @@ const chatMessageSchema = new mongoose.Schema(
 );
 
 chatMessageSchema.index({ roomCode: 1, createdAt: 1 });
+chatMessageSchema.index({ roomCode: 1, clientMessageId: 1 }, { unique: true, sparse: true });
+chatMessageSchema.index({ roomCode: 1, sequence: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('ChatMessage', chatMessageSchema);
