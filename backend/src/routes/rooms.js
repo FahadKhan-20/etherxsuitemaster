@@ -2,11 +2,32 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const MeetingRoom = require('../models/MeetingRoom');
 const ChatMessage = require('../models/ChatMessage');
-const { getSessionStart, registerRoomHost } = require('../signaling');
+const { getSessionStart, registerRoomHost, rooms } = require('../signaling');
 
 const router = express.Router();
 
 const normalizeRoomCode = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+router.get('/:code/participants', (req, res) => {
+  const code = normalizeRoomCode(req.params.code);
+  const roomMap = rooms.get(code);
+
+  if (!roomMap) {
+    return res.json({
+      success: true,
+      participants: [],
+    });
+  }
+
+  const list = Array.from(roomMap.values()).map((p) => ({
+    userName: p.userName,
+  }));
+
+  return res.json({
+    success: true,
+    participants: list,
+  });
+});
 router.get('/chat/:roomCode', auth, async (req, res, next) => {
   try {
     const roomCode = normalizeRoomCode(req.params.roomCode);

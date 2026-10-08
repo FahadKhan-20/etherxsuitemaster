@@ -35,6 +35,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://10.190.103.55:3000',
+  'http://192.168.1.112:3000',
 ].filter(Boolean);
 
 // =====================================================

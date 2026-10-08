@@ -144,20 +144,30 @@ export default function Room() {
   // Query active participants list
   useEffect(() => {
     if (hasJoined || !code) return;
+    let isCancelled = false;
     const fetchParticipants = async () => {
       try {
-        const res = await fetch(`/api/rooms/${encodeURIComponent(code.toLowerCase())}/participants`);
-        const data = await res.json();
-        if (data.success) {
-          setActiveParticipants(data.participants || []);
+        const cleanCode = encodeURIComponent(code.trim().toLowerCase());
+        const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+        const url = `${apiBase}/api/rooms/${cleanCode}/participants`;
+        const res = await fetch(url);
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (!isCancelled && data?.success) {
+            setActiveParticipants(data.participants || []);
+          }
         }
-      } catch (err) {
-        console.error('Error fetching participants:', err);
+      } catch {
+        // Silently catch to avoid crashing or flooding console with SyntaxError on network hiccups/SPA fallback
       }
     };
     fetchParticipants();
     const interval = setInterval(fetchParticipants, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
   }, [hasJoined, code]);
 
   // Request mic/cam access when Lobby mounts

@@ -28,6 +28,7 @@ const ICE_SERVERS = [
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
  */
 export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
+  const normalizedCode = (roomCode || '').trim().toLowerCase();
   const { account } = useWallet();
   const storedUser = getStoredUser();
   const userNameRef = useRef(storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
@@ -120,6 +121,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // never needs to be replaced — we just mutate the track list in place and
   // force a re-render by updating the peers state with a new stream wrapper.
   const remoteStreamsRef = useRef({}); // socketId → MediaStream
+  const pendingCandidatesRef = useRef({}); // socketId → [candidate]
 
   // ── Peer connection factory ─────────────────────────────────────────────────
   // createPC creates a NEW RTCPeerConnection for socketId.
@@ -129,6 +131,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     if (pcsRef.current[socketId]) {
       pcsRef.current[socketId].close();
     }
+    pendingCandidatesRef.current[socketId] = [];
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
@@ -175,6 +178,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         pc.close();
         delete pcsRef.current[socketId];
         delete remoteStreamsRef.current[socketId];
+        delete pendingCandidatesRef.current[socketId];
       }
     };
 
@@ -251,7 +255,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      const socket = io(import.meta.env.VITE_API_BASE_URL, { transports: ['websocket', 'polling'] });
+      const socketUrl =
+        import.meta.env.VITE_SOCKET_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : '');
+      const socket = io(socketUrl || undefined, { transports: ['websocket', 'polling'] });
       socketRef.current = socket;
       setSocketReady(true);
 
@@ -266,13 +274,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       });
 
       socket.on('admitted', () => {
+        admittedRef.current = true;
         setAdmitted(true);
-        socket.emit('join-room', { roomCode, userId, userName, isHost: false });
-        socket.emit('get-notes', { roomCode });
-        socket.emit('get-media', { roomCode });
-        socket.emit('get-files', { roomCode });
-        socket.emit('get-agenda', { roomCode });
-        socket.emit('get-polls', { roomCode });
+        socket.emit('join-room', { roomCode: normalizedCode, userId, userName, isHost: false });
+        socket.emit('get-notes', { roomCode: normalizedCode });
+        socket.emit('get-media', { roomCode: normalizedCode });
+        socket.emit('get-files', { roomCode: normalizedCode });
+        socket.emit('get-agenda', { roomCode: normalizedCode });
+        socket.emit('get-polls', { roomCode: normalizedCode });
       });
 
       socket.on('denied', () => {
@@ -335,23 +344,55 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
           };
         }
         await pc.setRemoteDescription(offer);
+
+        // Drain any pending ICE candidates that arrived before the remote description was set
+        if (pendingCandidatesRef.current[from]?.length) {
+          for (const cand of pendingCandidatesRef.current[from]) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) { console.warn('Queued ICE failed:', e); }
+          }
+          pendingCandidatesRef.current[from] = [];
+        }
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('answer', { to: from, answer });
       });
 
       socket.on('answer', async ({ from, answer }) => {
-        await pcsRef.current[from]?.setRemoteDescription(answer);
+        const pc = pcsRef.current[from];
+        if (pc) {
+          await pc.setRemoteDescription(answer);
+          if (pendingCandidatesRef.current[from]?.length) {
+            for (const cand of pendingCandidatesRef.current[from]) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) { console.warn('Queued ICE failed:', e); }
+            }
+            pendingCandidatesRef.current[from] = [];
+          }
+        }
       });
 
       socket.on('ice-candidate', async ({ from, candidate }) => {
-        try { await pcsRef.current[from]?.addIceCandidate(candidate); } catch { }
+        if (!candidate) return;
+        const pc = pcsRef.current[from];
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.warn('Direct addIceCandidate failed:', e);
+          }
+        } else {
+          if (!pendingCandidatesRef.current[from]) {
+            pendingCandidatesRef.current[from] = [];
+          }
+          pendingCandidatesRef.current[from].push(candidate);
+        }
       });
 
       socket.on('user-left', ({ socketId }) => {
         pcsRef.current[socketId]?.close();
         delete pcsRef.current[socketId];
         delete remoteStreamsRef.current[socketId];
+        delete pendingCandidatesRef.current[socketId];
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         setSpotlightId(id => id === socketId ? 'local' : id);
         setScreenSharerId(id => id === socketId ? null : id);
@@ -510,14 +551,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
  */
       const joinOrRequestJoin = () => {
         if (isHost || admittedRef.current) {
-          socket.emit('join-room', { roomCode, userId, userName, isHost: !!isHost });
-          socket.emit('get-notes', { roomCode });
-          socket.emit('get-media', { roomCode });
-          socket.emit('get-files', { roomCode });
-          socket.emit('get-agenda', { roomCode });
-          socket.emit('get-polls', { roomCode });
+          socket.emit('join-room', { roomCode: normalizedCode, userId, userName, isHost: !!isHost });
+          socket.emit('get-notes', { roomCode: normalizedCode });
+          socket.emit('get-media', { roomCode: normalizedCode });
+          socket.emit('get-files', { roomCode: normalizedCode });
+          socket.emit('get-agenda', { roomCode: normalizedCode });
+          socket.emit('get-polls', { roomCode: normalizedCode });
         } else {
-          socket.emit('request-join', { roomCode, userId, userName });
+          socket.emit('request-join', { roomCode: normalizedCode, userId, userName });
         }
       };
       // 'connect' fires for the initial connection too, so this alone covers both cases —
@@ -532,12 +573,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       Object.values(pcsRef.current).forEach(pc => pc.close());
       pcsRef.current = {};
       remoteStreamsRef.current = {};
+      pendingCandidatesRef.current = {};
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenAudioMixRef.current?.ctx.close().catch(() => { });
       socketRef.current?.disconnect();
     };
-  }, [roomCode, userId, userName, createPC]); // onKicked intentionally excluded to avoid reconnect loop
+  }, [normalizedCode, userId, userName, createPC, isHost]); // onKicked intentionally excluded to avoid reconnect loop
 
   // ── Feature 4: Network Quality polling (every 5s) ───────────────────────────
   useEffect(() => {
@@ -886,15 +928,15 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Waiting Room Handlers ──────────────────────────────────────────────────
   const admitUser = useCallback((socketId) => {
     if (!canHost) return;
-    socketRef.current?.emit('admit-user', { toSocketId: socketId });
+    socketRef.current?.emit('admit-user', { toSocketId: socketId, roomCode: normalizedCode });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [canHost]);
+  }, [canHost, normalizedCode]);
 
   const denyUser = useCallback((socketId) => {
     if (!canHost) return;
-    socketRef.current?.emit('deny-user', { toSocketId: socketId });
+    socketRef.current?.emit('deny-user', { toSocketId: socketId, roomCode: normalizedCode });
     setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
-  }, [canHost]);
+  }, [canHost, normalizedCode]);
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 

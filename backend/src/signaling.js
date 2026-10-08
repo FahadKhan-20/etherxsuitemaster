@@ -37,9 +37,10 @@ const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) ca
 /** True if userId currently holds host or co-host authority in roomCode. */
 function isPrivileged(roomCode, userId) {
   if (!userId) return false;
-  if (String(roomHosts.get(roomCode)) === String(userId)) return true;
-  const co = roomCoHosts.get(roomCode);
-  return !!(co && co.userId === userId);
+  const key = String(roomCode || '').trim().toLowerCase();
+  if (String(roomHosts.get(key)) === String(userId)) return true;
+  const co = roomCoHosts.get(key);
+  return !!(co && String(co.userId) === String(userId));
 }
 
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
@@ -127,8 +128,12 @@ function applyWhiteboardOp(board, op) {
 function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
   const io = new SocketServer(httpServer, {
     cors: {
-      origin: allowedOrigin,
+      origin: (origin, callback) => {
+        // Dynamically allow requesting origin to support LAN devices & localhost
+        callback(null, true);
+      },
       methods: ['GET', 'POST'],
+      credentials: true,
     },
   });
 
@@ -150,7 +155,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
   io.on('connection', (socket) => {
     let currentRoom = null;
 
-    socket.on('join-room', ({ roomCode, userId, userName, isHost }) => {
+    socket.on('join-room', ({ roomCode: rawCode, userId, userName, isHost }) => {
+      const roomCode = String(rawCode || '').trim().toLowerCase();
       const existingRoom = rooms.get(roomCode);
       if (roomLocks[roomCode] && existingRoom && existingRoom.size > 0 && !isPrivileged(roomCode, userId)) {
         socket.emit('room-locked-error');
@@ -165,18 +171,17 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
 
       // Start a new session if this room was empty for longer than the grace period (or never seen)
       {
-        const key = String(roomCode).toLowerCase();
-        const sess = roomSessions.get(key);
+        const sess = roomSessions.get(roomCode);
         const now = Date.now();
         if (!sess || (room.size === 0 && sess.emptySince && now - sess.emptySince > SESSION_GRACE_MS)) {
-          roomSessions.set(key, { startedAt: new Date(now), emptySince: null });
+          roomSessions.set(roomCode, { startedAt: new Date(now), emptySince: null });
         } else {
           sess.emptySince = null;
         }
       }
 
-      // First participant to join becomes the host/presenter
-      if (!roomHosts.has(roomCode)) {
+      // Assign host authority if client joined as host or if room has no host
+      if (isHost || !roomHosts.has(roomCode)) {
         roomHosts.set(roomCode, String(userId));
       }
 
@@ -336,28 +341,40 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     });
 
     // ── Feature: Waiting Room / Admission ────────────────────────────────────
-    socket.on('request-join', ({ roomCode, userId, userName }) => {
+    socket.on('request-join', ({ roomCode: rawCode, userId, userName }) => {
+      const roomCode = String(rawCode || '').trim().toLowerCase();
       if (roomLocks[roomCode]) {
         socket.emit('room-locked-error');
         return;
       }
+      console.log(`[Signaling] request-join from ${userName} (${socket.id}) for room ${roomCode}`);
       socket.to(roomCode).emit('join-request', {
         socketId: socket.id,
         userId,
-        userName
+        userName,
+        roomCode,
       });
     });
 
-    socket.on('admit-user', ({ toSocketId }) => {
-      const me = currentRoom && rooms.get(currentRoom)?.get(socket.id);
-      if (!me || !isPrivileged(currentRoom, me.userId)) return;
-      io.to(toSocketId).emit('admitted');
+    socket.on('admit-user', ({ toSocketId, roomCode: clientRoomCode }) => {
+      const roomKey = String(currentRoom || clientRoomCode || '').trim().toLowerCase();
+      const room = roomKey ? rooms.get(roomKey) : null;
+      const me = room?.get(socket.id);
+      console.log(`[Signaling] admit-user received from socket ${socket.id} (user ${me?.userId}) for target ${toSocketId} in room ${roomKey}`);
+      if (!me || !isPrivileged(roomKey, me.userId)) {
+        console.warn(`[Signaling] admit-user rejected: not privileged or not in room. Socket: ${socket.id}, room: ${roomKey}`);
+        return;
+      }
+      io.to(toSocketId).emit('admitted', { roomCode: roomKey });
+      console.log(`[Signaling] 'admitted' emitted to socket ${toSocketId}`);
     });
 
-    socket.on('deny-user', ({ toSocketId }) => {
-      const me = currentRoom && rooms.get(currentRoom)?.get(socket.id);
-      if (!me || !isPrivileged(currentRoom, me.userId)) return;
-      io.to(toSocketId).emit('denied');
+    socket.on('deny-user', ({ toSocketId, roomCode: clientRoomCode }) => {
+      const roomKey = String(currentRoom || clientRoomCode || '').trim().toLowerCase();
+      const room = roomKey ? rooms.get(roomKey) : null;
+      const me = room?.get(socket.id);
+      if (!me || !isPrivileged(roomKey, me.userId)) return;
+      io.to(toSocketId).emit('denied', { roomCode: roomKey });
     });
 
     // ── Feature 3: Reactions + Hand Queue ────────────────────────────────────
