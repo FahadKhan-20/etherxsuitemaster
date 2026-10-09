@@ -92,7 +92,13 @@ afterEach(()=>{ for(const {root,container} of roots) { act(()=>root.unmount());c
 
 describe('media ownership and live device choices',()=>{
   it('preserves fast prejoin mute choices while camera and microphone permission is pending',async()=>{
-    const pending=[];navigator.mediaDevices.getUserMedia.mockImplementation(constraints=>new Promise(resolve=>pending.push(()=>resolve(new Stream([new Track(constraints.video?'video':'audio')])))));
+    const pending=[],tracks=[];
+    navigator.mediaDevices.getUserMedia.mockImplementation(constraints=>new Promise(resolve=>{
+      pending.push(()=>{
+        const track=new Track(constraints.video?'video':'audio');
+        tracks.push(track);resolve(new Stream([track]));
+      });
+    }));
     renderHook(()=>useMediaDevices());let permission;
     act(()=>{permission=hook.requestPermission();});
     await act(async()=>{await hook.toggleAudio();await hook.toggleVideo();});
@@ -100,6 +106,45 @@ describe('media ownership and live device choices',()=>{
     await act(async()=>{pending.forEach(resolve=>resolve());await permission;});
     expect(hook.isAudioEnabled).toBe(false);expect(hook.isVideoEnabled).toBe(false);
     expect(hook.stream.getTracks().every(track=>!track.enabled)).toBe(true);
+    expect(hook.stream.getVideoTracks()).toHaveLength(0);
+    expect(tracks.find(track=>track.kind==='video').readyState).toBe('ended');
+  });
+  it('releases the lobby camera and defers device capture until camera is enabled again',async()=>{
+    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());
+    const camera=hook.stream.getVideoTracks()[0],mic=hook.stream.getAudioTracks()[0];
+    await act(async()=>hook.toggleVideo());
+    expect(camera.readyState).toBe('ended');expect(hook.stream.getVideoTracks()).toHaveLength(0);
+    expect(mic.readyState).toBe('live');expect(hook.isVideoEnabled).toBe(false);
+    const calls=navigator.mediaDevices.getUserMedia.mock.calls.length;
+    await act(async()=>hook.switchDevice('video','cam-2'));
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(calls);
+    await act(async()=>hook.toggleVideo());
+    expect(hook.isVideoEnabled).toBe(true);expect(hook.stream.getVideoTracks()[0].label).toBe('cam-2');
+  });
+  it('stops a lobby camera capture that resolves after camera is turned off',async()=>{
+    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
+    const camera=new Track('video');let resolve;
+    navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    let enable;act(()=>{enable=hook.toggleVideo();});await act(async()=>hook.toggleVideo());
+    await act(async()=>{resolve(new Stream([camera]));await enable;});
+    expect(camera.readyState).toBe('ended');expect(hook.isVideoEnabled).toBe(false);expect(hook.stream.getVideoTracks()).toHaveLength(0);
+  });
+  it('does not restore a lobby camera when a device switch resolves after camera off',async()=>{
+    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());
+    const camera=new Track('video','cam-2');let resolve;
+    navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    let change;act(()=>{change=hook.switchDevice('video','cam-2');});await act(async()=>hook.toggleVideo());
+    await act(async()=>{resolve(new Stream([camera]));await change;});
+    expect(camera.readyState).toBe('ended');expect(hook.isVideoEnabled).toBe(false);expect(hook.stream.getVideoTracks()).toHaveLength(0);
+  });
+  it('keeps the latest lobby camera enabled when device selection changes during capture',async()=>{
+    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
+    const pending=[];navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)));
+    let enable,change;act(()=>{enable=hook.toggleVideo();});act(()=>{change=hook.switchDevice('video','cam-2');});
+    const camera=new Track('video','cam-2'),stale=new Track('video');
+    await act(async()=>{pending[1](new Stream([camera]));await change;pending[0](new Stream([stale]));await enable;});
+    expect(camera.enabled).toBe(true);expect(hook.stream.getVideoTracks()).toEqual([camera]);expect(stale.readyState).toBe('ended');
+    expect(hook.isVideoEnabled).toBe(true);
   });
   it('exposes the active screen stream and clears it when sharing stops',async()=>{
     const screen=new Stream([new Track('video','Screen')]);navigator.mediaDevices.getDisplayMedia=vi.fn(async()=>screen);
@@ -129,14 +174,56 @@ describe('media ownership and live device choices',()=>{
     const rendered=renderHook(()=>useMediaDevices());await act(async()=>{await hook.requestPermission();await hook.toggleAudio();await hook.toggleVideo();});
     let stream;act(()=>{stream=hook.releaseStream();});rendered.unmount();
     expect(stream.getTracks().every(t=>!t.enabled && t.readyState==='live')).toBe(true);
+    expect(stream.getAudioTracks()).toHaveLength(1);expect(stream.getVideoTracks()).toHaveLength(0);
     stream.getTracks().forEach(t=>t.stop());
   });
   it('joins with disabled lobby tracks and authenticated signaling',async()=>{
     const stream=new Stream([new Track('audio'),new Track('video')]);stream.getTracks().forEach(t=>t.enabled=false);
+    const camera=stream.getVideoTracks()[0];
     renderHook(()=>useWebRTC('test-room',{isHost:true,initialMedia:{stream,audioEnabled:false,videoEnabled:false,devices:{audio:'default'}}}));await settle();
     expect(hook.micMuted).toBe(true);expect(hook.cameraOff).toBe(true);expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(camera.readyState).toBe('ended');expect(hook.localStream.getVideoTracks()).toHaveLength(0);
     expect(sockets[0].options.auth).toEqual({token:'test-session',roomCode:'test-room'});
     const join=sockets[0].events.find(e=>e.event==='join-room');expect(join.payload.muted).toBe(true);expect(join.payload.videoOff).toBe(true);expect(join.payload.isHost).toBeUndefined();expect(join.payload.userId).toBeUndefined();
+  });
+  it('stops the room camera, clears peer video, and keeps device changes private while off',async()=>{
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    await act(async()=>sockets[0].trigger('existing-users',[{socketId:'peer',userName:'Peer'}]));
+    const camera=hook.localStream.getVideoTracks()[0],mic=hook.localStream.getAudioTracks()[0];
+    const sender=pcs[0].getSenders().find(s=>s.track?.kind==='video');
+    await act(async()=>hook.toggleCamera());
+    expect(camera.readyState).toBe('ended');expect(sender.track).toBeNull();expect(mic.readyState).toBe('live');
+    const calls=navigator.mediaDevices.getUserMedia.mock.calls.length;
+    await act(async()=>hook.switchDevice('video','cam-2'));
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(calls);expect(hook.cameraOff).toBe(true);
+    await act(async()=>hook.toggleCamera());
+    expect(hook.cameraOff).toBe(false);expect(sender.track).toBe(hook.localStream.getVideoTracks()[0]);expect(sender.track.label).toBe('cam-2');
+  });
+  it('stops room camera captures that resolve after camera off',async()=>{
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();await act(async()=>hook.toggleCamera());
+    const camera=new Track('video');let resolve;
+    navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    let enable;act(()=>{enable=hook.toggleCamera();});await act(async()=>hook.toggleCamera());
+    await act(async()=>{resolve(new Stream([camera]));await enable;});
+    expect(camera.readyState).toBe('ended');expect(hook.cameraOff).toBe(true);expect(hook.localStream.getVideoTracks()).toHaveLength(0);
+  });
+  it('stops room camera switches that resolve after camera off',async()=>{
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    const camera=new Track('video','cam-2');let resolve;
+    navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    let change;act(()=>{change=hook.switchDevice('video','cam-2');});await act(async()=>hook.toggleCamera());
+    await act(async()=>{resolve(new Stream([camera]));await change;});
+    expect(camera.readyState).toBe('ended');expect(hook.cameraOff).toBe(true);expect(hook.localStream.getVideoTracks()).toHaveLength(0);
+  });
+  it('keeps screen sharing live and ignores late processed camera output while camera is off',async()=>{
+    const screen=new Stream([new Track('video','Screen')]);navigator.mediaDevices.getDisplayMedia=vi.fn(async()=>screen);
+    renderHook(()=>useWebRTC('test-room',{isHost:true,videoEffects:true}));await settle();
+    await act(async()=>sockets[0].trigger('existing-users',[{socketId:'peer',userName:'Peer'}]));
+    await act(async()=>hook.toggleScreenShare());await act(async()=>hook.toggleCamera());
+    const sender=pcs[0].getSenders().find(s=>s.track?.kind==='video');
+    expect(sender.track).toBe(screen.getVideoTracks()[0]);expect(sender.track.readyState).toBe('live');
+    await act(async()=>hook.setOutgoingVideoTrack(new Track('video','Canvas')));
+    await act(async()=>hook.toggleScreenShare());expect(sender.track).toBeNull();expect(hook.cameraOff).toBe(true);
   });
   it('switches actual microphone sender and preserves host mute',async()=>{
     renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();

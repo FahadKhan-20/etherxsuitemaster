@@ -5,6 +5,8 @@ export function useMediaDevices({ initialDevices = {} } = {}) {
   const [stream, setStream] = useState(null);
   const streamRef = useRef(null), requestIdRef = useRef(0);
   const pendingPermissionRef = useRef(null);
+  const captureIdsRef = useRef({ audio: 0, video: 0 });
+  const pendingCaptureRef = useRef({ audio: false, video: false });
   const enabledRef = useRef({ audio: true, video: true });
   const [devices, setDevices] = useState({ cameras: [], microphones: [], speakers: [] });
   const [selectedDevices, setSelectedDevices] = useState(initialDevices);
@@ -34,11 +36,15 @@ export function useMediaDevices({ initialDevices = {} } = {}) {
   const requestPermission = useCallback(async () => {
     const id = ++requestIdRef.current;
     pendingPermissionRef.current = id;
-    const result = await acquireMeetingMedia({ devices: selectedRef.current });
+    const result = await acquireMeetingMedia({ devices: selectedRef.current, ...enabledRef.current });
     if (id !== requestIdRef.current) { result.stream.getTracks().forEach(t => t.stop()); return; }
     pendingPermissionRef.current = null;
     streamRef.current?.getTracks().forEach(t => t.stop());
-    result.stream.getTracks().forEach(track => { track.enabled = enabledRef.current[track.kind]; });
+    result.stream.getTracks().forEach(track => {
+      if (track.kind === 'video' && !enabledRef.current.video) {
+        result.stream.removeTrack(track); track.stop();
+      } else track.enabled = enabledRef.current[track.kind];
+    });
     streamRef.current = result.stream;
     setStream(result.stream);
     enabledRef.current = {
@@ -54,19 +60,31 @@ export function useMediaDevices({ initialDevices = {} } = {}) {
     const current = streamRef.current;
     const track = current?.getTracks().find(t => t.kind === kind && t.readyState === 'live');
     if (track) {
-      track.enabled = !track.enabled;
-      enabledRef.current[kind] = track.enabled;
-      (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(track.enabled);
-    } else if (pendingPermissionRef.current === requestIdRef.current) {
+      if (kind === 'video') {
+        captureIdsRef.current.video++;
+        current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
+        enabledRef.current.video = false;
+        setIsVideoEnabled(false);
+        setStream(new MediaStream(current.getTracks()));
+      } else {
+        track.enabled = !track.enabled;
+        enabledRef.current.audio = track.enabled;
+        setIsAudioEnabled(track.enabled);
+      }
+    } else if (pendingPermissionRef.current === requestIdRef.current || pendingCaptureRef.current[kind]) {
       // Keep fast prejoin choices while the browser permission request is still pending.
       enabledRef.current[kind] = !enabledRef.current[kind];
       (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(enabledRef.current[kind]);
     } else {
       const id = requestIdRef.current;
+      const captureId = ++captureIdsRef.current[kind];
+      pendingCaptureRef.current[kind] = captureId;
+      enabledRef.current[kind] = true;
+      (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(true);
       try {
         const extra = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(selectedRef.current[kind]) });
-        if (id !== requestIdRef.current) { extra.getTracks().forEach(t => t.stop()); return; }
-        const target = current || new MediaStream();
+        if (id !== requestIdRef.current || captureId !== captureIdsRef.current[kind] || !enabledRef.current[kind]) { extra.getTracks().forEach(t => t.stop()); return; }
+        const target = streamRef.current || new MediaStream();
         extra.getTracks().forEach(t => target.addTrack(t));
         streamRef.current = target;
         setStream(new MediaStream(target.getTracks()));
@@ -74,17 +92,25 @@ export function useMediaDevices({ initialDevices = {} } = {}) {
         (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(true);
         setError('');
         await enumerateDevices();
-      } catch { setError(`Could not enable ${kind === 'video' ? 'camera' : 'microphone'}. Check browser permissions.`); }
+      } catch {
+        if (id !== requestIdRef.current || captureId !== captureIdsRef.current[kind]) return;
+        enabledRef.current[kind] = false;
+        (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(false);
+        setError(`Could not enable ${kind === 'video' ? 'camera' : 'microphone'}. Check browser permissions.`);
+      } finally {
+        if (pendingCaptureRef.current[kind] === captureId) pendingCaptureRef.current[kind] = false;
+      }
     }
   }, [enumerateDevices]);
   const switchDevice = useCallback(async (kind, deviceId) => {
     if (selectedRef.current[kind] === deviceId) return;
     const current = streamRef.current, id = requestIdRef.current;
-    if (current) {
+    const captureId = ++captureIdsRef.current[kind];
+    if (current && (kind !== 'video' || enabledRef.current.video)) {
       const extra = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(deviceId) });
-      if (id !== requestIdRef.current) { extra.getTracks().forEach(t => t.stop()); return; }
+      if (id !== requestIdRef.current || captureId !== captureIdsRef.current[kind] || (kind === 'video' && !enabledRef.current.video)) { extra.getTracks().forEach(t => t.stop()); return; }
       const old = current.getTracks().filter(t => t.kind === kind);
-      const enabled = old.length > 0 && old[0].enabled;
+      const enabled = enabledRef.current[kind];
       old.forEach(t => { current.removeTrack(t); t.stop(); });
       extra.getTracks().forEach(t => { t.enabled = enabled; current.addTrack(t); });
       setStream(new MediaStream(current.getTracks()));

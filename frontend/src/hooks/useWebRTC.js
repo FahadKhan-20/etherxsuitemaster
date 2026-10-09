@@ -82,6 +82,8 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   const effectsRef = useRef(videoEffects); effectsRef.current = videoEffects;
   const mediaGenerationRef = useRef(0);
+  const cameraOffRef = useRef(initialMedia?.videoEnabled === false);
+  const cameraRequestRef = useRef(0);
   const micMutedRef = useRef(micMuted); micMutedRef.current = micMuted;
   const hostMutedRef = useRef(hostMuted); hostMutedRef.current = hostMuted;
 
@@ -159,7 +161,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
     const audioTrack = screenAudioMixRef.current?.track || local?.getAudioTracks()[0];
     const rawVideo = local?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
-    const videoTrack = screenTrack || outgoingVideoRef.current || (effectsRef.current ? null : rawVideo);
+    const videoTrack = screenTrack || (cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : rawVideo));
     if (audioTrack) pc.addTrack(audioTrack, local);
     else pc.addTransceiver('audio', { direction: 'sendrecv' });
     if (videoTrack) pc.addTrack(videoTrack, local);
@@ -269,6 +271,12 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         if (!cancelled) setMediaError(result.error);
       }
       if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+      // Camera-off lobby tracks must release the physical device, including older disabled streams.
+      stream.getVideoTracks().forEach(track => {
+        if (initialMediaRef.current?.videoEnabled === false || !track.enabled) {
+          stream.removeTrack(track); track.stop();
+        }
+      });
       // A lobby stream may carry the browser default; show what the microphone actually does.
       const suppressing = stream.getAudioTracks()[0]?.getSettings?.().noiseSuppression;
       if (typeof suppressing === 'boolean') { noiseSuppressedRef.current = suppressing; setNoiseSuppressed(suppressing); }
@@ -276,7 +284,8 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       setLocalStream(new MediaStream(stream.getTracks()));
       const muted = !stream.getAudioTracks().some(t => t.enabled);
       setMicMuted(muted); micMutedRef.current = muted;
-      setCameraOff(!stream.getVideoTracks().some(t => t.enabled));
+      cameraOffRef.current = !stream.getVideoTracks().some(t => t.enabled);
+      setCameraOff(cameraOffRef.current);
       try { const available = await listMeetingDevices(); if (!cancelled) setDevices(available); } catch { /* Optional device list. */ }
       try {
         const { data } = await apiClient.get('/api/rooms/ice-servers');
@@ -644,6 +653,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     return () => {
       cancelled = true;
       mediaGenerationRef.current++;
+      cameraRequestRef.current++;
       Object.values(pcsRef.current).forEach(pc => pc.close());
       pcsRef.current = {};
       remoteStreamsRef.current = {};
@@ -686,10 +696,10 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   // ── Core media controls ─────────────────────────────────────────────────────
 
   const setOutgoingVideoTrack = useCallback(async track => {
-    outgoingVideoRef.current = track?.readyState === 'live' ? track : null;
+    outgoingVideoRef.current = !cameraOffRef.current && track?.readyState === 'live' ? track : null;
     if (screenStreamRef.current) return;
     const raw = localStreamRef.current?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
-    const outgoing = outgoingVideoRef.current || (effectsRef.current ? null : raw) || null;
+    const outgoing = cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : raw) || null;
     await Promise.all(Object.entries(pcsRef.current).map(([id, pc]) => setPeerVideo(id, pc, outgoing).catch(() => {})));
   }, [setPeerVideo]);
 
@@ -699,13 +709,19 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   }, [videoEffects, setOutgoingVideoTrack]);
 
   const switchDevice = useCallback(async (kind, deviceId) => {
+    if (kind === 'video' && cameraOffRef.current) {
+      selectedDevicesRef.current = { ...selectedDevicesRef.current, video: deviceId };
+      setSelectedDevices(selectedDevicesRef.current);
+      return;
+    }
     const generation = mediaGenerationRef.current;
+    const cameraRequest = kind === 'video' ? ++cameraRequestRef.current : null;
     const capture = await navigator.mediaDevices.getUserMedia({ [kind]: kind === 'audio' ? audioConstraint(deviceId, noiseSuppressedRef.current) : deviceConstraint(deviceId) });
-    if (generation !== mediaGenerationRef.current || !localStreamRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
+    if (generation !== mediaGenerationRef.current || !localStreamRef.current || (kind === 'video' && (cameraOffRef.current || cameraRequest !== cameraRequestRef.current))) { capture.getTracks().forEach(t => t.stop()); return; }
     const next = capture.getTracks()[0];
     const current = localStreamRef.current;
     const old = current.getTracks().filter(t => t.kind === kind);
-    next.enabled = kind === 'audio' ? !micMutedRef.current && !hostMutedRef.current : old.some(t => t.enabled);
+    next.enabled = kind === 'audio' ? !micMutedRef.current && !hostMutedRef.current : true;
     if (kind === 'audio') {
       const mix = screenAudioMixRef.current;
       if (mix) {
@@ -745,26 +761,36 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   const toggleCamera = useCallback(async () => {
     const current = localStreamRef.current;
     if (!current) return;
-    if (!cameraOff) {
-      current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
-      await setOutgoingVideoTrack(null);
+    const request = ++cameraRequestRef.current;
+    if (!cameraOffRef.current) {
+      cameraOffRef.current = true;
       setCameraOff(true);
+      current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
       setLocalStream(new MediaStream(current.getTracks()));
       socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
+      await setOutgoingVideoTrack(null);
     } else {
       const generation = mediaGenerationRef.current;
+      cameraOffRef.current = false;
+      setCameraOff(false);
       try {
         const capture = await navigator.mediaDevices.getUserMedia({ video: deviceConstraint(selectedDevicesRef.current.video) });
-        if (generation !== mediaGenerationRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
+        if (generation !== mediaGenerationRef.current || request !== cameraRequestRef.current || cameraOffRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
         current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
         capture.getVideoTracks().forEach(t => current.addTrack(t));
         setCameraOff(false); setLocalStream(new MediaStream(current.getTracks()));
         await setOutgoingVideoTrack(null);
+        if (generation !== mediaGenerationRef.current || request !== cameraRequestRef.current || cameraOffRef.current) return;
         socketRef.current?.emit('camera-toggled', { roomCode, isOff: false });
         setMediaError('');
-      } catch { setMediaError('Could not enable camera. Check browser permissions and retry.'); }
+      } catch {
+        if (generation !== mediaGenerationRef.current || request !== cameraRequestRef.current) return;
+        cameraOffRef.current = true;
+        setCameraOff(true);
+        setMediaError('Could not enable camera. Check browser permissions and retry.');
+      }
     }
-  }, [cameraOff, roomCode, setOutgoingVideoTrack]);
+  }, [roomCode, setOutgoingVideoTrack]);
 
   // While muted, keep an enabled private clone of the mic so the room can warn "you're talking while muted".
   useEffect(() => {
@@ -818,7 +844,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     screenAudioMixRef.current = null;
     const micTrack = localStreamRef.current?.getAudioTracks()[0] || null;
     // Back to the camera — or null when the camera is off, which clears the ended screen frame.
-    const camTrack = outgoingVideoRef.current || (effectsRef.current ? null : localStreamRef.current?.getVideoTracks().find(t => t.enabled)) || null;
+    const camTrack = cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : localStreamRef.current?.getVideoTracks().find(t => t.enabled)) || null;
 
     await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
       try {
