@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
-import { getStoredUser } from '../utils/auth';
+import { getStoredUser, getAuthToken } from '../utils/auth';
+import { acquireMeetingMedia, deviceConstraint, listMeetingDevices } from '../utils/meetingMedia';
 import { useWallet } from '../context/WalletContext';
 
 const ICE_SERVERS = [
@@ -27,11 +28,11 @@ const ICE_SERVERS = [
  * @param {object} [opts]    - Options object.
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
  */
-export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
+export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffects = false, enabled = true } = {}) {
   const normalizedCode = (roomCode || '').trim().toLowerCase();
   const { account } = useWallet();
   const storedUser = getStoredUser();
-  const userNameRef = useRef(storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
+  const userNameRef = useRef(initialMedia?.userName || storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
   const userName = userNameRef.current;
   const fallbackIdRef = useRef(null);
   if (!fallbackIdRef.current) fallbackIdRef.current = crypto.randomUUID();
@@ -46,10 +47,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [joinRequests, setJoinRequests] = useState([]);
 
   // ── Host / co-host authority ────────────────────────────────────────────────
-  // amHost: true if I'm the room's host — starts from the isHost prop, and stays
-  // true forever once I'm promoted via a host-transfer (I don't go back to being
-  // "just a co-host" after that).
-  const [amHost, setAmHost] = useState(!!isHost);
+  // Only the server can grant host authority; the local hint only starts the join flow.
+  const [amHost, setAmHost] = useState(false);
   const [coHost, setCoHost] = useState(null); // { socketId, userId, userName } | null
   const [lockedOut, setLockedOut] = useState(false);
   const isCoHost = !!(coHost && coHost.userId === userId);
@@ -58,9 +57,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Core media state ────────────────────────────────────────────────────────
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState({}); // socketId → { userName, userId, stream }
-  const [micMuted, setMicMuted] = useState(false);
+  const [micMuted, setMicMuted] = useState(initialMedia?.audioEnabled === false);
   const [hostMuted, setHostMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
+  const [cameraOff, setCameraOff] = useState(initialMedia?.videoEnabled === false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState(null);
   const [screenSharerId, setScreenSharerId] = useState(null);   // socketId of the remote presenter, if any
@@ -69,6 +68,20 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const [roomLocked, setRoomLockedState] = useState(false);
   const [spotlightId, setSpotlightId] = useState('local');
   const [connectionError, setConnectionError] = useState('');
+  const [mediaError, setMediaError] = useState('');
+  const [devices, setDevices] = useState({ cameras: [], microphones: [], speakers: [] });
+  const [selectedDevices, setSelectedDevices] = useState(initialMedia?.devices || {});
+  const selectedDevicesRef = useRef(initialMedia?.devices || {});
+  const initialMediaRef = useRef(initialMedia);
+  const outgoingVideoRef = useRef(null);
+  const peerQualityRef = useRef({});
+  const applyPeerQuality = async (id,pc) => { for(const sender of pc.getSenders())if(sender.track?.kind==='video'&&sender.setParameters){try{const parameters=sender.getParameters();parameters.encodings=parameters.encodings?.length?parameters.encodings:[{}];parameters.encodings.forEach(encoding=>{encoding.maxBitrate=peerQualityRef.current[id]?350000:1800000;encoding.maxFramerate=peerQualityRef.current[id]?15:30;});await sender.setParameters(parameters);}catch{}} };
+
+  const effectsRef = useRef(videoEffects); effectsRef.current = videoEffects;
+  const mediaGenerationRef = useRef(0);
+  const micMutedRef = useRef(micMuted); micMutedRef.current = micMuted;
+  const hostMutedRef = useRef(hostMuted); hostMutedRef.current = hostMuted;
+
 
   // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────────
   // reactions: [{id, emoji, socketId, userName}] — floating emoji overlays
@@ -86,6 +99,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature: Media Share (YouTube / video URL) ─────────────────────────────
   const [sharedMediaUrl, setSharedMediaUrl] = useState('');
+  const [sharedMediaKind,setSharedMediaKind]=useState('video');
 
   // ── Feature 7: Polls ───────────────────────────────────────────────────────
   const [polls, setPolls] = useState([]); // [{id, question, options, active}]
@@ -103,6 +117,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Feature: Meeting Agenda ─────────────────────────────────────────────────
   const [agendaItems, setAgendaItems] = useState([]); // [{id, title, done, createdBy}]
+  const [agendaReady, setAgendaReady] = useState(false);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const socketRef = useRef(null);
@@ -113,7 +128,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const screenAudioMixRef = useRef(null);      // { ctx, track } — mic + screen audio mixed while sharing
-  const noiseAudioCtxRef = useRef(null);       // AudioContext used while noise suppression is on
+  const noiseAudioCtxRef = useRef(null);
+  const noiseInputTrackRef = useRef(null);       // AudioContext used while noise suppression is on
   const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
 
   // ── Per-peer remote stream registry ────────────────────────────────────────
@@ -136,14 +152,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     const local = localStreamRef.current;
-    if (local) {
-      // While presenting, new connections (late joiners) must get the screen, not the camera
-      const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
-      const mixTrack = screenAudioMixRef.current?.track || null;
-      local.getAudioTracks().forEach(track => pc.addTrack(mixTrack || track, local));
-      const videoTrack = screenTrack || local.getVideoTracks()[0];
-      if (videoTrack) pc.addTrack(videoTrack, local);
-    }
+    const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
+    const audioTrack = screenAudioMixRef.current?.track || local?.getAudioTracks()[0];
+    const rawVideo = local?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
+    const videoTrack = screenTrack || outgoingVideoRef.current || (effectsRef.current ? null : rawVideo);
+    if (audioTrack) pc.addTrack(audioTrack, local);
+    else pc.addTransceiver('audio', { direction: 'sendrecv' });
+    if (videoTrack) pc.addTrack(videoTrack, local);
+    else pc.addTransceiver('video', { direction: 'sendrecv' });
 
     // Reuse or create a stable MediaStream for this peer.
     // Reusing the same object means the <video> srcObject stays valid;
@@ -173,6 +189,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     };
 
     pc.onconnectionstatechange = () => {
+      if(pc.connectionState==='connected')applyPeerQuality(socketId,pc);
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         pc.close();
@@ -235,48 +252,59 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Main effect: media + socket ─────────────────────────────────────────────
   useEffect(() => {
-    if (!roomCode) return;
+    if (!roomCode || !enabled) return;
     let cancelled = false;
 
+    const generation = ++mediaGenerationRef.current;
+    setPeers({});setIsScreenSharing(false);setScreenStream(null);setScreenSharerId(null);setNoiseSuppressed(false);
     const init = async () => {
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      } catch {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-        } catch {
-          setConnectionError('Could not access camera or microphone.');
-          return;
-        }
+      let stream = initialMediaRef.current?.stream;
+      if (!stream || stream.getTracks().some(t => t.readyState === 'ended')) {
+        const result = await acquireMeetingMedia({ devices: selectedDevicesRef.current, audio: initialMediaRef.current?.audioEnabled !== false, video: initialMediaRef.current?.videoEnabled !== false });
+        stream = result.stream;
+        if (!cancelled) setMediaError(result.error);
       }
-
       if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
       localStreamRef.current = stream;
-      setLocalStream(stream);
+      setLocalStream(new MediaStream(stream.getTracks()));
+      const muted = !stream.getAudioTracks().some(t => t.enabled);
+      setMicMuted(muted); micMutedRef.current = muted;
+      setCameraOff(!stream.getVideoTracks().some(t => t.enabled));
+      try { const available = await listMeetingDevices(); if (!cancelled) setDevices(available); } catch { /* Optional device list. */ }
+      if (cancelled || generation !== mediaGenerationRef.current) return;
 
       const socketUrl =
         import.meta.env.VITE_SOCKET_URL ||
         import.meta.env.VITE_API_BASE_URL ||
         (typeof window !== 'undefined' ? window.location.origin : '');
-      const socket = io(socketUrl || undefined, { transports: ['websocket', 'polling'] });
+      const socket = io(socketUrl || undefined, { transports: ['websocket', 'polling'], auth: { token: getAuthToken(), roomCode: normalizedCode } });
       socketRef.current = socket;
-      setSocketReady(true);
+      setSocketReady(false);
 
       // ── Waiting Room Signaling ─────────────────────────────────────────────
+      // Kept for everyone; the UI only shows them while this user holds host/co-host authority
+      // (which can change mid-meeting via co-host, host transfer or a host returning in a new tab).
       socket.on('join-request', ({ socketId, userId: uId, userName: uName }) => {
-        if (isHost) {
-          setJoinRequests(prev => {
-            if (prev.some(r => r.socketId === socketId)) return prev;
-            return [...prev, { socketId, userId: uId, userName: uName }];
-          });
-        }
+        setJoinRequests(prev => {
+          if (prev.some(r => r.socketId === socketId)) return prev;
+          return [...prev, { socketId, userId: uId, userName: uName }];
+        });
+      });
+
+      // The requester left the waiting room, or another host/co-host already answered.
+      socket.on('join-request-cancelled', ({ socketId }) => {
+        setJoinRequests(prev => prev.filter(r => r.socketId !== socketId));
+      });
+
+      // Server's view of my role on (re)join — restores host controls for a host who came back in a new tab.
+      socket.on('your-role', ({ isHost: serverSaysHost }) => {
+        setAmHost(!!serverSaysHost);
       });
 
       socket.on('admitted', () => {
         admittedRef.current = true;
         setAdmitted(true);
-        socket.emit('join-room', { roomCode: normalizedCode, userId, userName, isHost: false });
+        socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled) });
         socket.emit('get-notes', { roomCode: normalizedCode });
         socket.emit('get-media', { roomCode: normalizedCode });
         socket.emit('get-files', { roomCode: normalizedCode });
@@ -290,6 +318,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
       // ── Core WebRTC signaling events ────────────────────────────────────────
 
+      socket.on('peer-quality-request',({socketId,low})=>{peerQualityRef.current[socketId]=!!low;if(pcsRef.current[socketId])applyPeerQuality(socketId,pcsRef.current[socketId]);});
       socket.on('existing-users', async (users) => {
         for (const u of users) {
           const pc = createPC(u.socketId, (remoteStream) => {
@@ -303,6 +332,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
               stream: null,
               isMuted: !!u.selfMuted,
               mutedByHost: !!u.hostMuted,
+              videoOff: !!u.videoOff,
+              isHost: !!u.isHost,
             },
           }));
           const offer = await pc.createOffer();
@@ -311,8 +342,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         }
       });
 
-      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, isMuted, mutedByHost }) => {
-        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null, isMuted: !!isMuted, mutedByHost: !!mutedByHost } }));
+      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, isHost: peerIsHost, isMuted, mutedByHost, videoOff }) => {
+        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null, isHost: !!peerIsHost, isMuted: !!isMuted, mutedByHost: !!mutedByHost, videoOff: !!videoOff } }));
       });
 
       socket.on('offer', async ({ from, offer }) => {
@@ -396,8 +427,6 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         setSpotlightId(id => id === socketId ? 'local' : id);
         setScreenSharerId(id => id === socketId ? null : id);
-        // Remove from hand queue on leave
-        setHandQueue(q => q.filter(h => h.socketId !== socketId));
       });
 
       // ── Feature 1: Host controls ────────────────────────────────────────────
@@ -405,8 +434,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Apply a server-authorized host command to the local audio track.
       socket.on('participant-mute-command', ({ muted, mutedByHost }) => {
         localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !muted; });
-        setMicMuted(!!muted);
-        setHostMuted(!!mutedByHost);
+        setMicMuted(!!muted); micMutedRef.current = !!muted;
+        setHostMuted(!!mutedByHost); hostMutedRef.current = !!mutedByHost;
       });
 
       // Keep every remote tile synchronized with effective audio state.
@@ -439,7 +468,8 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // The host disconnected and I (or someone else) was promoted to host.
       socket.on('host-transferred', ({ newHostUserId }) => {
         setCoHost(null);
-        if (newHostUserId === userId) setAmHost(true);
+        setAmHost(newHostUserId === userId);
+        setPeers(prev => Object.fromEntries(Object.entries(prev).map(([id, peer]) => [id, { ...peer, isHost: peer.userId === newHostUserId }])));
       });
 
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
@@ -454,17 +484,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         }, 3000);
       });
 
-      // A remote participant raised their hand
-      socket.on('hand-raised', ({ socketId, userName: uName }) => {
-        setHandQueue(q => {
-          if (q.some(h => h.socketId === socketId)) return q;
-          return [...q, { socketId, userName: uName }];
-        });
-      });
-
-      // A remote participant lowered their hand (or disconnected)
-      socket.on('hand-lowered', ({ socketId }) => {
-        setHandQueue(q => q.filter(h => h.socketId !== socketId));
+      // Ordered raised-hand queue (including my own), sent by the server on join and on every change
+      socket.on('hands-state', ({ hands }) => {
+        setHandQueue(hands || []);
       });
 
       // ── Camera State Sync ────────────────────────────────────────────────
@@ -497,12 +519,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // ── Feature: Media Share ────────────────────────────────────────────────
 
       // Receive current shared media state on connect
-      socket.on('media-state', ({ url }) => {
+      socket.on('media-state', ({ url,kind }) => {
+        setSharedMediaKind(kind || (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i.test(url||'')?'audio':'video'));
         setSharedMediaUrl(url);
       });
 
       // Another participant shared a new media URL
-      socket.on('media-shared', ({ url }) => {
+      socket.on('media-shared', ({ url,kind }) => {
+        setSharedMediaKind(kind || (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i.test(url||'')?'audio':'video'));
         setSharedMediaUrl(url);
       });
 
@@ -535,6 +559,7 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
       // Full agenda list on connect
       socket.on('agenda-state', ({ items }) => {
         setAgendaItems(items);
+        setAgendaReady(true);
       });
 
       // Full agenda list after any add/toggle/reorder/delete
@@ -551,35 +576,45 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
  */
       const joinOrRequestJoin = () => {
         if (isHost || admittedRef.current) {
-          socket.emit('join-room', { roomCode: normalizedCode, userId, userName, isHost: !!isHost });
+          socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled) });
           socket.emit('get-notes', { roomCode: normalizedCode });
           socket.emit('get-media', { roomCode: normalizedCode });
           socket.emit('get-files', { roomCode: normalizedCode });
           socket.emit('get-agenda', { roomCode: normalizedCode });
           socket.emit('get-polls', { roomCode: normalizedCode });
         } else {
-          socket.emit('request-join', { roomCode: normalizedCode, userId, userName });
+          socket.emit('request-join', { roomCode: normalizedCode, userName: userNameRef.current });
         }
       };
       // 'connect' fires for the initial connection too, so this alone covers both cases —
       // no separate one-off call is needed (that would double-fire on the first connect).
-      socket.on('connect', joinOrRequestJoin);
+      socket.on('connect', () => { setSocketReady(true); setAgendaReady(false); setConnectionError(''); joinOrRequestJoin(); });
+      socket.on('connect_error', error => { setSocketReady(false); setConnectionError(error.message || 'Could not connect. Please check your connection and sign-in.'); });
+      socket.on('disconnect', () => { setSocketReady(false); });
+      socket.on('room-error', ({ message }) => setConnectionError(message));
     };
 
     init().catch(() => setConnectionError('Failed to initialize video call.'));
 
     return () => {
       cancelled = true;
+      mediaGenerationRef.current++;
       Object.values(pcsRef.current).forEach(pc => pc.close());
       pcsRef.current = {};
       remoteStreamsRef.current = {};
       pendingCandidatesRef.current = {};
       localStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenAudioMixRef.current?.ctx.close().catch(() => { });
+      localStreamRef.current = null;
+      outgoingVideoRef.current = null;
+      rawMicTrackRef.current?.stop();
+      noiseAudioCtxRef.current?.close().catch(() => {});
+      noiseAudioCtxRef.current = null;
+      noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;rawMicTrackRef.current=null;
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());screenStreamRef.current=null;
+      screenAudioMixRef.current?.ctx.close().catch(() => { });screenAudioMixRef.current=null;
       socketRef.current?.disconnect();
     };
-  }, [normalizedCode, userId, userName, createPC, isHost]); // onKicked intentionally excluded to avoid reconnect loop
+  }, [normalizedCode, userId, createPC, isHost, enabled]); // onKicked intentionally excluded to avoid reconnect loop
 
   // ── Feature 4: Network Quality polling (every 5s) ───────────────────────────
   useEffect(() => {
@@ -609,63 +644,89 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
 
   // ── Core media controls ─────────────────────────────────────────────────────
 
-  const toggleMic = useCallback(() => {
-    if (hostMuted) return;
-    const nextMuted = !micMuted;
-    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
-    setMicMuted(nextMuted);
-    socketRef.current?.emit('microphone-state', { roomCode, muted: nextMuted });
-  }, [hostMuted, micMuted, roomCode]);
+  const setOutgoingVideoTrack = useCallback(async track => {
+    outgoingVideoRef.current = track?.readyState === 'live' ? track : null;
+    if (screenStreamRef.current) return;
+    const raw = localStreamRef.current?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
+    const outgoing = outgoingVideoRef.current || (effectsRef.current ? null : raw) || null;
+    await Promise.all(Object.entries(pcsRef.current).map(([id, pc]) => setPeerVideo(id, pc, outgoing).catch(() => {})));
+  }, [setPeerVideo]);
+
+  useEffect(() => {
+    // Remove the raw sender as soon as effects turn on, before the canvas is ready.
+    setOutgoingVideoTrack(videoEffects ? outgoingVideoRef.current : null);
+  }, [videoEffects, setOutgoingVideoTrack]);
+
+  const switchDevice = useCallback(async (kind, deviceId) => {
+    const generation = mediaGenerationRef.current;
+    const capture = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(deviceId) });
+    if (generation !== mediaGenerationRef.current || !localStreamRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
+    const next = capture.getTracks()[0];
+    const current = localStreamRef.current;
+    const old = current.getTracks().filter(t => t.kind === kind);
+    next.enabled = kind === 'audio' ? !micMutedRef.current && !hostMutedRef.current : old.some(t => t.enabled);
+    if (kind === 'audio') {
+      noiseAudioCtxRef.current?.close().catch(() => {}); noiseAudioCtxRef.current = null;
+      rawMicTrackRef.current?.stop(); rawMicTrackRef.current = null;noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;setNoiseSuppressed(false);
+      const mix = screenAudioMixRef.current;
+      if (mix) {
+        mix.micSource?.disconnect();
+        mix.micSource = mix.ctx.createMediaStreamSource(new MediaStream([next]));
+        mix.micSource.connect(mix.destination);
+      }
+      await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
+        const tr = pc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+        if (tr) { tr.direction = 'sendrecv'; await tr.sender.replaceTrack(mix?.track || next); }
+        else pc.addTrack(next, current);
+        if (!tr || tr.currentDirection !== 'sendrecv') await renegotiate(id, pc);
+      }));
+    }
+    old.forEach(t => { current.removeTrack(t); t.stop(); });
+    current.addTrack(next);
+    selectedDevicesRef.current = { ...selectedDevicesRef.current, [kind]: deviceId };
+    setSelectedDevices(selectedDevicesRef.current);
+    setLocalStream(new MediaStream(current.getTracks()));
+    if (kind === 'video') await setOutgoingVideoTrack(effectsRef.current ? outgoingVideoRef.current : null);
+    setMediaError('');
+  }, [renegotiate, setOutgoingVideoTrack]);
+
+  const toggleMic = useCallback(async () => {
+    if (hostMutedRef.current) return;
+    const nextMuted = !micMutedRef.current;
+    try {
+      if (!nextMuted && !localStreamRef.current?.getAudioTracks().some(t => t.readyState === 'live')) {
+        await switchDevice('audio', selectedDevicesRef.current.audio || 'default');
+      }
+      localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
+      rawMicTrackRef.current && (rawMicTrackRef.current.enabled = !nextMuted);
+      micMutedRef.current = nextMuted; setMicMuted(nextMuted);
+      socketRef.current?.emit('microphone-state', { roomCode, muted: nextMuted });
+    } catch { setMediaError('Could not enable microphone. Check browser permissions and retry.'); }
+  }, [roomCode, switchDevice]);
 
   const toggleCamera = useCallback(async () => {
+    const current = localStreamRef.current;
+    if (!current) return;
     if (!cameraOff) {
-      // ── TURN OFF: stop track completely → kills hardware indicator light
-      localStreamRef.current?.getVideoTracks().forEach(t => {
-        t.stop();
-        localStreamRef.current.removeTrack(t);
-      });
-      // Tell all peers: send a null/black track so their UI updates
-      // (While presenting, the video sender carries the screen — leave it alone.)
-      if (!screenStreamRef.current) {
-        Object.values(pcsRef.current).forEach(pc => {
-          const sender = pc.getTransceivers().find(t => t.receiver.track.kind === 'video')?.sender;
-          sender?.replaceTrack(null).catch(() => { });
-        });
-      }
-      // Tell peers explicitly so they show the avatar instead of a frozen frame
-      socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
+      current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
+      await setOutgoingVideoTrack(null);
       setCameraOff(true);
+      setLocalStream(new MediaStream(current.getTracks()));
+      socketRef.current?.emit('camera-toggled', { roomCode, isOff: true });
     } else {
-      // ── TURN ON: re-acquire camera → light comes back on only now
+      const generation = mediaGenerationRef.current;
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const newTrack = newStream.getVideoTracks()[0];
-        // Add new track to local stream
-        localStreamRef.current?.getVideoTracks().forEach(t => {
-          t.stop();
-          localStreamRef.current.removeTrack(t);
-        });
-        localStreamRef.current?.addTrack(newTrack);
-        // Replace track in all peer connections
-        // (While presenting, keep sending the screen; the camera is restored when sharing stops.)
-        if (!screenStreamRef.current) {
-          Object.entries(pcsRef.current).forEach(([id, pc]) => {
-            setPeerVideo(id, pc, newTrack).catch(() => { });
-          });
-        }
-        // Update the local stream state so VideoTile re-renders with new track
-        setLocalStream(prev => {
-          if (!prev) return prev;
-          // Return the same stream object (now with new track) to trigger re-render
-          return new MediaStream([...prev.getAudioTracks(), newTrack]);
-        });
+        const capture = await navigator.mediaDevices.getUserMedia({ video: deviceConstraint(selectedDevicesRef.current.video) });
+        if (generation !== mediaGenerationRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
+        current.getVideoTracks().forEach(t => { current.removeTrack(t); t.stop(); });
+        capture.getVideoTracks().forEach(t => current.addTrack(t));
+        setCameraOff(false); setLocalStream(new MediaStream(current.getTracks()));
+        await setOutgoingVideoTrack(null);
         socketRef.current?.emit('camera-toggled', { roomCode, isOff: false });
-        setCameraOff(false);
-      } catch (err) {
-        console.error('Camera re-acquire failed:', err);
-      }
+        setMediaError('');
+      } catch { setMediaError('Could not enable camera. Check browser permissions and retry.'); }
     }
-  }, [cameraOff, roomCode, setPeerVideo]);
+  }, [cameraOff, roomCode, setOutgoingVideoTrack]);
 
   /**
    * Basic noise suppression: routes the mic track through a Web Audio
@@ -677,51 +738,51 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
    * non-stationary noise.
    */
   const toggleNoiseSuppression = useCallback(() => {
-    const currentTrack = localStreamRef.current?.getAudioTracks()[0];
-    if (!currentTrack) return;
-
+    const stream = localStreamRef.current;
+    const current = stream?.getAudioTracks()[0];
+    if (!current) return;
+    let replacement;
     if (!noiseAudioCtxRef.current) {
-      // ── Turn ON: build the filter chain ────────────────────────────────
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = ctx.createMediaStreamSource(new MediaStream([currentTrack]));
-        const highpass = ctx.createBiquadFilter();
-        highpass.type = 'highpass';
-        highpass.frequency.value = 200;
-        const lowpass = ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = 3500;
-        const destination = ctx.createMediaStreamDestination();
+        const context = new (window.AudioContext || window.webkitAudioContext)();
+        // Analyse a local clone without enabling the muted outgoing microphone.
+        const input = current.clone(); input.enabled = true;
+        noiseInputTrackRef.current = input;
+        const source = context.createMediaStreamSource(new MediaStream([input]));
+        const highpass = context.createBiquadFilter(), lowpass = context.createBiquadFilter();
+        highpass.type = 'highpass'; highpass.frequency.value = 200;
+        lowpass.type = 'lowpass'; lowpass.frequency.value = 3500;
+        const destination = context.createMediaStreamDestination();
         source.connect(highpass).connect(lowpass).connect(destination);
-
-        const filteredTrack = destination.stream.getAudioTracks()[0];
-        rawMicTrackRef.current = currentTrack;
-        noiseAudioCtxRef.current = ctx;
-
-        localStreamRef.current.removeTrack(currentTrack);
-        localStreamRef.current.addTrack(filteredTrack);
-        Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(filteredTrack).catch(() => { });
-        });
+        context.resume().catch(() => {});
+        replacement = destination.stream.getAudioTracks()[0];
+        rawMicTrackRef.current = current; noiseAudioCtxRef.current = context;
         setNoiseSuppressed(true);
-      } catch (err) {
-        console.error('Noise suppression setup failed:', err);
+      } catch {
+        noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;
+        setMediaError('Noise suppression is unavailable in this browser.');
+        return;
       }
     } else {
-      // ── Turn OFF: revert to the raw mic track, tear down the filter chain ──
-      const rawTrack = rawMicTrackRef.current;
-      if (rawTrack) {
-        localStreamRef.current.removeTrack(currentTrack);
-        localStreamRef.current.addTrack(rawTrack);
-        Object.values(pcsRef.current).forEach(pc => {
-          pc.getSenders().find(s => s.track?.kind === 'audio')?.replaceTrack(rawTrack).catch(() => { });
-        });
-      }
-      noiseAudioCtxRef.current.close().catch(() => { });
-      noiseAudioCtxRef.current = null;
-      rawMicTrackRef.current = null;
+      replacement = rawMicTrackRef.current;
+      if (!replacement) return;
+      noiseAudioCtxRef.current.close().catch(() => {});
+      noiseInputTrackRef.current?.stop(); noiseInputTrackRef.current = null;
+      noiseAudioCtxRef.current = null; rawMicTrackRef.current = null;
       setNoiseSuppressed(false);
     }
+    replacement.enabled = !micMutedRef.current && !hostMutedRef.current;
+    stream.removeTrack(current); stream.addTrack(replacement);
+    const mix = screenAudioMixRef.current;
+    if (mix) {
+      mix.micSource?.disconnect();
+      mix.micSource = mix.ctx.createMediaStreamSource(new MediaStream([replacement]));
+      mix.micSource.connect(mix.destination);
+    }
+    Object.values(pcsRef.current).forEach(pc => {
+      pc.getSenders().find(sender => sender.track?.kind === 'audio')?.replaceTrack(mix?.track || replacement).catch(() => {});
+    });
+    setLocalStream(new MediaStream(stream.getTracks()));
   }, []);
 
   // ── Screen sharing ─────────────────────────────────────────────────────────
@@ -736,13 +797,14 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     const screen = screenStreamRef.current;
     if (!screen) return;
     screenStreamRef.current = null;
+    setScreenStream(null);
     screen.getTracks().forEach(t => { t.onended = null; t.stop(); });
 
     const mix = screenAudioMixRef.current;
     screenAudioMixRef.current = null;
     const micTrack = localStreamRef.current?.getAudioTracks()[0] || null;
     // Back to the camera — or null when the camera is off, which clears the ended screen frame.
-    const camTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+    const camTrack = outgoingVideoRef.current || (effectsRef.current ? null : localStreamRef.current?.getVideoTracks().find(t => t.enabled)) || null;
 
     await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
       try {
@@ -784,12 +846,13 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     });
     if (!reply.ok) {
       screen.getTracks().forEach(t => t.stop());
-      showScreenNotice(`${reply.by || 'Someone else'} is already sharing their screen`);
+      showScreenNotice(reply.error || `${reply.by || 'Someone else'} is already sharing their screen`);
       return;
     }
 
     screenTrack.contentHint = 'detail';                 // favour sharp text over frame rate
     screenStreamRef.current = screen;
+    setScreenStream(screen);
     screenTrack.onended = () => { stopScreenShare(); }; // browser "Stop sharing" bar
 
     // Screen/tab audio: mix it with the mic and send it through the existing audio line.
@@ -801,10 +864,11 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         ctx.resume().catch(() => { });
         const dest = ctx.createMediaStreamDestination();
-        ctx.createMediaStreamSource(new MediaStream([mic])).connect(dest);
+        const micSource = ctx.createMediaStreamSource(new MediaStream([mic]));
+        micSource.connect(dest);
         ctx.createMediaStreamSource(new MediaStream([screenAudio])).connect(dest);
         mixTrack = dest.stream.getAudioTracks()[0];
-        screenAudioMixRef.current = { ctx, track: mixTrack };
+        screenAudioMixRef.current = { ctx, track: mixTrack, micSource, destination: dest };
       } catch (err) {
         console.warn('Screen audio mix failed, sharing video only:', err);
       }
@@ -880,15 +944,15 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     socketRef.current?.emit('reaction', { roomCode, emoji });
   }, [roomCode, userName]);
 
-  /** Signal to others that the local user raised their hand. */
+  /** Raise the local user's hand. */
   const sendHandRaise = useCallback(() => {
-    socketRef.current?.emit('raise-hand', { roomCode });
-  }, [roomCode]);
+    socketRef.current?.emit('raise-hand');
+  }, []);
 
-  /** Signal to others that the local user lowered their hand. */
-  const sendHandLower = useCallback(() => {
-    socketRef.current?.emit('lower-hand', { roomCode });
-  }, [roomCode]);
+  /** Lower the local user's hand, or (host/co-host) someone else's by socket ID. */
+  const sendHandLower = useCallback((socketId) => {
+    socketRef.current?.emit('lower-hand', socketId ? { socketId } : {});
+  }, []);
 
   // ── Feature 6: Notes emitter ────────────────────────────────────────────────
 
@@ -901,9 +965,9 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
   // ── Feature: Media Share emitter ────────────────────────────────────────────
 
   /** Share a video URL with everyone in the room. */
-  const shareMedia = useCallback((url) => {
-    setSharedMediaUrl(url);
-    socketRef.current?.emit('share-media', { roomCode, url });
+  const shareMedia = useCallback((url,kind='video') => {
+    setSharedMediaKind(kind);setSharedMediaUrl(url);
+    socketRef.current?.emit('share-media', { roomCode, url,kind });
   }, [roomCode]);
 
   // ── Feature 7: Poll emitters ────────────────────────────────────────────────
@@ -1015,36 +1079,36 @@ export function useWebRTC(roomCode, { onKicked, isHost } = {}) {
     // Core
     socket: socketRef.current,
     socketReady,
+    peerConnections: pcsRef,
     localStream, peers, screenStream,
-    micMuted, hostMuted, cameraOff, isScreenSharing,
-    micMuted, cameraOff, isScreenSharing, screenSharerId, screenShareNotice,
+    micMuted, hostMuted, cameraOff, isScreenSharing, screenSharerId, screenShareNotice,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
     toggleNoiseSuppression, noiseSuppressed,
-    userName, connectionError,
+    userName, connectionError, mediaError, devices, selectedDevices, switchDevice, setOutgoingVideoTrack,
     // Waiting Room / Admission
     admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
     // Feature 1: Host Controls
     muteParticipant, unmuteParticipant, kickParticipant, setRoomLocked, roomLocked,
-    muteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Co-host
-    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
+    amHost, canHost, isCoHost, coHost, makeCoHost, removeCoHost,
     // Feature 3: Reactions + Hand Queue
-    reactions, handQueue,
+    reactions, handQueue, mySocketId: socketRef.current?.id,
     sendReaction, sendHandRaise, sendHandLower,
     // Feature 4: Network Quality
     networkQuality,
     // Feature 6: Collaborative Notes
     sharedNotes, updateNotes,
     // Feature: Media Share
-    sharedMediaUrl, shareMedia,
+    sharedMediaUrl, sharedMediaKind, shareMedia,
     // Feature 7: Polls
     polls, createPoll, votePoll, endPoll, pollNotifications, dismissPollNotification,
     // Feature: File Sharing
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
     // Feature: Meeting Agenda
-    agendaItems, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
+    agendaItems, agendaReady, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
     // Socket ref — exposed so panels can subscribe to room-scoped events
     socketRef,
+    updateDisplayName: name => { userNameRef.current = name; },
   };
 }

@@ -27,9 +27,10 @@ function tail(text) {
   return '…' + (space > -1 && space < 30 ? cut.slice(space + 1) : cut);
 }
 
-export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bottom = 112 }) {
+export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bottom = 112, language = 'en-US', render, onUpdate }) {
   const [lines, setLines] = useState([]);   // [{ key, name, text }]
   const [notice, setNotice] = useState('');
+  useEffect(()=>{onUpdate?.({lines,notice});},[lines,notice,onUpdate]);
   const timersRef = useRef({});
   const noticeTimerRef = useRef(null);
   const showRef = useRef(show);   showRef.current = show;
@@ -102,7 +103,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
     const r = new SR();
     r.continuous = true;
     r.interimResults = true;
-    r.lang = 'en-US';
+    r.lang = language;
     let lastSent = 0;
 
     r.onresult = (e) => {
@@ -143,7 +144,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
       r.onend = null;
       try { r.stop(); } catch { /* ignore */ }
     };
-  }, [transcribe, upsert]);
+  }, [transcribe, upsert, language]);
 
   // Clean up timers on unmount.
   useEffect(() => () => {
@@ -151,6 +152,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
     clearTimeout(noticeTimerRef.current);
   }, []);
 
+  if (render) return render({lines,notice});
   if (!show || (lines.length === 0 && !notice)) return null;
 
   return (

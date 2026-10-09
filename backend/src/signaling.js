@@ -1,4 +1,6 @@
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+const {registerMeetingExtensions,getMeetingPolicy,getGroup,meetingEnded,clearMeetingExtensions} = require('./meetingExtensions');
 
 // roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
 const rooms = new Map();
@@ -14,6 +16,7 @@ const roomPolls = new Map();
 
 // roomCode -> string (currently shared media URL)
 const roomMedia = new Map();
+const roomMediaPlayback = new Map();
 
 // roomCode -> [{id, name, size, type, url, sharedBy, sharedAt}]
 const roomFiles = new Map();
@@ -21,6 +24,18 @@ const roomFiles = new Map();
 
 // roomCode -> [{id, title, done, createdBy}]
 const roomAgenda = new Map();
+
+// roomCode -> [{ socketId, userName }] — raised hands in the order they were raised
+const roomHands = new Map();
+
+// roomCode -> Set<userId> — everyone admitted during the current session (host included).
+// A returning member (closed tab, refresh, dropped connection) is let straight back in
+// instead of waiting for a host who may not be there to admit them.
+const roomMembers = new Map();
+
+// Shared files travel through the socket as base64 data URLs (files up to 10 MB, ~13.4 MB
+// once encoded). socket.io's default 1 MB message limit silently drops the sharer's connection.
+const MAX_SOCKET_MESSAGE_BYTES = 15 * 1024 * 1024;
 
 // roomCode -> userId (host/presenter who controls the whiteboard)
 const roomHosts = new Map();
@@ -64,8 +79,13 @@ function getSessionStart(roomCode) {
   return sess ? sess.startedAt : null;
 }
 
-function registerRoomHost(roomCode, userId) {
-  roomHosts.set(roomCode, String(userId));
+function registerRoomHost(roomCode, userId, io) {
+  const code = String(roomCode || '').trim().toLowerCase();
+  roomHosts.set(code, String(userId));
+  rooms.get(code)?.forEach(member => {
+    member.isHost = String(member.userId) === String(userId);
+    io?.to(member.socketId).emit('your-role', { isHost: member.isHost });
+  });
 }
 
 /**
@@ -125,8 +145,15 @@ function applyWhiteboardOp(board, op) {
 }
 
 
-function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
+function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
+  resolveRoomOwner = async code => {
+    const MeetingRoom = require('./models/MeetingRoom');
+    const room = await MeetingRoom.findOne({ roomCode: code }).lean();
+    return room?.hostUserId ? String(room.hostUserId) : null;
+  },
+} = {}) {
   const io = new SocketServer(httpServer, {
+    maxHttpBufferSize: MAX_SOCKET_MESSAGE_BYTES,
     cors: {
       origin: (origin, callback) => {
         // Dynamically allow requesting origin to support LAN devices & localhost
@@ -135,6 +162,25 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+  });
+
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) throw new Error('Sign in to join this meeting.');
+      const user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      if (!user.id) throw new Error('Invalid sign-in session.');
+      const code = String(socket.handshake.auth?.roomCode || '').trim().toLowerCase();
+      if (!code || code.length > 128) throw new Error('Invalid meeting code.');
+      const owner = await resolveRoomOwner(code);
+      if (!owner) throw new Error('Meeting not found. Ask the host to start it, then try again.');
+      socket.data.user = { id: String(user.id), name: user.name || 'Participant' };
+      socket.data.authorizedRoom = code;
+      socket.data.roomOwnerId = String(owner);
+      next();
+    } catch (error) {
+      next(new Error(error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' ? 'Your sign-in expired. Sign in again to join.' : error.message));
+    }
   });
 
   /** Add/remove a caption viewer; tells the room when captions switch on (first viewer) or off (last viewer gone). */
@@ -152,13 +198,52 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     if (isActive !== wasActive) io.to(roomCode).emit('captions-demand', { active: isActive });
   }
 
+  /** Raise or lower one socket's hand and send the whole ordered queue to the room. */
+  function setHand(roomCode, socketId, userName, raised) {
+    const hands = (roomHands.get(roomCode) || []).filter(h => h.socketId !== socketId);
+    if (raised) hands.push({ socketId, userName });
+    if (hands.length) roomHands.set(roomCode, hands); else roomHands.delete(roomCode);
+    io.to(roomCode).emit('hands-state', { hands });
+  }
+
   io.on('connection', (socket) => {
     let currentRoom = null;
 
-    socket.on('join-room', ({ roomCode: rawCode, userId, userName, isHost }) => {
+    // Every collaborative event requires membership in this authenticated connection's room.
+    const onMember = (event, handler) => socket.on(event, (payload = {}, acknowledge) => {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+      const room = currentRoom && rooms.get(currentRoom);
+      const member = room?.get(socket.id);
+      const requested = payload.roomCode && String(payload.roomCode).trim().toLowerCase();
+      if (!member || (requested && requested !== currentRoom)) {
+        if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Join this meeting first.' });
+        return;
+      }
+      if (payload.to && !room.has(payload.to)) return;
+      if (['create-poll', 'end-poll', 'share-media'].includes(event) && !isPrivileged(currentRoom, member.userId)) return;
+      if (payload.to && ['offer','answer','ice-candidate'].includes(event) && getGroup(currentRoom,socket.id)!==getGroup(currentRoom,payload.to)) return;
+      handler({ ...payload, roomCode: currentRoom }, acknowledge);
+      if(['microphone-state','camera-toggled'].includes(event)||(['mute-participant','unmute-participant'].includes(event)&&isPrivileged(currentRoom,member.userId)))extension.roster();
+    });
+
+    const extension = registerMeetingExtensions(io,socket,{roomCode:()=>currentRoom,getRoom:()=>rooms.get(currentRoom),privileged:isPrivileged,locked:code=>!!roomLocks[code],setHand,screenShares:roomScreenShares,recordings:roomRecordings,setNotes:(code,notes)=>roomNotes.set(code,notes),removeFile:(code,id)=>{roomFiles.set(code,(roomFiles.get(code)||[]).filter(f=>f.id!==id));io.to(code).emit('files-state',{files:roomFiles.get(code)});},setPlayback:(code,state)=>roomMediaPlayback.set(code,state)});
+    socket.on('join-room', (payload = {}) => {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+      const { roomCode: rawCode, userName: chosenName, muted = false, videoOff = false } = payload;
+      const userId = socket.data.user.id;
+      const userName = String(chosenName || socket.data.user.name).trim().slice(0, 80);
+
       const roomCode = String(rawCode || '').trim().toLowerCase();
+      if(meetingEnded(roomCode)){socket.emit('meeting-ended',{roomCode});return;}
+      if (roomCode !== socket.data.authorizedRoom || (currentRoom && currentRoom !== roomCode)) return;
+      if (!roomHosts.has(roomCode)) roomHosts.set(roomCode, socket.data.roomOwnerId);
+      if (!isPrivileged(roomCode, userId) && socket.data.admittedRoom !== roomCode && !roomMembers.get(roomCode)?.has(userId)) {
+        socket.emit('room-error', { message: 'Host approval is required before joining.' });
+        return;
+      }
+      if (rooms.get(roomCode)?.has(socket.id)) return;
       const existingRoom = rooms.get(roomCode);
-      if (roomLocks[roomCode] && existingRoom && existingRoom.size > 0 && !isPrivileged(roomCode, userId)) {
+      if (roomLocks[roomCode] && !isPrivileged(roomCode, userId) && !roomMembers.get(roomCode)?.has(userId)) {
         socket.emit('room-locked-error');
         return;
       }
@@ -175,23 +260,28 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
         const now = Date.now();
         if (!sess || (room.size === 0 && sess.emptySince && now - sess.emptySince > SESSION_GRACE_MS)) {
           roomSessions.set(roomCode, { startedAt: new Date(now), emptySince: null });
+          roomMembers.delete(roomCode);
         } else {
           sess.emptySince = null;
         }
       }
 
-      // Assign host authority if client joined as host or if room has no host
-      if (isHost || !roomHosts.has(roomCode)) {
-        roomHosts.set(roomCode, String(userId));
+      // Only the authenticated owner or a server-promoted participant holds host authority.
+      if (userId) {
+        if (!roomMembers.has(roomCode)) roomMembers.set(roomCode, new Set());
+        roomMembers.get(roomCode).add(String(userId));
       }
+      // A host returning from a new tab has lost its local host flag; the server's record is the truth.
+      socket.emit('your-role', { isHost: String(roomHosts.get(roomCode)) === String(userId) });
+      socket.emit('hands-state', { hands: roomHands.get(roomCode) || [] });
 
       // Send existing participants to the new joiner
-      const existing = Array.from(room.values());
+      const existing = Array.from(room.values()).filter(p=>getGroup(roomCode,p.socketId)===getGroup(roomCode,socket.id));
       socket.emit('existing-users', existing);
 
       // Tell the new joiner if someone is already presenting
       const sharerId = roomScreenShares.get(roomCode);
-      if (sharerId && room.has(sharerId)) {
+      if (sharerId && room.has(sharerId) && getGroup(roomCode,sharerId)===getGroup(roomCode,socket.id)) {
         socket.emit('screen-share-state', { socketId: sharerId });
       }
 
@@ -201,9 +291,20 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
         userId,
         userName,
         isHost: String(roomHosts.get(roomCode)) === String(userId),
-        selfMuted: false,
+        selfMuted: !!muted,
         hostMuted: false,
+        videoOff: !!videoOff,
       });
+      socket.data.requestedRoom = null;
+      extension.snapshot();
+      // Guests may request entry before the host arrives or while the host reconnects.
+      if (isPrivileged(roomCode, userId)) {
+        for (const waiting of io.sockets.sockets.values()) {
+          if (waiting.data.requestedRoom === roomCode && !room.has(waiting.id)) {
+            socket.emit('join-request', { socketId: waiting.id, userId: waiting.data.user.id, userName: waiting.data.requestedName || waiting.data.user.name, roomCode });
+          }
+        }
+      }
       console.info(`[participants] ${roomCode}: ${room.size} participant(s) in room`);
 
       if (roomRecordings.has(roomCode)) {
@@ -216,25 +317,28 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       if (roomCaptionViewers.has(roomCode)) socket.emit('captions-demand', { active: true });
 
       // Notify everyone else
-      socket.to(roomCode).emit('user-joined', {
+      const joinedPayload = {
         socketId: socket.id,
         userId,
         userName,
         isHost: String(roomHosts.get(roomCode)) === String(userId),
-        isMuted: false,
+        isMuted: !!muted,
         mutedByHost: false,
-      });
+        videoOff: !!videoOff,
+      };
+      if([...room.values()].every(p=>getGroup(roomCode,p.socketId)==='main')) socket.to(roomCode).emit('user-joined',joinedPayload);
+      else for(const other of room.values())if(other.socketId!==socket.id&&getGroup(roomCode,other.socketId)===getGroup(roomCode,socket.id))io.to(other.socketId).emit('user-joined',joinedPayload);
     });
 
-    socket.on('offer', ({ to, offer }) => {
+    onMember('offer', ({ to, offer }) => {
       io.to(to).emit('offer', { from: socket.id, offer });
     });
 
-    socket.on('answer', ({ to, answer }) => {
+    onMember('answer', ({ to, answer }) => {
       io.to(to).emit('answer', { from: socket.id, answer });
     });
 
-    socket.on('ice-candidate', ({ to, candidate }) => {
+    onMember('ice-candidate', ({ to, candidate }) => {
       io.to(to).emit('ice-candidate', { from: socket.id, candidate });
     });
 
@@ -267,11 +371,11 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       });
     };
 
-    socket.on('mute-participant', (payload) => {
+    onMember('mute-participant', (payload) => {
       setParticipantHostMute({ ...payload, muted: true });
     });
 
-    socket.on('unmute-participant', (payload) => {
+    onMember('unmute-participant', (payload) => {
       setParticipantHostMute({ ...payload, muted: false });
     });
 
@@ -279,7 +383,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Track a participant's own microphone choice. A host mute remains the
      * authoritative effective state until the host explicitly releases it.
      */
-    socket.on('microphone-state', ({ roomCode, muted }) => {
+    onMember('microphone-state', ({ roomCode, muted }) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return;
@@ -298,17 +402,23 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Remove a participant from the room.
      * Host emits this; target receives 'removed-from-room'.
      */
-    socket.on('kick-participant', ({ to }) => {
+    onMember('kick-participant', ({ to }) => {
       const me = currentRoom && rooms.get(currentRoom)?.get(socket.id);
       if (!me || !isPrivileged(currentRoom, me.userId)) return;
+      // A removed participant must be admitted again to come back.
+      const target = rooms.get(currentRoom)?.get(to);
+      if (target) roomMembers.get(currentRoom)?.delete(String(target.userId));
+      const targetSocket = io.sockets.sockets.get(to);
+      if (targetSocket) targetSocket.data.admittedRoom = null;
       io.to(to).emit('removed-from-room');
+      if (targetSocket?.connected !== false) targetSocket?.disconnect(true);
     });
 
     /**
      * Lock or unlock the room so no new participants can join.
      * Broadcasts room-locked state to all participants.
      */
-    socket.on('lock-room', ({ roomCode, locked }) => {
+    onMember('lock-room', ({ roomCode, locked }) => {
       const me = rooms.get(roomCode)?.get(socket.id);
       if (!me || !isPrivileged(roomCode, me.userId)) return;
       roomLocks[roomCode] = locked;
@@ -321,7 +431,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * host if the host disconnects. One co-host at a time; naming a new one
      * replaces the previous one.
      */
-    socket.on('make-co-host', ({ roomCode, socketId }) => {
+    onMember('make-co-host', ({ roomCode, socketId }) => {
       const room = rooms.get(roomCode);
       const me = room?.get(socket.id);
       if (!room || !me || String(roomHosts.get(roomCode)) !== String(me.userId)) return; // host-only
@@ -332,7 +442,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     });
 
     /** Revoke the current co-host. Host-only. */
-    socket.on('remove-co-host', ({ roomCode }) => {
+    onMember('remove-co-host', ({ roomCode }) => {
       const room = rooms.get(roomCode);
       const me = room?.get(socket.id);
       if (!room || !me || String(roomHosts.get(roomCode)) !== String(me.userId)) return; // host-only
@@ -341,13 +451,29 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     });
 
     // ── Feature: Waiting Room / Admission ────────────────────────────────────
-    socket.on('request-join', ({ roomCode: rawCode, userId, userName }) => {
+    socket.on('request-join', (payload = {}) => {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || currentRoom) return;
+      const { roomCode: rawCode, userName: chosenName } = payload;
+      const userId = socket.data.user.id;
+      const userName = String(chosenName || socket.data.user.name).trim().slice(0, 80);
       const roomCode = String(rawCode || '').trim().toLowerCase();
+      if (roomCode !== socket.data.authorizedRoom) return;
+      if(meetingEnded(roomCode)){socket.emit('meeting-ended',{roomCode});return;}
+      if (!roomHosts.has(roomCode)) roomHosts.set(roomCode, socket.data.roomOwnerId);
+      if (isPrivileged(roomCode, userId)) { socket.data.admittedRoom = roomCode; socket.emit('admitted', { roomCode }); return; }
+      // Someone already admitted this session is rejoining — no second approval (locked or not).
+      if (userId && roomMembers.get(roomCode)?.has(String(userId))) {
+        socket.emit('admitted', { roomCode });
+        return;
+      }
       if (roomLocks[roomCode]) {
         socket.emit('room-locked-error');
         return;
       }
+      if(!getMeetingPolicy(roomCode).waitingRoom){socket.data.admittedRoom=roomCode;socket.emit('admitted',{roomCode});return;}
       console.log(`[Signaling] request-join from ${userName} (${socket.id}) for room ${roomCode}`);
+      socket.data.requestedRoom = roomCode;
+      socket.data.requestedName = userName;
       socket.to(roomCode).emit('join-request', {
         socketId: socket.id,
         userId,
@@ -356,25 +482,34 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       });
     });
 
-    socket.on('admit-user', ({ toSocketId, roomCode: clientRoomCode }) => {
+    onMember('admit-user', ({ toSocketId, roomCode: clientRoomCode }) => {
       const roomKey = String(currentRoom || clientRoomCode || '').trim().toLowerCase();
       const room = roomKey ? rooms.get(roomKey) : null;
       const me = room?.get(socket.id);
       console.log(`[Signaling] admit-user received from socket ${socket.id} (user ${me?.userId}) for target ${toSocketId} in room ${roomKey}`);
-      if (!me || !isPrivileged(roomKey, me.userId)) {
+      if (roomLocks[roomKey] || !me || !isPrivileged(roomKey, me.userId)) {
         console.warn(`[Signaling] admit-user rejected: not privileged or not in room. Socket: ${socket.id}, room: ${roomKey}`);
         return;
       }
+      const requester = io.sockets.sockets.get(toSocketId);
+      if (!requester || requester.data.requestedRoom !== roomKey || requester.data.authorizedRoom !== roomKey) return;
+      requester.data.admittedRoom = roomKey;
       io.to(toSocketId).emit('admitted', { roomCode: roomKey });
+      socket.to(roomKey).emit('join-request-cancelled', { socketId: toSocketId }); // clear the popup for other admins
       console.log(`[Signaling] 'admitted' emitted to socket ${toSocketId}`);
     });
 
-    socket.on('deny-user', ({ toSocketId, roomCode: clientRoomCode }) => {
+    onMember('deny-user', ({ toSocketId, roomCode: clientRoomCode }) => {
       const roomKey = String(currentRoom || clientRoomCode || '').trim().toLowerCase();
       const room = roomKey ? rooms.get(roomKey) : null;
       const me = room?.get(socket.id);
       if (!me || !isPrivileged(roomKey, me.userId)) return;
+      const requester = io.sockets.sockets.get(toSocketId);
+      if (!requester || requester.data.requestedRoom !== roomKey) return;
+      requester.data.admittedRoom = null;
+      requester.data.requestedRoom = null;
       io.to(toSocketId).emit('denied', { roomCode: roomKey });
+      socket.to(roomKey).emit('join-request-cancelled', { socketId: toSocketId });
     });
 
     // ── Feature 3: Reactions + Hand Queue ────────────────────────────────────
@@ -382,7 +517,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * Broadcast an emoji reaction to all other participants in the room.
      */
-    socket.on('reaction', ({ roomCode, emoji }) => {
+    onMember('reaction', ({ roomCode, emoji }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
       socket.to(roomCode).emit('reaction', {
         emoji,
@@ -394,19 +529,21 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * Notify all participants that this user raised their hand.
      */
-    socket.on('raise-hand', ({ roomCode }) => {
-      const user = rooms.get(roomCode)?.get(socket.id);
-      socket.to(roomCode).emit('hand-raised', {
-        socketId: socket.id,
-        userName: user?.userName,
-      });
+    onMember('raise-hand', () => {
+      const user = currentRoom && rooms.get(currentRoom)?.get(socket.id);
+      if (!user) return;
+      setHand(currentRoom, socket.id, user.userName, true);
     });
 
     /**
-     * Notify all participants that this user lowered their hand.
+     * Lower a hand. Anyone may lower their own; host/co-host may lower anyone's (socketId).
      */
-    socket.on('lower-hand', ({ roomCode }) => {
-      socket.to(roomCode).emit('hand-lowered', { socketId: socket.id });
+    onMember('lower-hand', ({ socketId } = {}) => {
+      const me = currentRoom && rooms.get(currentRoom)?.get(socket.id);
+      if (!me) return;
+      const target = socketId || socket.id;
+      if (target !== socket.id && !isPrivileged(currentRoom, me.userId)) return;
+      setHand(currentRoom, target, null, false);
     });
 
     // ── Feature 6: Collaborative Notes ───────────────────────────────────────
@@ -414,7 +551,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * Update shared notes for the room and broadcast to all other participants.
      */
-    socket.on('update-notes', ({ roomCode, notes }) => {
+    onMember('update-notes', ({ roomCode, notes }) => {
       roomNotes.set(roomCode, notes);
       socket.to(roomCode).emit('notes-updated', { notes });
     });
@@ -423,20 +560,20 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Request the current shared notes state for the room.
      * Returns the notes only to the requesting socket.
      */
-    socket.on('get-notes', ({ roomCode }) => {
+    onMember('get-notes', ({ roomCode }) => {
       socket.emit('notes-state', { notes: roomNotes.get(roomCode) || '' });
     });
 
     // ── Feature 7: Polls ──────────────────────────────────────────────────────
 
-    socket.on('get-polls', ({ roomCode }) => {
+    onMember('get-polls', ({ roomCode }) => {
       socket.emit('polls-state', { polls: roomPolls.get(roomCode) || [] });
     });
 
     /**
      * Create a new poll for the room. Broadcasts the poll to all participants.
      */
-    socket.on('create-poll', ({ roomCode, question, options }) => {
+    onMember('create-poll', ({ roomCode, question, options }) => {
       console.log('[create-poll] from:', socket.id, 'room:', roomCode, 'q:', question);
       const user = rooms.get(roomCode)?.get(socket.id);
       const poll = {
@@ -456,10 +593,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Record a vote for a poll option. A participant can only vote for one
      * option at a time (previous vote is removed). Broadcasts updated poll.
      */
-    socket.on('vote-poll', ({ roomCode, pollId, optionIndex }) => {
+    onMember('vote-poll', ({ roomCode, pollId, optionIndex }) => {
       const polls = roomPolls.get(roomCode) || [];
       const poll = polls.find(p => p.id === pollId);
-      if (!poll) return;
+      if (!poll || !poll.active || !Number.isInteger(optionIndex) || !poll.options[optionIndex]) return;
       // Remove existing vote from all options
       poll.options.forEach(o => {
         o.voters = o.voters.filter(v => v !== socket.id);
@@ -474,7 +611,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * End an active poll. Sets poll.active = false and broadcasts.
      */
-    socket.on('end-poll', ({ roomCode, pollId }) => {
+    onMember('end-poll', ({ roomCode, pollId }) => {
       const polls = roomPolls.get(roomCode) || [];
       const poll = polls.find(p => p.id === pollId);
       if (poll) {
@@ -488,17 +625,20 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * Share a video URL with the room. Broadcasts to all other participants.
      */
-    socket.on('share-media', ({ roomCode, url }) => {
-      roomMedia.set(roomCode, url);
-      socket.to(roomCode).emit('media-shared', { url });
+    onMember('share-media', ({ roomCode, url,kind }) => {
+      if(url && (typeof url!=='string'||!/^https?:\/\//i.test(url)))return;
+      roomMediaPlayback.delete(roomCode);
+      roomMedia.set(roomCode, {url:url||'',kind:kind==='audio'?'audio':'video'});
+      io.to(roomCode).emit('media-shared', roomMedia.get(roomCode));
     });
 
     /**
      * Request the currently shared media URL for the room.
      * Returns it only to the requesting socket.
      */
-    socket.on('get-media', ({ roomCode }) => {
-      socket.emit('media-state', { url: roomMedia.get(roomCode) || '' });
+    onMember('get-media', ({ roomCode }) => {
+      socket.emit('media-state', roomMedia.get(roomCode) || {url:'',kind:'video'});
+      const playback=roomMediaPlayback.get(roomCode);if(playback)socket.emit('media-playback',playback);
     });
 
     // ── Camera State Sync ────────────────────────────────────────────────────
@@ -507,10 +647,11 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Share a file with all participants in the room.
      * The file payload contains base64 data URL, name, size, type.
      */
-    socket.on('share-file', ({ roomCode, file }) => {
+    onMember('share-file', ({ roomCode, file },ack=()=>{}) => {
+      if(!file || typeof file.name!=='string' || !Number.isFinite(file.size)||file.size<0||file.size>10*1024*1024||typeof file.url!=='string'||file.url.length>14*1024*1024||!/^data:[^,]*;base64,/.test(file.url))return ack({ok:false,error:'Invalid file or file over 10 MB.'});
       const user = rooms.get(roomCode)?.get(socket.id);
       const entry = {
-        id: Date.now() + '_' + socket.id,
+        id: require('crypto').randomUUID(),
         name: file.name,
         size: file.size,
         type: file.type,
@@ -522,13 +663,14 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       roomFiles.get(roomCode).push(entry);
       // Broadcast to all (including sender) so everyone's Files panel updates
       io.to(roomCode).emit('file-shared', entry);
+      ack({ok:true});
     });
 
     /**
      * Request the current list of shared files for the room.
      * Returns to the requesting socket only.
      */
-    socket.on('get-files', ({ roomCode }) => {
+    onMember('get-files', ({ roomCode }) => {
       socket.emit('files-state', { files: roomFiles.get(roomCode) || [] });
     });
 
@@ -540,12 +682,12 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * (including the sender) so the order/index stays consistent for all,
      * mirroring the Files broadcast pattern above.
      */
-    socket.on('add-agenda-item', ({ roomCode, title }) => {
+    onMember('add-agenda-item', ({ roomCode, title }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
       if (!user || !isPrivileged(roomCode, user.userId)) return; // silently reject — not host/co-host
       if (!title || !title.trim()) return;
       const item = {
-        id: Date.now() + '_' + socket.id,
+        id: require('crypto').randomUUID(),
         title: title.trim(),
         done: false,
         createdBy: user?.userName || 'Someone',
@@ -559,7 +701,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Toggle an agenda item's completed state (host/presenter marks topics
      * done during the meeting). Host-only. Broadcasts the full list.
      */
-    socket.on('toggle-agenda-item', ({ roomCode, id }) => {
+    onMember('toggle-agenda-item', ({ roomCode, id }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
       if (!user || !isPrivileged(roomCode, user.userId)) return; // silently reject — not host/co-host
       const items = roomAgenda.get(roomCode) || [];
@@ -573,7 +715,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Reorder agenda items. Host-only. Client sends the full array of ids in
      * the new order; server rebuilds the list to match and broadcasts it.
      */
-    socket.on('reorder-agenda', ({ roomCode, orderedIds }) => {
+    onMember('reorder-agenda', ({ roomCode, orderedIds }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
       if (!user || !isPrivileged(roomCode, user.userId)) return; // silently reject — not host/co-host
       const items = roomAgenda.get(roomCode) || [];
@@ -588,7 +730,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
     /**
      * Remove an agenda item. Host-only. Broadcasts the full updated list.
      */
-    socket.on('delete-agenda-item', ({ roomCode, id }) => {
+    onMember('delete-agenda-item', ({ roomCode, id }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
       if (!user || !isPrivileged(roomCode, user.userId)) return; // silently reject — not host/co-host
       const items = (roomAgenda.get(roomCode) || []).filter(i => i.id !== id);
@@ -601,7 +743,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * — returns to the requesting socket only (used on join, mirroring
      * get-notes / get-media / get-files).
      */
-    socket.on('get-agenda', ({ roomCode }) => {
+    onMember('get-agenda', ({ roomCode }) => {
       socket.emit('agenda-state', { items: roomAgenda.get(roomCode) || [] });
     });
 
@@ -609,13 +751,14 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Notify all other participants that this user's camera turned on/off,
      * so their tiles can show the avatar instead of a frozen last frame.
      */
-    socket.on('camera-toggled', ({ roomCode, isOff }) => {
+    onMember('camera-toggled', ({ roomCode, isOff }) => {
+      rooms.get(roomCode).get(socket.id).videoOff = !!isOff;
       socket.to(roomCode).emit('camera-toggled', { socketId: socket.id, isOff });
     });
 
     // Recording commands use server-side membership and host state. Client
     // role flags are intentionally ignored.
-    socket.on('recording-start', ({ roomCode }, acknowledge = () => {}) => {
+    onMember('recording-start', ({ roomCode }, acknowledge = () => {}) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
@@ -627,7 +770,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       acknowledge({ ok: true });
     });
 
-    socket.on('recording-stop', ({ roomCode }, acknowledge = () => {}) => {
+    onMember('recording-stop', ({ roomCode }, acknowledge = () => {}) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
@@ -642,24 +785,25 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Screen sharing: one presenter at a time. The client asks for the slot with an
      * acknowledgement callback; everyone else is told who is presenting.
      */
-    socket.on('screen-share-start', ({ roomCode } = {}, ack) => {
+    onMember('screen-share-start', ({ roomCode } = {}, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {};
       const room = rooms.get(roomCode);
       if (!room || !room.has(socket.id)) { reply({ ok: false, by: null }); return; }
+      if (!isPrivileged(roomCode, room.get(socket.id).userId) && !getMeetingPolicy(roomCode).allowShare) { reply({ ok: false, error: 'Screen sharing is limited to hosts.' }); return; }
       const current = roomScreenShares.get(roomCode);
       if (current && current !== socket.id && room.has(current)) {
         reply({ ok: false, by: room.get(current)?.userName || null });
         return;
       }
       roomScreenShares.set(roomCode, socket.id);
-      socket.to(roomCode).emit('screen-share-started', { socketId: socket.id });
+      for(const peer of room.values())if(peer.socketId!==socket.id&&getGroup(roomCode,peer.socketId)===getGroup(roomCode,socket.id))io.to(peer.socketId).emit('screen-share-started',{socketId:socket.id});
       reply({ ok: true });
     });
 
-    socket.on('screen-share-stop', ({ roomCode } = {}) => {
+    onMember('screen-share-stop', ({ roomCode } = {}) => {
       if (roomScreenShares.get(roomCode) !== socket.id) return;
       roomScreenShares.delete(roomCode);
-      socket.to(roomCode).emit('screen-share-stopped', { socketId: socket.id });
+      for(const peer of rooms.get(roomCode)?.values()||[])if(peer.socketId!==socket.id&&getGroup(roomCode,peer.socketId)===getGroup(roomCode,socket.id))io.to(peer.socketId).emit('screen-share-stopped',{socketId:socket.id});
     });
 
     // ── Feature: Live Collaborative Whiteboard ────────────────────────────────
@@ -670,7 +814,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * The operation is applied to the in-memory room state so late joiners
      * receive the current board via 'get-whiteboard'.
      */
-    socket.on('whiteboard-op', ({ roomCode, op }) => {
+    onMember('whiteboard-op', ({ roomCode, op }) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!member) return; // not a room member
@@ -689,7 +833,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * Request the current whiteboard state for the room.
      * Returns it only to the requesting socket (used by late joiners).
      */
-    socket.on('get-whiteboard', ({ roomCode }) => {
+    onMember('get-whiteboard', ({ roomCode }) => {
       socket.emit('whiteboard-state', {
         board: roomWhiteboards.get(roomCode) || { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } },
       });
@@ -702,7 +846,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
      * them on, every participant's browser transcribes its own microphone and sends the text here,
      * and we relay it to the room. Muted participants (self or host) are never captioned.
      */
-    socket.on('captions-set', (payload) => {
+    onMember('captions-set', (payload) => {
       const { roomCode, on } = payload || {};
       socket.data.captionsOn = !!on; // remembered so it also takes effect once this socket (re)joins the room
       const room = rooms.get(roomCode);
@@ -711,7 +855,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
       socket.emit('captions-demand', { active: roomCaptionViewers.has(roomCode) });
     });
 
-    socket.on('caption', (payload) => {
+    onMember('caption', (payload) => {
       const { roomCode, text, final } = payload || {};
       const member = rooms.get(roomCode)?.get(socket.id);
       if (!member || !roomCaptionViewers.has(roomCode)) return;
@@ -740,6 +884,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
         const leavingMember = departing;
         room.delete(socket.id);
         console.info(`[participants] ${currentRoom}: ${room.size} participant(s) in room`);
+        extension.roster();
 
         // If the co-host disconnects, the badge/authority goes with them.
         const co = roomCoHosts.get(currentRoom);
@@ -756,6 +901,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
             roomCoHosts.delete(currentRoom);
             const promoted = room.get(newHost.socketId);
             if (promoted) promoted.isHost = true;
+            extension.roster();
             io.to(currentRoom).emit('host-transferred', {
               newHostSocketId: newHost.socketId,
               newHostUserId: newHost.userId,
@@ -774,7 +920,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
             sess.emptySince = Date.now();
             const timer = setTimeout(() => {
               const s = roomSessions.get(sessKey);
-              if (s && s.emptySince && Date.now() - s.emptySince >= SESSION_GRACE_MS) roomSessions.delete(sessKey);
+              if (s && s.emptySince && Date.now() - s.emptySince >= SESSION_GRACE_MS) {
+                roomSessions.delete(sessKey);
+                roomMembers.delete(sessKey);
+              }
             }, SESSION_GRACE_MS + 1000);
             if (timer.unref) timer.unref();
           }
@@ -782,9 +931,12 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
           roomNotes.delete(currentRoom);
           roomPolls.delete(currentRoom);
           roomMedia.delete(currentRoom);
+          roomMediaPlayback.delete(currentRoom);
+          clearMeetingExtensions(currentRoom);
           roomFiles.delete(currentRoom);
 
           roomAgenda.delete(currentRoom);
+          roomHands.delete(currentRoom);
 
           roomHosts.delete(currentRoom);
           roomCoHosts.delete(currentRoom);
@@ -805,8 +957,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
         }
         setCaptionViewer(currentRoom, socket.id, false);
         socket.to(currentRoom).emit('user-left', { socketId: socket.id });
-        // Lower hand on disconnect
-        socket.to(currentRoom).emit('hand-lowered', { socketId: socket.id });
+        if (roomHands.get(currentRoom)?.some(h => h.socketId === socket.id)) setHand(currentRoom, socket.id, null, false);
+      } else if (socket.data.requestedRoom) {
+        // Left the waiting room: drop the host's now-useless Admit popup for this socket.
+        socket.to(socket.data.requestedRoom).emit('join-request-cancelled', { socketId: socket.id });
       }
     });
   });
@@ -814,4 +968,4 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server) {
   return io;
 }
 
-module.exports = { setupSignaling, rooms, getSessionStart, registerRoomHost };
+module.exports = { setupSignaling, rooms, getSessionStart, registerRoomHost, isPrivileged };

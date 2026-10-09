@@ -4,9 +4,11 @@ export default function VideoCanvasProcessor({
   stream,
   activeFilter = 'none',
   selectedBgImage = 'none',
+  colorFilter,
   mirror = true,
   className = '',
   style = {},
+  onOutputStream,
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -15,7 +17,11 @@ export default function VideoCanvasProcessor({
   const segmenterRef = useRef(null);
   const activeFilterRef = useRef(activeFilter);
   const selectedBgImageRef = useRef(selectedBgImage);
+  const colorFilterRef=useRef(colorFilter);
+  useEffect(()=>{colorFilterRef.current=colorFilter;},[colorFilter]);
   const mirrorRef = useRef(mirror);
+  const outputRef = useRef(onOutputStream); outputRef.current = onOutputStream;
+  const captureRef = useRef(null);
   const [segmenterLoaded, setSegmenterLoaded] = useState(false);
 
   // Keep refs in sync with latest props — no loop restart needed
@@ -25,20 +31,24 @@ export default function VideoCanvasProcessor({
 
   // Load background image whenever selectedBgImage changes
   useEffect(() => {
+    let cancelled = false;
+    bgImageRef.current = null;
     if (selectedBgImage && selectedBgImage !== 'none') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
+      img.onload = () => { if (!cancelled) bgImageRef.current = img; };
+      img.onerror = () => { if (!cancelled) bgImageRef.current = null; };
       img.src = selectedBgImage;
-      img.onload = () => { bgImageRef.current = img; };
-      img.onerror = () => { bgImageRef.current = null; };
     } else {
       bgImageRef.current = null;
     }
+    return () => { cancelled = true; };
   }, [selectedBgImage]);
 
   // Load MediaPipe script once
   useEffect(() => {
     let isMounted = true;
+    if (!['blur','half-blur'].includes(activeFilter) && selectedBgImage === 'none') return;
     if (window.SelfieSegmentation) { setSegmenterLoaded(true); return; }
     if (document.getElementById('mediapipe-selfie-script')) {
       const iv = setInterval(() => {
@@ -53,7 +63,7 @@ export default function VideoCanvasProcessor({
     script.onload = () => { if (window.SelfieSegmentation && isMounted) setSegmenterLoaded(true); };
     document.body.appendChild(script);
     return () => { isMounted = false; };
-  }, []);
+  }, [activeFilter, selectedBgImage]);
 
   // Attach stream to hidden video
   useEffect(() => {
@@ -103,8 +113,8 @@ export default function VideoCanvasProcessor({
 
         if (canvas.width !== W || canvas.height !== H) {
           canvas.width = W; canvas.height = H;
-          offCanvas.width = W; offCanvas.height = H;
         }
+        if (offCanvas.width !== W || offCanvas.height !== H) { offCanvas.width = W; offCanvas.height = H; }
 
         const ctx = canvas.getContext('2d');
         const hasBg = bgUrl !== 'none' && bgImageRef.current;
@@ -144,10 +154,14 @@ export default function VideoCanvasProcessor({
             ctx.restore();
 
             // 3. Person on top
-            ctx.drawImage(offCanvas, 0, 0, W, H);
-          } else {
-            // Waiting for first segmentation result
             ctx.save();
+            ctx.filter = ({warm:'sepia(.35) saturate(1.2)',mono:'grayscale(1) contrast(1.1)',vivid:'saturate(1.6) contrast(1.05)',soft:'brightness(1.08) contrast(.9)'})[colorFilterRef.current||filter] || 'none';
+            ctx.drawImage(offCanvas, 0, 0, W, H);
+            ctx.restore();
+          } else {
+            // Never expose the original room while the segmentation model warms up.
+            ctx.save();
+            ctx.filter = `blur(${filter === "half-blur" ? 8 : 20}px)`;
             if (isMirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
             ctx.drawImage(video, 0, 0, W, H);
             ctx.restore();
@@ -156,30 +170,22 @@ export default function VideoCanvasProcessor({
           // No effects or segmenter not ready yet
           ctx.save();
           if (isMirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-          if (hasBg) {
-            // Fallback oval composite before segmenter loads
-            ctx.drawImage(bgImageRef.current, 0, 0, W, H);
-            ctx.save();
-            ctx.beginPath();
-            ctx.ellipse(W / 2, H / 2 + H * 0.05, W * 0.35, H * 0.45, 0, 0, 2 * Math.PI);
-            ctx.clip();
-            ctx.drawImage(video, 0, 0, W, H);
-            ctx.restore();
+          if (bgUrl !== 'none') {
+            // Keep a private fallback when the model or custom image is still loading.
+            ctx.fillStyle = '#172033'; ctx.fillRect(0, 0, W, H);
+            if (hasBg) ctx.drawImage(bgImageRef.current, 0, 0, W, H);
           } else if (isBlur) {
-            const r = filter === 'blur' ? 16 : 8;
-            ctx.filter = `blur(${r}px)`;
+            ctx.filter = `blur(${filter === 'blur' ? 20 : 8}px)`;
             ctx.drawImage(video, 0, 0, W, H);
-            ctx.filter = 'none';
-            ctx.save();
-            ctx.beginPath();
-            ctx.ellipse(W / 2, H / 2 + H * 0.05, W * 0.35, H * 0.45, 0, 0, 2 * Math.PI);
-            ctx.clip();
-            ctx.drawImage(video, 0, 0, W, H);
-            ctx.restore();
           } else {
+            ctx.filter = ({warm:'sepia(.35) saturate(1.2)',mono:'grayscale(1) contrast(1.1)',vivid:'saturate(1.6) contrast(1.05)',soft:'brightness(1.08) contrast(.9)'})[colorFilterRef.current||filter] || 'none';
             ctx.drawImage(video, 0, 0, W, H);
           }
           ctx.restore();
+        }
+        if (outputRef.current && !captureRef.current && canvas.captureStream) {
+          captureRef.current = canvas.captureStream(20);
+          outputRef.current(captureRef.current);
         }
       }
 
@@ -194,6 +200,12 @@ export default function VideoCanvasProcessor({
     };
   // Only restart loop when stream or segmenter changes — props update via refs
   }, [stream, segmenterLoaded]);
+
+  useEffect(() => () => {
+    captureRef.current?.getTracks().forEach(t => t.stop());
+    captureRef.current = null;
+    outputRef.current?.(null);
+  }, []);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>

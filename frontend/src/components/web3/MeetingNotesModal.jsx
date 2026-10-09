@@ -1,41 +1,36 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, ExternalLink } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ExternalLink, FileText } from 'lucide-react';
 import { pinJSON } from '../../utils/ipfs';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
+const GOLD = 'var(--meeting-gold, #d9b54a)';
+const GOLD_BORDER = 'var(--meeting-line, #2e2a21)';
+const SURFACE = 'var(--meeting-panel, #13110e)';
 
-const GOLD = '#d4af37';
-const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const SURFACE = 'rgba(18,18,22,0.98)';
-
-export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
-  const [notes, setNotes] = useState('');
-  const [pinning, setPinning] = useState(false);
-  const [cid, setCid] = useState(null);
-  const [error, setError] = useState('');
-
-  const handlePin = async () => {
-    if (!notes.trim()) { onDone(); return; }
-    setPinning(true);
-    setError('');
-    try {
-      const result = await pinJSON({
-        meetingId: roomCode,
-        notes: notes.trim(),
-        pinnedAt: Date.now(),
-      });
-      setCid(result);
-    } catch {
-      setError('Could not pin to IPFS. Notes saved locally.');
-      onDone();
-    } finally {
-      setPinning(false);
-    }
+export default function MeetingNotesModal({ isOpen, roomCode, onDone, onClose = onDone }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, onClose, isOpen);
+  const key = `etherx_meeting_notes:${roomCode}`;
+  const [notes, setNotes] = useState(() => { try { return JSON.parse(localStorage.getItem(key) || '{}').notes || ''; } catch { return ''; } });
+  const [pinning, setPinning] = useState(false), [cid, setCid] = useState(null), [error, setError] = useState('');
+  const saveLocal = () => {
+    try { localStorage.setItem(key, JSON.stringify({ roomCode, notes: notes.trim(), savedAt: Date.now() })); return true; }
+    catch { setError('Device storage is full. Download your notes before leaving.'); return false; }
   };
-
-  const gatewayUrl = cid
-    ? `${import.meta.env.VITE_PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs'}/${cid}`
-    : null;
-
+  const saveAndLeave = () => { if (!notes.trim() || saveLocal()) onDone(); };
+  const handlePin = async () => {
+    setPinning(true); setError('');
+    saveLocal();
+    try { setCid(await pinJSON({ meetingId: roomCode, notes: notes.trim(), pinnedAt: Date.now() })); }
+    catch { setError('Online publishing failed. You can download your notes or save them on this device.'); }
+    finally { setPinning(false); }
+  };
+  const download = () => {
+    const url=URL.createObjectURL(new Blob([notes],{type:'text/plain;charset=utf-8'}));
+    const link=document.createElement('a');link.href=url;link.download=`${roomCode}-notes.txt`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+  if (!isOpen) return null;
+  const gatewayUrl = cid ? `${import.meta.env.VITE_PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs'}/${cid}` : null;
   return (
     <AnimatePresence>
       {isOpen && (
@@ -51,6 +46,7 @@ export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
           }}
         >
           <motion.div
+            ref={dialogRef} role="dialog" aria-modal="true" aria-label="Meeting notes" className="exmeet-notes"
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
@@ -70,7 +66,7 @@ export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
               </h2>
             </div>
             <p style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
-              Add notes to pin permanently to IPFS — tamper-proof and decentralised.
+              Save notes on this device before leaving.
             </p>
 
             {!cid ? (
@@ -92,7 +88,7 @@ export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
                 />
                 {error && <p style={{ fontSize: 12, color: '#f87171', marginBottom: 12 }}>{error}</p>}
                 <button
-                  onClick={handlePin}
+                  onClick={saveAndLeave}
                   disabled={pinning}
                   style={{
                     width: '100%',
@@ -104,8 +100,10 @@ export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
                     marginBottom: 10,
                   }}
                 >
-                  {pinning ? 'Pinning to IPFS…' : notes.trim() ? 'Pin to IPFS & end meeting' : 'Skip & end meeting'}
+                  {pinning ? 'Saving…' : notes.trim() ? 'Save notes & leave' : 'Leave meeting'}
                 </button>
+                {notes.trim() && <button onClick={download} style={{background:'none',border:0,color:GOLD,padding:8,cursor:'pointer'}}>Download notes</button>}
+                {import.meta.env.VITE_PINATA_JWT && <button onClick={handlePin} disabled={pinning || !notes.trim()} style={{background:'none',border:0,color:GOLD,padding:8,cursor:'pointer'}}>Publish to IPFS</button>}
                 <button
                   onClick={onDone}
                   style={{
@@ -113,7 +111,7 @@ export default function MeetingNotesModal({ isOpen, roomCode, onDone }) {
                     color: '#666', fontSize: 13, cursor: 'pointer', padding: 8,
                   }}
                 >
-                  End without notes
+                  Leave without notes
                 </button>
               </>
             ) : (

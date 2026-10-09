@@ -28,7 +28,9 @@ const upload = multer({
   fileFilter: (_req, file, callback) => {
     const allowedMimeTypes = ['video/webm', 'video/mp4'];
 
-    if (allowedMimeTypes.includes(file.mimetype)) {
+    // MediaRecorder includes codec parameters (e.g. video/webm;codecs=vp9,opus).
+    const mediaType = file.mimetype.split(';', 1)[0].trim().toLowerCase();
+    if (allowedMimeTypes.includes(mediaType)) {
       return callback(null, true);
     }
 

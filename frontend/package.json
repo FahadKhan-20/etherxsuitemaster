@@ -9,7 +9,11 @@
     "server": "node server/index.js",
     "dev:server": "node server/index.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "design:meet": "node scripts/port-meeting-reference.cjs",
+    "test:reference": "node scripts/check-reference-room.cjs",
+    "test:reference:extended": "node scripts/check-reference-room-extended.cjs"
   },
   "keywords": [],
   "author": "",
@@ -51,5 +55,10 @@
     "vanta": "^0.5.24",
     "vite": "^8.0.7",
     "wagmi": "^3.7.3"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "puppeteer-core": "25.13.0",
+    "vitest": "^4.1.10"
   }
 }

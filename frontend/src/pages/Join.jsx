@@ -74,7 +74,6 @@ export default function Join() {
   const {
     stream,
     devices,
-    permissions,
     error: mediaError,
     videoRef,
     isVideoEnabled,

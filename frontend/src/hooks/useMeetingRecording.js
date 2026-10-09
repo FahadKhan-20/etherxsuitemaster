@@ -46,6 +46,8 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   const audioSourcesRef = useRef(new Map());
   const animationFrameRef = useRef(null);
   const chunksRef = useRef([]);
+  const finishWaitersRef = useRef([]);
+  const completeFinish = useCallback(() => { finishWaitersRef.current.splice(0).forEach(resolve => resolve()); }, []);
 
   const cleanupCapture = useCallback(() => {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
@@ -88,9 +90,12 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
 
   const finishRecording = useCallback(() => {
     const recorder = recorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    if (!recorder && !finishWaitersRef.current.length) return Promise.resolve();
+    const completion = new Promise(resolve => finishWaitersRef.current.push(resolve));
+    if (!recorder || recorder.state === 'inactive') return completion;
     setRecordingState('stopping');
     recorder.stop();
+    return completion;
   }, []);
 
   const startLocalRecording = useCallback(() => {
@@ -157,9 +162,11 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
       setRecordingState('error');
       cleanupCapture();
       recorderRef.current = null;
+      completeFinish();
     };
     recorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
+      // Keep codec parameters on MediaRecorder; multipart uploads need the base media type.
+      const blob = new Blob(chunksRef.current, { type: mimeType.split(';', 1)[0] });
       const duration = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       cleanupCapture();
       recorderRef.current = null;
@@ -167,15 +174,18 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
       if (!blob.size) {
         setRecordingError('The recording contained no media.');
         setRecordingState('error');
+        completeFinish();
         return;
       }
-      const uploaded = await uploadRecording(blob, duration);
-      if (!uploaded) downloadRecording(blob, `etherx-meeting-${roomCode}-${Date.now()}.webm`);
-      setRecordingState('completed');
+      try {
+        const uploaded = await uploadRecording(blob, duration);
+        if (!uploaded) downloadRecording(blob, `etherx-meeting-${roomCode}-${Date.now()}.webm`);
+        setRecordingState('completed');
+      } finally { completeFinish(); }
       window.setTimeout(() => setRecordingState('idle'), 2500);
     };
     recorder.start(1000);
-  }, [cleanupCapture, downloadRecording, roomCode, uploadRecording]);
+  }, [cleanupCapture, completeFinish, downloadRecording, roomCode, uploadRecording]);
 
   const syncCaptureSources = useCallback(() => {
     const session = sessionRef.current;
@@ -238,12 +248,12 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   useEffect(() => {
     if (!socket || !socketReady) return undefined;
     const onState = ({ state, error }) => {
-      setRecordingState(state || 'idle');
+      if(state==='idle'&&recorderRef.current?.state==='recording')finishRecording();else setRecordingState(state || 'idle');
       if (error) { setRecordingError(error); onError?.(error); }
     };
     socket.on('recording-state', onState);
     return () => socket.off('recording-state', onState);
-  }, [onError, socket, socketReady]);
+  }, [finishRecording, onError, socket, socketReady]);
 
   useEffect(() => () => {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
@@ -271,10 +281,11 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   }, [isHost, onError, recordingState, roomCode, socket, startLocalRecording, syncCaptureSources]);
 
   const stopRecording = useCallback(() => {
-    if (!isHost || !socket || recordingState !== 'recording') return;
+    if(finishWaitersRef.current.length)return finishRecording();
+    if (!isHost || !socket || recordingState !== 'recording') return Promise.resolve();
     setRecordingState('stopping');
     socket.emit('recording-stop', { roomCode }, response => { if (!response?.ok && response?.error) setRecordingError(response.error); });
-    finishRecording();
+    return finishRecording();
   }, [finishRecording, isHost, recordingState, roomCode, socket]);
 
   return { recordingState, recordingError, isRecording: recordingState === 'recording' || recordingState === 'stopping', startRecording, stopRecording };

@@ -28,19 +28,19 @@ body { background: #000000 !important; color: var(--text); }
   }
 }
 
-video::-webkit-media-controls,
-video::-webkit-media-controls-enclosure,
-video::-webkit-media-controls-panel,
-video::-webkit-media-controls-overlay-play-button,
-video::-webkit-media-controls-play-button,
-video::-webkit-media-controls-timeline,
-video::-webkit-media-controls-current-time-display,
-video::-webkit-media-controls-time-remaining-display,
-video::-webkit-media-controls-mute-button,
-video::-webkit-media-controls-volume-slider,
-video::-webkit-media-controls-fullscreen-button,
-video::-internal-media-controls-overflow-button,
-video::-internal-media-controls-download-button {
+video:not([controls])::-webkit-media-controls,
+video:not([controls])::-webkit-media-controls-enclosure,
+video:not([controls])::-webkit-media-controls-panel,
+video:not([controls])::-webkit-media-controls-overlay-play-button,
+video:not([controls])::-webkit-media-controls-play-button,
+video:not([controls])::-webkit-media-controls-timeline,
+video:not([controls])::-webkit-media-controls-current-time-display,
+video:not([controls])::-webkit-media-controls-time-remaining-display,
+video:not([controls])::-webkit-media-controls-mute-button,
+video:not([controls])::-webkit-media-controls-volume-slider,
+video:not([controls])::-webkit-media-controls-fullscreen-button,
+video:not([controls])::-internal-media-controls-overflow-button,
+video:not([controls])::-internal-media-controls-download-button {
   display: none !important;
 }
 

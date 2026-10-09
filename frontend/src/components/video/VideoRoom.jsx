@@ -1,16 +1,22 @@
 // frontend/src/components/video/VideoRoom.jsx
-// UI exactly matches EtherX Meet.dc.html
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Plus } from 'lucide-react';
+import { Copy, Check, Lock, MonitorUp, Circle, LayoutGrid, UserPlus, Smile, Presentation, Info, Gauge, Maximize, Captions, ChartNoAxesColumn, File, Music, MicOff, Image, Settings, Keyboard, Shield, MessageSquare } from 'lucide-react';
+import RoomStage from '../room/RoomStage';
+import RoomControls from '../room/RoomControls';
+import RoomMoreMenu from '../room/RoomMoreMenu';
+import ShareMediaDialog from '../room/ShareMediaDialog';
+import '../../styles/meeting-room.css';
+import MeetingSettings from '../room/MeetingSettings';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { playSpeakerTest, setAudioOutput } from '../../utils/meetingMedia';
+import { copyMeetingText } from '../../utils/meetingClipboard';
+import '../../styles/meeting.css';
 import MeetingAgenda from '../MeetingAgenda';
 
 import { useWebRTC } from '../../hooks/useWebRTC';
-import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { useWallet } from '../../context/WalletContext';
 import { useMeetingRecording } from '../../hooks/useMeetingRecording';
-import { useMeeting } from '../../context/MeetingContext';
-import VideoTile from './VideoTile';
 import VideoCanvasProcessor from './VideoCanvasProcessor';
 import VerifiedChat from '../web3/VerifiedChat';
 import MeetingNotesModal from '../web3/MeetingNotesModal';
@@ -18,9 +24,10 @@ import CaptionsOverlay from '../room/CaptionsOverlay';
 import Whiteboard from '../features/Whiteboard';
 import { ROUTES } from '../../utils/constants';
 import apiClient from '../../utils/apiClient';
+import { getStoredUser } from '../../utils/auth';
 import etherxLogo from '../../assets/etherx_transparent.png';
 
-const AVATAR_COLORS = ['#4a90d9', '#7B2FBE', '#00b5a0', '#5BA4CF', '#3a7bd5', '#9B59B6', '#1abc9c', '#2980b9'];
+const AVATAR_COLORS = ['#2a2519', '#30291c', '#332b19', '#29261d'];
 function avatarColor(n) { return AVATAR_COLORS[(n || 'A').charCodeAt(0) % AVATAR_COLORS.length]; }
 function fmtTime(s) { return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
 function fmtTitle(code) { if (!code) return 'EtherX Meet'; return code.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); }
@@ -41,32 +48,7 @@ function classifyMedia(input) {
   return { type: 'link' };
 }
 
-const BG_OPTIONS = [
-  { id: 'none', type: 'filter', label: 'None' },
-  { id: 'half-blur', type: 'filter', label: 'Half Blur' },
-  { id: 'blur', type: 'filter', label: 'Blur' },
-  { id: 'beach', type: 'image', label: 'Beach', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=350&q=80' },
-  { id: 'room', type: 'image', label: 'Office', url: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=350&q=80' },
-  { id: 'mountains', type: 'image', label: 'Valley', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=350&q=80' },
-  { id: 'forest', type: 'image', label: 'Forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=350&q=80' },
-];
-
-const playTestSound = () => {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(440, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-    osc.start(); osc.stop(ctx.currentTime + 0.35);
-  } catch (e) { console.error(e); }
-};
-
-const CONFETTI_COLORS = ['#d4af37', '#e5c76b', '#b8860b', '#d4af37', '#e5c76b', '#b8860b', '#d4af37'];
+const CONFETTI_COLORS = ['var(--meeting-gold)', '#e5c76b', '#b8860b', 'var(--meeting-gold)', '#e5c76b', '#b8860b', 'var(--meeting-gold)'];
 const CONFETTI = Array.from({ length: 80 }).map((_, i) => ({
   x: (i * 37 + 11) % 100, w: 6 + (i % 5) * 2, h: 6 + (i % 4) * 3,
   color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
@@ -76,7 +58,7 @@ const CONFETTI = Array.from({ length: 80 }).map((_, i) => ({
 // Plays one remote participant's audio, independent of their video tile. Tiles
 // only mount a <video> while the camera is on, so without this a teammate with
 // their camera off (or joined audio-only) would be completely silent.
-function RemoteAudio({ stream }) {
+function RemoteAudio({ stream, outputDevice, onError }) {
   const ref = useRef(null);
   useEffect(() => {
     if (ref.current && stream) {
@@ -84,59 +66,45 @@ function RemoteAudio({ stream }) {
       ref.current.play().catch(() => { });
     }
   }, [stream]);
+  useEffect(() => { setAudioOutput(ref.current, outputDevice).catch(() => onError('Could not use selected speaker. Check device access in your browser.')); }, [outputDevice, onError]);
   return <audio ref={ref} autoPlay />;
 }
 
-export default function VideoRoom({ roomCode, isHost }) {
+export default function VideoRoom({ roomCode, isHost, initialMedia, preferences, savePreferences }) {
   const navigate = useNavigate();
   const { account } = useWallet();
   const [chatOpen, setChatOpen] = useState(false);
   const [panelTab, setPanelTab] = useState('chat');
+  const [chatUnread, setChatUnread] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [participantQuery,setParticipantQuery]=useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
+  const inviteRef = useRef(null);
+  useDialogFocus(inviteRef, ()=>setInviteOpen(false), inviteOpen);
   const [showNotes, setShowNotes] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [modalTab, setModalTab] = useState('audio');
-  const [gridView, setGridView] = useState(false);
+  const [gridView, setGridView] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [raised, setRaised] = useState(false);
   const [handToastDismissed, setHandToastDismissed] = useState(false);
   const [confettiActive, setConfettiActive] = useState(false);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionsDemand, setCaptionsDemand] = useState(false); // someone in the room has captions on
   const [toast, setToast] = useState(null);
-  const [activeFilter, setActiveFilter] = useState('none');
-  const [selectedBgImage, setSelectedBgImage] = useState('none');
-  const [isPlayingTest, setIsPlayingTest] = useState(false);
-  const [activeDashes, setActiveDashes] = useState(0);
+  const activeFilter = preferences.filter;
+  const selectedBgImage = preferences.background;
   const [myVotes, setMyVotes] = useState({});
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
-  const [showPollForm, setShowPollForm] = useState(false);
   const [pollView, setPollView] = useState('list'); // 'list' | 'create' | 'results'
   const [viewingPollId, setViewingPollId] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
-  const [toolbarVisible, setToolbarVisible] = useState(true);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
-  const toolbarTimerRef = useRef(null);
-
-  // Auto-hide bottom toolbar after 3 s of no mouse movement
-  const resetToolbarTimer = useCallback(() => {
-    setToolbarVisible(true);
-    if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current);
-    toolbarTimerRef.current = setTimeout(() => setToolbarVisible(false), 3000);
-  }, []);
-
-  useEffect(() => {
-    resetToolbarTimer();
-    return () => { if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current); };
-  }, [resetToolbarTimer]);
-
-  const moreRef = useRef(null);
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const toastTimerRef = useRef(null);
+  const showToast = useCallback(msg => { setToast(msg); clearTimeout(toastTimerRef.current); toastTimerRef.current = setTimeout(() => setToast(null), 4000); }, []);
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
   useEffect(() => {
     const start = Date.now(); // stopwatch starts at 00:00 every time you enter a meeting
@@ -144,12 +112,6 @@ export default function VideoRoom({ roomCode, isHost }) {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (!moreOpen) return;
-    const fn = e => { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, [moreOpen]);
 
   const handleKicked = useCallback(() => {
     sessionStorage.removeItem('etherx_host_room');
@@ -165,14 +127,24 @@ export default function VideoRoom({ roomCode, isHost }) {
     toggleNoiseSuppression, noiseSuppressed,
     setRoomLocked, roomLocked,
     sharedMediaUrl, shareMedia,
-    userName, connectionError, reactions,
-    sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
+    userName, connectionError, mediaError, devices, selectedDevices, switchDevice, setOutgoingVideoTrack, reactions,
+    handQueue, mySocketId, sendReaction, sendHandRaise, sendHandLower, polls, createPoll, votePoll, endPoll, updateNotes,
     pollNotifications, dismissPollNotification,
     admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
-    canHost, isCoHost, coHost, makeCoHost, removeCoHost,
+    amHost, canHost, isCoHost, coHost, makeCoHost, removeCoHost, networkQuality,
     sharedFiles, shareFile, fileNotifications, dismissFileNotification,
-    kickParticipant,
-  } = useWebRTC(roomCode, { onKicked: handleKicked, isHost });
+    kickParticipant, agendaItems, agendaReady, addAgendaItem, toggleAgendaItem, deleteAgendaItem,
+  } = useWebRTC(roomCode, { onKicked: handleKicked, isHost, initialMedia, videoEffects: activeFilter !== 'none' || selectedBgImage !== 'none' });
+  useEffect(() => {
+    const readingChat = chatOpen && panelTab === 'chat';
+    if (readingChat) setChatUnread(false);
+    const receive = message => {
+      if (message.roomCode === roomCode && !readingChat && String(message.senderId) !== String(getStoredUser()?.id)) setChatUnread(true);
+    };
+    socket?.on('chat:message-created', receive);
+    return () => socket?.off('chat:message-created', receive);
+  }, [socket, roomCode, chatOpen, panelTab]);
+  const receiveProcessedStream = useCallback(output => { setOutgoingVideoTrack(output?.getVideoTracks()[0] || null); }, [setOutgoingVideoTrack]);
 
   const {
     recordingState,
@@ -194,33 +166,38 @@ export default function VideoRoom({ roomCode, isHost }) {
 
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [mediaStageMinimized, setMediaStageMinimized] = useState(false);
-  const [agendaTopics, setAgendaTopics] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('etherx_agenda') || '[]'); } catch { return []; }
-  });
+  const [sharingMediaKind, setSharingMediaKind] = useState(null);
+  const agendaSeedRef = useRef(false);
+  const agendaTopics = agendaItems.map(item => ({ ...item, completed: item.done }));
+  useEffect(() => {
+    if (!canHost || !agendaReady || agendaSeedRef.current) return;
+    agendaSeedRef.current = true;
+    if (agendaItems.length) return;
+    try { JSON.parse(sessionStorage.getItem(`etherx_agenda:${roomCode}`) || '[]').forEach(topic => addAgendaItem(topic.title)); } catch { /* Invalid saved agenda. */ }
+  }, [canHost, agendaReady, agendaItems, addAgendaItem, roomCode]);
   const handleAgendaChange = (topics) => {
-    setAgendaTopics(topics);
-    sessionStorage.setItem('etherx_agenda', JSON.stringify(topics));
+    topics.forEach(topic => {
+      const current = agendaTopics.find(item => item.id === topic.id);
+      if (!current) addAgendaItem(topic.title);
+      else if (current.completed !== topic.completed) toggleAgendaItem(topic.id);
+    });
+    agendaTopics.filter(item => !topics.some(topic => topic.id === item.id)).forEach(item => deleteAgendaItem(item.id));
   };
 
   useEffect(() => {
     if (sharedMediaUrl) setMediaStageMinimized(false);
   }, [sharedMediaUrl]);
 
-  useEffect(() => {
-    if (modalTab !== 'audio' || !showSettingsModal) { setActiveDashes(0); return; }
-    const iv = setInterval(() => setActiveDashes(Math.floor(Math.random() * 8) + 1), 120);
-    return () => clearInterval(iv);
-  }, [modalTab, showSettingsModal]);
-
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const feedbackRef = useRef(null);
+  useDialogFocus(feedbackRef, () => setFeedbackOpen(false), feedbackOpen);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
-  const { devices, switchDevice, selectedDevices } = useMediaDevices();
 
   const handleEnd = () => {
     if (isRecording) stopRecording();
-    if (isHost) { setShowNotes(true); return; }
+    if (canHost) { setShowNotes(true); return; }
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
   };
@@ -229,9 +206,13 @@ export default function VideoRoom({ roomCode, isHost }) {
     sessionStorage.removeItem('etherx_host_room');
     navigate(ROUTES.DASHBOARD);
   };
-  const handleCopyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
-  const handleCopyCode = () => { navigator.clipboard.writeText(roomCode || '').then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }); };
-  const handleRaiseHand = () => { if (raised) { setRaised(false); sendHandLower?.(); } else { setRaised(true); setHandToastDismissed(false); sendHandRaise?.(); } };
+  const handleCopyLink = async () => { try { await copyMeetingText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { showToast('Could not copy link. Copy it from the address bar.'); } };
+  const handleCopyCode = async () => { try { await copyMeetingText(roomCode || ''); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); } catch { showToast('Could not copy room code.'); } };
+  // Raised hands come from the server's ordered queue, so every participant sees the same order.
+  const handPos = (socketId) => handQueue.findIndex(h => h.socketId === socketId) + 1; // 0 = not raised
+  const myHandPos = mySocketId ? handPos(mySocketId) : 0;
+  const raised = myHandPos > 0;
+  const handleRaiseHand = () => { if (raised) { sendHandLower?.(); } else { setHandToastDismissed(false); sendHandRaise?.(); } };
   const handleFeedbackSubmit = async () => {
     if (!feedbackText.trim() || feedbackSubmitting) return;
     setFeedbackSubmitting(true);
@@ -246,7 +227,38 @@ export default function VideoRoom({ roomCode, isHost }) {
     setFeedbackSubmitting(false);
   };
 
+  const talkingRef = useRef(false);
+  useEffect(() => {
+    const editable = event => event.target.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]');
+    const down = event => {
+      if (editable(event) || document.querySelector('[role="dialog"]') || showSettingsModal || feedbackOpen || showNotes || event.repeat) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e') { event.preventDefault(); handleEnd(); return; }
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key.toLowerCase() === 'm') { event.preventDefault(); toggleMic(); }
+      if (event.key.toLowerCase() === 'v') { event.preventDefault(); toggleCamera(); }
+      if (event.code === 'Space' && micMuted && !hostMuted && event.target === document.body) { event.preventDefault(); talkingRef.current = true; toggleMic(); }
+    };
+    const up = event => { if (event.code === 'Space' && talkingRef.current) { event.preventDefault(); talkingRef.current = false; toggleMic(); } };
+    const blur = () => { if (talkingRef.current) { talkingRef.current = false; toggleMic(); } };
+    document.addEventListener('keydown', down); document.addEventListener('keyup', up); window.addEventListener('blur', blur);
+    return () => { document.removeEventListener('keydown', down); document.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
+  }, [toggleMic, toggleCamera, micMuted, hostMuted, showSettingsModal, feedbackOpen, showNotes, canHost, isRecording]);
+
   const peerList = Object.entries(peers);
+
+  const previousPeersRef = useRef(new Map());
+  useEffect(() => {
+    const next = new Map(peerList.map(([id, peer]) => [id, peer.userName]));
+    const changes = [];
+    next.forEach((name, id) => { if (!previousPeersRef.current.has(id)) changes.push(`${name || 'Someone'} joined the meeting`); });
+    previousPeersRef.current.forEach((name, id) => { if (!next.has(id)) changes.push(`${name || 'Someone'} left the meeting`); });
+    previousPeersRef.current = next;
+    changes.forEach(message => {
+      if (preferences.notifications.banners) showToast(message);
+      if (preferences.notifications.sound) playSpeakerTest(preferences.outputDevice).catch(() => {});
+      if (preferences.notifications.desktop && document.hidden && window.Notification?.permission === 'granted') new Notification('EtherX Meet', { body: message });
+    });
+  }, [peers, preferences.notifications.banners, preferences.notifications.sound, preferences.notifications.desktop, preferences.outputDevice, showToast]);
 
   // Let the person know when they gain host authority they didn't start the meeting with.
   const wasPrivilegedRef = useRef(isHost);
@@ -285,21 +297,25 @@ export default function VideoRoom({ roomCode, isHost }) {
     }
     prevCaptionsDemandRef.current = captionsDemand;
   }, [captionsDemand]);
-  const totalP = 1 + peerList.length;
-  const initial = (userName || 'Y').charAt(0).toUpperCase();
-  const userColor = avatarColor(userName || 'Y');
-  const spotlight = peerList.find(([id]) => id === spotlightId);
-  // Self-view background effects. Blur applies to the LIVE video via CSS
-  // filter (works today). Photo backgrounds can't replace a live camera feed
-  // without on-device segmentation, so they render behind the avatar whenever
-  // the camera is off (grid tile + solo "waiting" view).
-  const selfBgStyle = selectedBgImage !== 'none'
-    ? { backgroundImage: `url(${selectedBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-    : null;
 
+  // Tell everyone when someone else raises their hand.
+  const prevHandIdsRef = useRef(new Set());
+  useEffect(() => {
+    const ids = new Set(handQueue.map(h => h.socketId));
+    handQueue
+      .filter(h => !prevHandIdsRef.current.has(h.socketId) && h.socketId !== mySocketId)
+      .forEach(h => showToast(`✋ ${h.userName || 'Someone'} raised their hand`));
+    prevHandIdsRef.current = ids;
+  }, [handQueue, mySocketId]);
+  const totalP = 1 + peerList.length;
+  const initial = (userName || 'Y').trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  const settingsModal = showSettingsModal && <MeetingSettings initialTab={modalTab} preferences={preferences} onSave={savePreferences}
+    onClose={() => setShowSettingsModal(false)} stream={localStream} audioEnabled={!micMuted && !hostMuted} videoEnabled={!cameraOff}
+    devices={devices} selectedDevices={selectedDevices} switchDevice={switchDevice} name={userName}/>;
+  const retryConnection = () => socket?.connect();
   if (!admitted) {
     return (
-      <div style={{ position: 'fixed', inset: 0, background: "radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.12),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.08),transparent 55%),#0a0a0a", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Sora',sans-serif", color: '#f0e6d3', padding: 20 }}>
+      <div className="exmeet-waiting" data-meeting-theme={preferences.theme} style={{ position: 'fixed', inset: 0, background: "radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.12),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.08),transparent 55%),var(--meeting-bg)", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Instrument Sans',sans-serif", color: 'var(--meeting-text)', padding: 20 }}>
         <style>{`@keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}`}</style>
         <div style={{ maxWidth: 480, width: '100%', background: 'rgba(212,175,55,.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.12)', borderRadius: 24, padding: '40px 32px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,.5)' }}>
           <img src={etherxLogo} alt="EtherX" style={{ width: 140, marginBottom: 30 }} />
@@ -307,18 +323,20 @@ export default function VideoRoom({ roomCode, isHost }) {
             <>
               <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: '1px solid rgba(239,68,68,.2)' }}><span style={{ fontSize: 32 }}>🛑</span></div>
               <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12, color: '#fca5a5' }}>{lockedOut ? 'Room Locked' : 'Entry Denied'}</h2>
-              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.5, marginBottom: 28 }}>{lockedOut ? 'The host has locked this meeting. No new participants can join right now.' : 'The host has denied your request to join this meeting room.'}</p>
-              <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ width: '100%', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#b8860b,#e5c76b)', color: '#050505', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Return to Dashboard</button>
+              <p style={{ fontSize: 14, color: 'var(--meeting-muted)', lineHeight: 1.5, marginBottom: 28 }}>{lockedOut ? 'The host has locked this meeting. No new participants can join right now.' : 'The host has denied your request to join this meeting room.'}</p>
+              <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ width: '100%', padding: 14, borderRadius: 12, background: 'linear-gradient(135deg,#b8860b,#e5c76b)', color: '#1a1608', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>Return to Dashboard</button>
             </>
           ) : (
             <>
-              {localStream && (<div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: 16, overflow: 'hidden', background: '#0a0a0a', marginBottom: 24, border: '1px solid rgba(212,175,55,.15)' }}><video ref={el => { if (el) el.srcObject = localStream; }} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', bottom: 12, left: 12, fontSize: 11, background: 'rgba(0,0,0,.6)', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,.8)' }}>Self View Preview</div></div>)}
+              {localStream && (<div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: 16, overflow: 'hidden', background: 'var(--meeting-bg)', marginBottom: 24, border: '1px solid rgba(212,175,55,.15)' }}><video ref={el => { if (el) el.srcObject = localStream; }} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', bottom: 12, left: 12, fontSize: 11, background: 'rgba(0,0,0,.6)', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,.8)' }}>Self View Preview</div></div>)}
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 99, background: 'rgba(212,175,55,.1)', border: '1px solid rgba(212,175,55,.2)', color: '#e5c76b', fontSize: 12, fontWeight: 500, marginBottom: 20 }}>
                 <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#e5c76b', animation: 'wait-ping 1.5s infinite' }} /> Waiting Room Active
               </div>
-              <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Waiting to be Admitted...</h2>
-              <p style={{ fontSize: 14, color: '#a89878', lineHeight: 1.6, marginBottom: 10 }}>Hi, <strong>{userName}</strong>. The host will let you in shortly.</p>
-              <p style={{ fontSize: 12, color: '#a89878', fontStyle: 'italic' }}>Please keep this tab open and make sure your camera and microphone are ready.</p>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>{connectionError ? 'Connection needs attention' : socketReady ? 'Waiting to be admitted…' : 'Connecting…'}</h2>
+              <p style={{ fontSize: 14, color: 'var(--meeting-muted)', lineHeight: 1.6, marginBottom: 10 }}>Hi, <strong>{userName}</strong>. The host will let you in shortly.</p>
+              <p style={{ fontSize: 12, color: 'var(--meeting-muted)', fontStyle: 'italic' }}>{connectionError || 'You can join with your camera and microphone off.'}</p>
+              {mediaError && <p role="status" style={{fontSize:12,color:'#fca5a5'}}>{mediaError}</p>}
+              {connectionError && <button onClick={retryConnection}>Try again</button>}
             </>
           )}
         </div>
@@ -327,51 +345,19 @@ export default function VideoRoom({ roomCode, isHost }) {
   }
 
   return (
-    <div onMouseMove={resetToolbarTimer} onMouseEnter={resetToolbarTimer} style={{ position: 'fixed', inset: 0, background: "radial-gradient(1200px 700px at 12% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(900px 600px at 105% 15%,rgba(212,175,55,.07),transparent 55%),#0a0a0a", fontFamily: "'Sora',sans-serif", color: '#f0e6d3', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="exmeet-room" data-meeting-theme={preferences.theme} data-panel-open={chatOpen || showPeople}>
       {hostMuted && (
         <div style={{ position: 'fixed', top: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 260, padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(239,68,68,.35)', background: 'rgba(70,15,20,.92)', color: '#fecaca', fontSize: 12, fontWeight: 600, boxShadow: '0 12px 30px rgba(0,0,0,.35)' }}>
           The host muted your microphone.
         </div>
       )}
-      <style>{`
-        :root {
-          --gold:       #d4af37;
-          --gold-soft:  #e5c76b;
-          --gold-deep:  #b8860b;
-          --text:       #f0e6d3;
-          --text-muted: #a89878;
-          --text-soft:  #c9bda2;
-        }
-        @keyframes speak{0%,100%{box-shadow:0 0 0 0 rgba(212,175,55,.5);}50%{box-shadow:0 0 0 10px rgba(212,175,55,0);}}
-        @keyframes floatReaction{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-120px);opacity:0}}
-        @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg)}100%{transform:translateY(110vh) rotate(720deg)}}
-        @keyframes chainPulse{0%,100%{opacity:1}50%{opacity:.3}}
-        @keyframes slideDown{0%{transform:translate(-50%,-20px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}
-        @keyframes fadeIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
-        @keyframes wait-ping{0%,100%{transform:scale(1);opacity:1;}70%,100%{transform:scale(2.5);opacity:0;}}
-        .toolbar-wrap{transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
-        @keyframes goldShimmer{0%{background-position:0% center}100%{background-position:200% center}}
-        .poll-option-btn:hover{background:rgba(212,175,55,.14) !important;}
-        ::selection{background:rgba(212,175,55,.28);color:#fff8e8;}
-        ::-webkit-scrollbar{width:8px;}
-        ::-webkit-scrollbar-track{background:transparent;}
-        ::-webkit-scrollbar-thumb{background:#2d2a24;border-radius:5px;border:2px solid #0a0a0a;}
-        ::-webkit-scrollbar-thumb:hover{background:rgba(212,175,55,.35);}
-        @media (max-width: 768px) {
-          .room-top-bar { padding: 8px 12px !important; flex-wrap: wrap !important; }
-          .room-top-logo img { height: 44px !important; }
-          .room-title-pill { position: static !important; transform: none !important; width: 100% !important; justify-content: center !important; margin-top: 4px !important; font-size: 11px !important; padding: 6px 12px !important; order: 3 !important; }
-          .room-side-panel { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important; z-index: 500 !important; }
-          .toolbar-wrap { bottom: 10px !important; padding: 0 8px !important; width: 100% !important; }
-          .toolbar-wrap > div { max-width: 100% !important; overflow-x: auto !important; padding: 6px 8px !important; border-radius: 16px !important; }
-        }
-      `}</style>
+
 
       {canHost && joinRequests.length > 0 && (
         <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, width: '100%' }}>
           {joinRequests.map(req => (
             <div key={req.socketId} style={{ background: 'rgba(5,5,5,.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600 }}>Join Request</h4><p style={{ margin: 0, fontSize: 12, color: '#a89878' }}><strong>{req.userName}</strong> wants to join.</p></div>
+              <div><h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600 }}>Join Request</h4><p style={{ margin: 0, fontSize: 12, color: 'var(--meeting-muted)' }}><strong>{req.userName}</strong> wants to join.</p></div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => admitUser(req.socketId)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#22c55e', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Admit</button>
                 <button onClick={() => denyUser(req.socketId)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Deny</button>
@@ -381,23 +367,24 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
-      {reactions?.map(r => (<div key={r.id} style={{ position: 'fixed', bottom: 120, left: `${30 + (r.id % 5) * 10}%`, fontSize: 32, animation: 'floatReaction 3s ease-out forwards', pointerEvents: 'none', zIndex: 45 }}>{r.emoji}</div>))}
+      {reactions?.map(r => (<div key={r.id} style={{ position: 'fixed', bottom: 120, left: `${30 + (r.id % 5) * 10}%`, fontSize: 32, animation: 'exmeet-floatReaction 3s ease-out forwards', pointerEvents: 'none', zIndex: 45 }}>{r.emoji}</div>))}
 
-      {/* Shared media stage — FULLSCREEN layout covering the entire room */}
+      {/* Shared media keeps the meeting controls available. */}
       {sharedMediaUrl && !mediaStageMinimized && (() => {
         const media = classifyMedia(sharedMediaUrl);
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 210, background: '#000', display: 'flex', flexDirection: 'column' }}>
+          <div className="exmeet-shared-media">
             {/* Slim top bar */}
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(212,175,55,.12)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <span style={{ fontSize: 11, background: 'rgba(212,175,55,.15)', border: '1px solid rgba(212,175,55,.3)', color: '#e5c76b', borderRadius: 6, padding: '2px 8px', fontWeight: 600, flexShrink: 0 }}>LIVE</span>
-                <span style={{ fontSize: 12, color: '#a89878', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sharedMediaUrl}</span>
+                <span style={{ fontSize: 12, color: 'var(--meeting-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sharedMediaUrl}</span>
               </div>
+              {canHost && <button className="meeting-secondary" style={{ minHeight: 32, padding: '5px 12px', marginLeft: 'auto' }} onClick={() => shareMedia(null)}>Stop shared media</button>}
               <button
                 onClick={() => setMediaStageMinimized(true)}
                 title="Minimize"
-                style={{ flexShrink: 0, marginLeft: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#f0e6d3', cursor: 'pointer', fontSize: 13, borderRadius: 8, padding: '5px 12px', fontFamily: "'Sora',sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}
+                style={{ flexShrink: 0, marginLeft: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: 'var(--meeting-text)', cursor: 'pointer', fontSize: 13, borderRadius: 8, padding: '5px 12px', fontFamily: "'Instrument Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="2" rx="1" fill="currentColor" /></svg>
                 Minimize
@@ -430,8 +417,8 @@ export default function VideoRoom({ roomCode, isHost }) {
               {media.type === 'link' && (
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <div style={{ fontSize: 48, marginBottom: 20 }}>🔗</div>
-                  <p style={{ color: '#a89878', fontSize: 14, margin: '0 0 16px' }}>This link can't be embedded — open it directly:</p>
-                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#d4af37', fontSize: 14, textDecoration: 'underline', wordBreak: 'break-all' }}>{sharedMediaUrl}</a>
+                  <p style={{ color: 'var(--meeting-muted)', fontSize: 14, margin: '0 0 16px' }}>This link can't be embedded — open it directly:</p>
+                  <a href={sharedMediaUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--meeting-gold)', fontSize: 14, textDecoration: 'underline', wordBreak: 'break-all' }}>{sharedMediaUrl}</a>
                 </div>
               )}
             </div>
@@ -441,38 +428,25 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {/* Minimized pill — click to bring the shared media stage back */}
       {sharedMediaUrl && mediaStageMinimized && (
-        <button onClick={() => setMediaStageMinimized(false)} style={{ position: 'fixed', top: 90, right: 24, zIndex: 210, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(5,5,5,.95)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 999, padding: '8px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', cursor: 'pointer', color: '#d4af37', fontSize: 12, fontFamily: "'Sora',sans-serif" }}>
+        <button onClick={() => setMediaStageMinimized(false)} style={{ position: 'fixed', top: 90, right: 24, zIndex: 210, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(5,5,5,.95)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 999, padding: '8px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', cursor: 'pointer', color: 'var(--meeting-gold)', fontSize: 12, fontFamily: "'Instrument Sans',sans-serif" }}>
           ▶ Shared media
         </button>
       )}
 
       {/* Screen-share status: presenter banner (with stop button), viewer label, "already sharing" notice */}
-      {(isScreenSharing || screenSharerId || screenShareNotice) && (
-        <div style={{ position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', zIndex: 260, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 999, background: 'rgba(5,5,5,.92)', backdropFilter: 'blur(14px)', border: '1px solid rgba(212,175,55,.4)', boxShadow: '0 12px 32px -12px rgba(0,0,0,.7)', fontFamily: "'Sora',sans-serif", fontSize: 13, color: '#f0e6d3' }}>
-          {screenShareNotice ? (
-            <span>{screenShareNotice}</span>
-          ) : isScreenSharing ? (
-            <>
-              <span>🖥️ You're sharing your screen</span>
-              {canHost && <button onClick={toggleScreenShare} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: '#d4af37', color: '#050505', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Stop sharing</button>}
-            </>
-          ) : (
-            <span>🖥️ {peers[screenSharerId]?.userName || 'Someone'} is presenting</span>
-          )}
-        </div>
-      )}
+      {screenShareNotice && <div className="exmeet-toast" role="status">{screenShareNotice}</div>}
 
       {/* Poll popups — shown to every participant except the creator the moment a poll is launched (see useWebRTC's pollNotifications). */}
       {pollNotifications?.length > 0 && (
-        <div style={{ position: 'fixed', top: 90, right: 24, zIndex: 260, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+        <div className="exmeet-poll-notifications">
           {pollNotifications.map(poll => (
-            <div key={poll.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out', fontFamily: "'Sora',sans-serif" }}>
+            <div key={poll.id} style={{ pointerEvents: 'auto', width: 300, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'exmeet-fadeIn .2s ease-out', fontFamily: "'Instrument Sans',sans-serif" }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 11, color: '#e5c76b', fontWeight: 700 }}>📊 {poll.createdBy} started a poll</span>
-                <button onClick={() => dismissPollNotification(poll.id)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+                <button onClick={() => dismissPollNotification(poll.id)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
               </div>
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: '8px 0 10px' }}>{poll.question}</p>
-              <button onClick={() => { setPanelTab('polls'); setChatOpen(true); dismissPollNotification(poll.id); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Vote now</button>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--meeting-text)', margin: '8px 0 10px' }}>{poll.question}</p>
+              <button onClick={() => { setShowPeople(false); setPanelTab('polls'); setChatOpen(true); dismissPollNotification(poll.id); }} style={{ width: '100%', padding: 9, borderRadius: 8, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>Vote now</button>
             </div>
           ))}
         </div>
@@ -485,10 +459,10 @@ export default function VideoRoom({ roomCode, isHost }) {
             const media = classifyMedia(file.name);
             const fmtSize = file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(file.size / 1024)} KB`;
             return (
-              <div key={file.id} style={{ pointerEvents: 'auto', width: 280, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'fadeIn .2s ease-out' }}>
+              <div key={file.id} style={{ pointerEvents: 'auto', width: 280, background: 'rgba(5,5,5,.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', animation: 'exmeet-fadeIn .2s ease-out' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 0' }}>
-                  <span style={{ fontSize: 11, color: '#a89878', fontWeight: 600 }}>{file.sharedBy} shared a file</span>
-                  <button onClick={() => dismissFileNotification(file.id)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+                  <span style={{ fontSize: 11, color: 'var(--meeting-muted)', fontWeight: 600 }}>{file.sharedBy} shared a file</span>
+                  <button onClick={() => dismissFileNotification(file.id)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
                 </div>
                 {media.type === 'image' && (
                   <img
@@ -505,12 +479,12 @@ export default function VideoRoom({ roomCode, isHost }) {
                   <audio src={file.url} controls style={{ width: '100%', display: 'block', margin: '8px 0 0', padding: '0 10px', boxSizing: 'border-box' }} />
                 )}
                 <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: '#d4af37', flexShrink: 0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--meeting-gold)', flexShrink: 0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#f0e6d3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 10.5, color: '#a89878' }}>{fmtSize}</p>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--meeting-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 10.5, color: 'var(--meeting-muted)' }}>{fmtSize}</p>
                   </div>
-                  <a href={file.url} download={file.name} style={{ display: 'flex', padding: '5px 9px', borderRadius: 7, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: '#d4af37', textDecoration: 'none', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                  <a href={file.url} download={file.name} style={{ display: 'flex', padding: '5px 9px', borderRadius: 7, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: 'var(--meeting-gold)', textDecoration: 'none', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
                     Save
                   </a>
                 </div>
@@ -520,44 +494,44 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
 
-      {confettiActive && (<div style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none', overflow: 'hidden' }}>{CONFETTI.map((p, i) => (<div key={i} style={{ position: 'absolute', left: `${p.x}%`, top: '-20px', width: p.w, height: p.h, background: p.color, borderRadius: p.round ? '50%' : 2, transform: `rotate(${p.rot}deg)`, animation: `confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
+      {confettiActive && (<div style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none', overflow: 'hidden' }}>{CONFETTI.map((p, i) => (<div key={i} style={{ position: 'absolute', left: `${p.x}%`, top: '-20px', width: p.w, height: p.h, background: p.color, borderRadius: p.round ? '50%' : 2, transform: `rotate(${p.rot}deg)`, animation: `exmeet-confettiFall ${p.d}s ease-in ${p.delay}s both` }} />))}</div>)}
 
-      {inviteOpen && canHost && (
+      {inviteOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-          <div style={{ width: 380, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)', animation: 'fadeIn .18s ease-out' }}>
+          <div ref={inviteRef} role="dialog" aria-modal="true" aria-label="Invite more people" style={{ width: 380, background: 'var(--meeting-bg)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)', animation: 'exmeet-fadeIn .18s ease-out' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <span style={{ fontSize: 17, fontWeight: 700 }}>Invite more people</span>
-              <button onClick={() => setInviteOpen(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18 }}>✕</button>
+              <button aria-label="Close invitation" onClick={() => setInviteOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 18 }}>✕</button>
             </div>
-            <div style={{ fontSize: 12.5, color: '#a89878', marginBottom: 8 }}>Share the meeting link to invite others</div>
-            <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 18, fontFamily: "'Sora',sans-serif" }}>
+            <div style={{ fontSize: 12.5, color: 'var(--meeting-muted)', marginBottom: 8 }}>Share the meeting link to invite others</div>
+            <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 18, fontFamily: "'Instrument Sans',sans-serif" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg>
               {copied ? 'Link Copied!' : 'Copy meeting link'}
             </button>
-            <div style={{ fontSize: 12.5, color: '#a89878', marginBottom: 10 }}>Share meeting invitation</div>
+            <div style={{ fontSize: 12.5, color: 'var(--meeting-muted)', marginBottom: 10 }}>Share meeting invitation</div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
-              {['Copy'].map((l, i) => (<button key={i} onClick={i === 0 ? handleCopyLink : undefined} title={l} style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(212,175,55,.12)', border: 'none', color: '#f0e6d3', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: i > 1 ? 700 : 400, fontSize: i > 1 ? 15 : 13 }}>{i === 0 ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg> : l}</button>))}
+              {['Copy'].map((l, i) => (<button key={i} onClick={i === 0 ? handleCopyLink : undefined} title={l} style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(212,175,55,.12)', border: 'none', color: 'var(--meeting-text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: i > 1 ? 700 : 400, fontSize: i > 1 ? 15 : 13 }}>{i === 0 ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg> : l}</button>))}
             </div>
             <div style={{ borderTop: '1px solid rgba(212,175,55,.15)', paddingTop: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <div>
                 <div style={{ fontSize: 12.5 }}><strong>Room Code:</strong> {roomCode}</div>
-                <div style={{ fontSize: 12.5, marginTop: 4, fontFamily: "'IBM Plex Mono',monospace", color: '#a89878' }}>{roomCode}</div>
+                <div style={{ fontSize: 12.5, marginTop: 4, fontFamily: "'JetBrains Mono',monospace", color: 'var(--meeting-muted)' }}>{roomCode}</div>
               </div>
-              <button onClick={handleCopyCode} title="Copy room code" style={{ background: 'none', border: 'none', color: codeCopied ? '#d4af37' : '#a89878', cursor: 'pointer', flexShrink: 0 }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg></button>
+              <button onClick={handleCopyCode} title="Copy room code" style={{ background: 'none', border: 'none', color: codeCopied ? 'var(--meeting-gold)' : 'var(--meeting-muted)', cursor: 'pointer', flexShrink: 0 }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg></button>
             </div>
           </div>
         </div>
       )}
 
       {raised && !handToastDismissed && (
-        <div style={{ position: 'absolute', bottom: 96, left: 28, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.15)', borderRadius: 12, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.6)', zIndex: 50 }}>
+        <div style={{ position: 'absolute', bottom: 96, left: 28, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--meeting-bg)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 12, padding: '12px 14px', boxShadow: '0 20px 50px -20px rgba(0,0,0,.6)', zIndex: 50 }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#e5c76b', flexShrink: 0 }}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M12 8v.01M12 11v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
-          <span style={{ fontSize: 13 }}>You are the next in line to speak</span>
-          <button onClick={() => setHandToastDismissed(true)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 14, marginLeft: 6 }}>✕</button>
+          <span style={{ fontSize: 13 }}>{myHandPos === 1 ? 'You are next in line to speak' : `You are #${myHandPos} in line to speak`}</span>
+          <button onClick={() => setHandToastDismissed(true)} aria-label="Dismiss hand notification" style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 14, marginLeft: 6 }}>✕</button>
         </div>
       )}
 
-      {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} />}
+      {showNotes && <MeetingNotesModal isOpen={showNotes} roomCode={roomCode} onDone={handleNotesDone} onClose={()=>setShowNotes(false)}/>}
 
       {whiteboardOpen && (
         <Whiteboard
@@ -572,22 +546,22 @@ export default function VideoRoom({ roomCode, isHost }) {
 
       {feedbackOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400 }}>
-          <div style={{ width: 380, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)' }}>
+          <div className="exmeet-dialog" ref={feedbackRef} role="dialog" aria-modal="true" aria-label="Leave feedback" style={{ width: 380, background: 'var(--meeting-bg)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 16, padding: 22, boxShadow: '0 30px 70px -20px rgba(0,0,0,.7)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <span style={{ fontSize: 16, fontWeight: 700 }}>Leave feedback</span>
-              <button onClick={() => setFeedbackOpen(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18 }}>✕</button>
+              <button aria-label="Close feedback" onClick={() => setFeedbackOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 18 }}>✕</button>
             </div>
             <textarea
               value={feedbackText}
               onChange={e => setFeedbackText(e.target.value)}
               placeholder="What's working, what isn't — tell us."
               rows={5}
-              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(0,0,0,.5)', color: '#f0e6d3', border: '1px solid rgba(212,175,55,.15)', borderRadius: 10, padding: 12, fontSize: 13, outline: 'none', fontFamily: "'Sora',sans-serif", resize: 'vertical', marginBottom: 14 }}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(0,0,0,.5)', color: 'var(--meeting-text)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 10, padding: 12, fontSize: 13, outline: 'none', fontFamily: "'Instrument Sans',sans-serif", resize: 'vertical', marginBottom: 14 }}
             />
             <button
               onClick={handleFeedbackSubmit}
               disabled={!feedbackText.trim() || feedbackSubmitting}
-              style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif", opacity: (!feedbackText.trim() || feedbackSubmitting) ? 0.5 : 1 }}
+              style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif", opacity: (!feedbackText.trim() || feedbackSubmitting) ? 0.5 : 1 }}
             >
               {feedbackSubmitting ? 'Sending…' : 'Send feedback'}
             </button>
@@ -602,140 +576,46 @@ export default function VideoRoom({ roomCode, isHost }) {
         >
           <button
             onClick={() => setPreviewImageUrl(null)}
-            style={{ position: 'absolute', top: 20, right: 24, background: 'none', border: 'none', color: '#f0e6d3', cursor: 'pointer', fontSize: 22 }}
+            style={{ position: 'absolute', top: 20, right: 24, background: 'none', border: 'none', color: 'var(--meeting-text)', cursor: 'pointer', fontSize: 22 }}
           >✕</button>
           <img src={previewImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} onClick={e => e.stopPropagation()} />
         </div>
       )}
 
-      {showSettingsModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 740, height: 500, background: '#050505', border: '1px solid rgba(212,175,55,.12)', borderRadius: 16, display: 'grid', gridTemplateColumns: '220px 1fr', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.8)' }}>
-            <div style={{ borderRight: '1px solid rgba(212,175,55,.07)', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 8, background: '#050505' }}>
-              <h2 style={{ fontSize: 20, fontWeight: 600, color: '#f0e6d3', margin: '0 0 20px 8px' }}>Settings</h2>
-              {[{ id: 'audio', label: 'Audio' }, { id: 'video', label: 'Video' }, { id: 'backgrounds', label: 'Virtual backgrounds' }, { id: 'shortcuts', label: 'Shortcuts' }, { id: 'general', label: 'General' }].map(tab => (
-                <button key={tab.id} onClick={() => setModalTab(tab.id)} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left', background: modalTab === tab.id ? 'rgba(212,175,55,.12)' : 'transparent', color: modalTab === tab.id ? '#f0e6d3' : '#a89878', fontWeight: modalTab === tab.id ? 600 : 500, fontSize: 13.5, fontFamily: "'Sora',sans-serif", transition: 'all .2s' }}>{tab.label}</button>
-              ))}
-            </div>
-            <div style={{ padding: '28px 36px', display: 'flex', flexDirection: 'column', background: '#050505', position: 'relative' }}>
-              <button onClick={() => setShowSettingsModal(false)} style={{ position: 'absolute', top: 24, right: 28, background: 'none', border: 'none', color: '#a89878', cursor: 'pointer' }}><X size={20} /></button>
-              <div style={{ flex: 1, overflowY: 'auto', margin: '40px 0 16px' }}>
-                {modalTab === 'audio' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                    <div>
-                      <label style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', display: 'block', marginBottom: 8 }}>Microphone</label>
-                      <select value={selectedDevices?.audio || ''} onChange={e => switchDevice?.('audio', e.target.value)} style={{ width: '100%', background: 'rgba(0,0,0,.5)', color: '#f0e6d3', border: '1px solid rgba(212,175,55,.12)', borderRadius: 8, padding: '12px 14px', fontSize: 13.5, outline: 'none', appearance: 'none', fontFamily: "'Sora',sans-serif" }}>
-                        {devices?.microphones?.map(m => <option key={m.deviceId} value={m.deviceId} style={{ background: '#0a0a0a' }}>{m.label || 'Microphone'}</option>)}
-                      </select>
-                      <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>{Array.from({ length: 12 }).map((_, i) => <div key={i} style={{ width: 20, height: 4, borderRadius: 1, background: i < activeDashes ? '#d4af37' : 'rgba(212,175,55,.2)', transition: 'background .1s' }} />)}</div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', display: 'block', marginBottom: 8 }}>Audio output</label>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <select style={{ flex: 1, background: 'rgba(0,0,0,.5)', color: '#f0e6d3', border: '1px solid rgba(212,175,55,.12)', borderRadius: 8, padding: '12px 14px', fontSize: 13.5, outline: 'none', fontFamily: "'Sora',sans-serif" }}><option style={{ background: '#0a0a0a' }}>Default Speaker</option></select>
-                        <button onClick={() => { setIsPlayingTest(true); playTestSound(); setTimeout(() => setIsPlayingTest(false), 800); }} style={{ background: '#d4af37', border: 'none', color: '#050505', padding: '12px 24px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{isPlayingTest ? 'Playing…' : 'Test'}</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {modalTab === 'video' && (
-                  <div>
-                    <label style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', display: 'block', marginBottom: 8 }}>Camera</label>
-                    <select value={selectedDevices?.video || ''} onChange={e => switchDevice?.('video', e.target.value)} style={{ width: '100%', background: 'rgba(0,0,0,.5)', color: '#f0e6d3', border: '1px solid rgba(212,175,55,.12)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', fontFamily: "'Sora',sans-serif" }}>
-                      {devices?.cameras?.map(c => <option key={c.deviceId} value={c.deviceId} style={{ background: '#0a0a0a' }}>{c.label || 'Camera'}</option>)}
-                    </select>
-                  </div>
-                )}
-                {modalTab === 'backgrounds' && (
-                  <div>
-                    <div style={{ position: 'relative', width: 280, height: 158, background: '#0a0a0a', borderRadius: 10, overflow: 'hidden', margin: '0 auto 20px', border: '1px solid rgba(212,175,55,.12)' }}>
-                      {localStream && !cameraOff ? <VideoCanvasProcessor stream={localStream} activeFilter={activeFilter} selectedBgImage={selectedBgImage} mirror={true} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505', ...(selfBgStyle || {}) }}><div style={{ width: 64, height: 64, borderRadius: '50%', background: `linear-gradient(160deg,${userColor},${userColor}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: '#f0e6d3' }}>{initial}</div></div>}
-                    </div>
-                    <button onClick={() => { const url = window.prompt('Paste an image URL to use as your background:'); if (url && url.trim()) { setActiveFilter('none'); setSelectedBgImage(url.trim()); } }} style={{ background: 'none', border: 'none', color: '#b8860b', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0, marginBottom: 16 }}><Plus size={16} /><span>Add background</span></button>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
-                      {BG_OPTIONS.map(opt => {
-                        const isSel = (opt.type === 'filter' && activeFilter === opt.id && selectedBgImage === 'none') || (opt.type === 'image' && selectedBgImage === opt.url);
-                        return (<button key={opt.id} onClick={() => { if (opt.type === 'filter') { setActiveFilter(opt.id); setSelectedBgImage('none'); } else { setActiveFilter('none'); setSelectedBgImage(opt.url); } }} style={{ aspectRatio: '16/10', borderRadius: 6, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${isSel ? '#d4af37' : 'rgba(212,175,55,.12)'}`, background: opt.type === 'image' ? `url(${opt.url}) center/cover` : '#0a0a0a', position: 'relative', padding: 0 }} title={opt.label}>{opt.type === 'filter' && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#c9bda2', fontWeight: 600 }}>{opt.label}</div>}</button>);
-                      })}
-                    </div>
-                  </div>
-                )}
-                {modalTab === 'shortcuts' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {[{ key: 'M', desc: 'Mute / unmute microphone' }, { key: 'V', desc: 'Turn camera on / off' }, { key: 'Space', desc: 'Push to talk' }, { key: '⌘ E', desc: 'End or leave meeting' }].map((s, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(212,175,55,.05)' }}>
-                        <span style={{ color: '#c9bda2', fontSize: 13 }}>{s.desc}</span>
-                        <kbd style={{ background: 'rgba(212,175,55,.07)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 4, padding: '3px 8px', fontSize: 11, color: '#d4af37', fontFamily: 'monospace' }}>{s.key}</kbd>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {modalTab === 'general' && (
-                  <div>
-                    <label style={{ fontSize: 13, fontWeight: 500, color: '#f0e6d3', display: 'block', marginBottom: 8 }}>Language</label>
-                    <select style={{ width: '100%', background: 'rgba(0,0,0,.5)', color: '#f0e6d3', border: '1px solid rgba(212,175,55,.12)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', fontFamily: "'Sora',sans-serif" }}><option style={{ background: '#0a0a0a' }}>English (United States)</option></select>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: '1px solid rgba(212,175,55,.07)', paddingTop: 20 }}>
-                <button onClick={() => setShowSettingsModal(false)} style={{ background: 'none', border: 'none', color: '#c9bda2', padding: '10px 20px', borderRadius: 8, cursor: 'pointer', fontSize: 13.5, fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Cancel</button>
-                <button onClick={() => setShowSettingsModal(false)} style={{ background: '#b8860b', border: 'none', color: '#0a0a0a', padding: '10px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 13.5, fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>OK</button>
-              </div>
-            </div>
+      {settingsModal}
+      {sharingMediaKind && <ShareMediaDialog kind={sharingMediaKind} onClose={() => setSharingMediaKind(null)} onShare={shareMedia}/>}
+
+      <header className="exmeet-header">
+        <div className="exmeet-brand"><span>ETHERX</span><span>Meet</span></div>
+        <div className="exmeet-header-center">
+          <div className="exmeet-room-pill">
+            <span className="exmeet-room-title">{fmtTitle(roomCode)}</span><span className="exmeet-pill-divider exmeet-room-title"/>
+            <button onClick={handleCopyCode} title="Copy room code" aria-label="Copy room code"><span>{codeCopied ? 'Copied!' : roomCode}</span>{codeCopied ? <Check size={13}/> : <Copy size={13}/>}</button>
+            <span className="exmeet-pill-divider"/><span className="exmeet-clock">{fmtTime(elapsed)}</span>
           </div>
+          {isRecording && <span className="exmeet-recording"><i/> Recording</span>}
+          {roomLocked && <span className="exmeet-lock" title="Room is locked"><Lock size={12}/><span>Locked</span></span>}
         </div>
-      )}
-
-      {/* TOP BAR — floats over video, zero height cost */}
-      <div className="room-top-bar" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 20px', background: 'linear-gradient(180deg,rgba(10,10,10,.85) 0%,transparent 100%)', pointerEvents: 'none', overflow: 'hidden' }}>
-        <div className="room-top-logo" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, pointerEvents: 'auto' }}>
-          <img
-            src={etherxLogo}
-            alt="EtherX Meet"
-            style={{
-              height: 65,
-              width: 'auto',
-              objectFit: 'contain',
-              display: 'block',
-              filter: 'drop-shadow(0 3px 10px rgba(0,0,0,0.95)) brightness(1.2)'
-            }}
-          />
-        </div>
-        <div className="room-title-pill" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(212,175,55,.07)', padding: '6px 16px', borderRadius: 24, whiteSpace: 'nowrap', border: '1px solid rgba(212,175,55,.15)', backdropFilter: 'blur(12px)', pointerEvents: 'auto', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtTitle(roomCode)}</span>
-          <span style={{ width: 1, height: 14, background: 'rgba(212,175,55,.22)', flexShrink: 0 }} />
-          <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11.5, color: '#c9bda2', flexShrink: 0 }}>{roomCode}</span>
-          <button onClick={handleCopyCode} title="Copy room code" style={{ background: 'none', border: 'none', color: codeCopied ? '#d4af37' : 'rgba(255,255,255,.5)', cursor: 'pointer', display: 'flex', padding: 2, flexShrink: 0 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.8" /></svg>
-          </button>
-          <span style={{ width: 1, height: 14, background: 'rgba(212,175,55,.22)', flexShrink: 0 }} />
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'IBM Plex Mono',monospace", fontSize: 11.5, color: '#c9bda2', flexShrink: 0 }}>
-            {isRecording && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', animation: 'chainPulse 1.5s infinite', display: 'inline-block' }} />}
-            {isRecording && <span style={{ color: '#f87171', fontWeight: 600 }}>Recording</span>}
-            {fmtTime(elapsed)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(212,175,55,.05)', padding: '5px 12px 5px 5px', borderRadius: 22, flexShrink: 0, pointerEvents: 'auto' }}>
-          <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: `linear-gradient(160deg,${userColor},${userColor}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{initial}</div>
-            {raised && (<div style={{ position: 'absolute', top: -4, right: -5, width: 14, height: 14, borderRadius: '50%', background: '#d4af37', border: '2px solid #0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="7" height="7" viewBox="0 0 24 24" fill="none" style={{ color: '#050505' }}><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>)}
+        <div className="exmeet-header-right">
+          <div className="exmeet-network" title={!socketReady ? 'Connecting to meeting' : `${networkQuality} connection`} data-quality={socketReady ? networkQuality : 'offline'}>
+            <div className="exmeet-network-bars">{[5, 8, 11, 14].map((height, index) => <i key={height} style={{ height }} data-lit={socketReady && index < (networkQuality === 'good' ? 4 : networkQuality === 'fair' ? 3 : 1)}/>)}</div>
+            <span>{!socketReady ? 'Connecting…' : networkQuality === 'good' ? 'Good' : networkQuality === 'fair' ? 'Fair' : 'Poor'}</span>
           </div>
-          {micMuted && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171', flexShrink: 0 }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#c9bda2' }}>{userName || 'You'}</span>
+          <button className="exmeet-profile" title="Profile settings" onClick={() => { setModalTab('profile'); setShowSettingsModal(true); }}><span className="exmeet-profile-avatar">{initial}</span><span>{userName || 'You'}</span></button>
         </div>
-      </div>
+      </header>
 
-      {/* MAIN BODY — fills full screen, header overlays on top */}
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', gap: 0 }}>
+      {!cameraOff && localStream && (activeFilter !== 'none' || selectedBgImage !== 'none') && <div style={{position:'fixed',left:-100,top:-100,width:2,height:2,overflow:'hidden'}} aria-hidden="true"><VideoCanvasProcessor stream={localStream} activeFilter={activeFilter} selectedBgImage={selectedBgImage} mirror={false} onOutputStream={receiveProcessedStream}/></div>}
+      {mediaError && <div role="status" style={{position:'absolute',top:90,left:'50%',transform:'translateX(-50%)',zIndex:200,maxWidth:'90%',padding:12,background:'#241518',border:'1px solid #693c44',borderRadius:10,fontSize:12}}>{mediaError}</div>}
+      {/* Stage and shared tools stay between header and controls. */}
+      <div className="exmeet-body">
 
-        {/* LEFT CHAT PANEL */}
+        {/* Shared tools panel sits to the right of the stage. */}
         {chatOpen && (
-          <div className="room-side-panel" style={{ width: 320, flexShrink: 0, background: '#050505', border: 'none', borderRight: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
+          <div className="room-side-panel exmeet-side-panel" style={{ width: 320, flexShrink: 0, background: 'var(--meeting-panel)', border: 'none', borderRight: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'exmeet-fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 10px' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{panelTab === 'chat' ? 'Chat' : panelTab === 'polls' ? 'Polls' : panelTab === 'agenda' ? 'Agenda' : 'Files'}</span>
-              <button onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
+              <button aria-label="Close meeting panel" onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 14px 12px', borderBottom: '1px solid rgba(212,175,55,.12)' }}>
               {[
@@ -744,13 +624,13 @@ export default function VideoRoom({ roomCode, isHost }) {
                 { id: 'files', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, title: 'Files' },
                 { id: 'agenda', node: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, title: 'Agenda' },
               ].map(t => (
-                <button key={t.id} onClick={() => setPanelTab(t.id)} title={t.title} style={{ width: 38, height: 34, borderRadius: 9, border: 'none', background: panelTab === t.id ? 'rgba(212,175,55,.22)' : 'transparent', color: panelTab === t.id ? '#e5c76b' : 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .15s' }}>{t.node}</button>
+                <button key={t.id} onClick={() => setPanelTab(t.id)} title={t.title} aria-label={t.title} aria-pressed={panelTab === t.id} style={{ width: 38, height: 34, borderRadius: 9, border: 'none', background: panelTab === t.id ? 'rgba(212,175,55,.22)' : 'transparent', color: panelTab === t.id ? '#e5c76b' : 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .15s' }}>{t.node}</button>
               ))}
             </div>
 
             {panelTab === 'chat' && (
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <VerifiedChat roomCode={roomCode} userName={userName} embedded={true} />
+                <VerifiedChat roomCode={roomCode} userName={userName} embedded={true} socket={socket}/>
               </div>
             )}
 
@@ -761,45 +641,45 @@ export default function VideoRoom({ roomCode, isHost }) {
                 {pollView === 'create' && (
                   <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <button onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>New poll</span>
+                      <button onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--meeting-text)' }}>New poll</span>
                     </div>
 
                     <div>
-                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Question</label>
+                      <label style={{ fontSize: 11, color: 'var(--meeting-muted)', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Question</label>
                       <textarea
                         value={pollQuestion}
                         onChange={e => setPollQuestion(e.target.value)}
                         placeholder="Ask the room a question…"
                         rows={3}
-                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: "'Sora',sans-serif" }}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(212,175,55,.2)', background: 'rgba(212,175,55,.06)', color: 'var(--meeting-text)', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: "'Instrument Sans',sans-serif" }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ fontSize: 11, color: '#a89878', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Options</label>
+                      <label style={{ fontSize: 11, color: 'var(--meeting-muted)', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Options</label>
                       {pollOptions.map((opt, i) => (
                         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                           <input
                             value={opt}
                             onChange={e => { const a = [...pollOptions]; a[i] = e.target.value; setPollOptions(a); }}
                             placeholder={`Option ${i + 1}`}
-                            style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'rgba(212,175,55,.06)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif" }}
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'rgba(212,175,55,.06)', color: 'var(--meeting-text)', fontSize: 12.5, outline: 'none', fontFamily: "'Instrument Sans',sans-serif" }}
                           />
                           {pollOptions.length > 2 && (
-                            <button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                            <button onClick={() => setPollOptions(o => o.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
                           )}
                         </div>
                       ))}
                       {pollOptions.length < 6 && (
-                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px dashed rgba(212,175,55,.2)', background: 'none', color: '#a89878', fontSize: 12, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Add option</button>
+                        <button onClick={() => setPollOptions(o => [...o, ''])} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px dashed rgba(212,175,55,.2)', background: 'none', color: 'var(--meeting-muted)', fontSize: 12, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>+ Add option</button>
                       )}
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                       <button
                         onClick={() => { setPollView('list'); setPollQuestion(''); setPollOptions(['', '']); }}
-                        style={{ flex: 1, padding: 10, borderRadius: 9, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: 'var(--meeting-muted)', fontSize: 13, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}
                       >Cancel</button>
                       <button
                         onClick={() => {
@@ -812,7 +692,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                           setPollView('list');
                         }}
                         disabled={!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2}
-                        style={{ flex: 1, padding: 10, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora',sans-serif", opacity: (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) ? 0.5 : 1 }}
+                        style={{ flex: 1, padding: 10, borderRadius: 9, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif", opacity: (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) ? 0.5 : 1 }}
                       >Launch poll</button>
                     </div>
                   </div>
@@ -826,12 +706,12 @@ export default function VideoRoom({ roomCode, isHost }) {
                   return (
                     <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <button onClick={() => setPollView('list')} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#f0e6d3' }}>Poll results</span>
-                        {!poll.active && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#a89878', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 99, padding: '2px 8px' }}>CLOSED</span>}
+                        <button onClick={() => setPollView('list')} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>←</button>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--meeting-text)' }}>Poll results</span>
+                        {!poll.active && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: 'var(--meeting-muted)', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 99, padding: '2px 8px' }}>CLOSED</span>}
                       </div>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#f0e6d3', margin: 0 }}>{poll.question}</p>
-                      <p style={{ fontSize: 11, color: '#a89878', margin: 0 }}>{total} vote{total !== 1 ? 's' : ''}</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--meeting-text)', margin: 0 }}>{poll.question}</p>
+                      <p style={{ fontSize: 11, color: 'var(--meeting-muted)', margin: 0 }}>{total} vote{total !== 1 ? 's' : ''}</p>
                       {poll.options.map((o, i) => {
                         const pct = total > 0 ? Math.round((o.voters.length / total) * 100) : 0;
                         const isWinner = poll.options.every(x => o.voters.length >= x.voters.length);
@@ -839,16 +719,16 @@ export default function VideoRoom({ roomCode, isHost }) {
                           <div key={i} style={{ borderRadius: 8, overflow: 'hidden', border: `1px solid ${isWinner && total > 0 ? 'rgba(212,175,55,.35)' : 'rgba(212,175,55,.1)'}` }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: isWinner && total > 0 ? 'rgba(212,175,55,.1)' : 'rgba(255,255,255,.03)', position: 'relative' }}>
                               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: isWinner && total > 0 ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.04)', transition: 'width .5s ease' }} />
-                              <span style={{ position: 'relative', fontSize: 12.5, color: isWinner && total > 0 ? '#e5c76b' : '#c9bda2', fontWeight: isWinner && total > 0 ? 600 : 400 }}>{o.text}</span>
-                              <span style={{ position: 'relative', fontSize: 12, fontWeight: 700, color: isWinner && total > 0 ? '#e5c76b' : '#a89878' }}>{pct}%</span>
+                              <span style={{ position: 'relative', fontSize: 12.5, color: isWinner && total > 0 ? '#e5c76b' : 'var(--meeting-muted)', fontWeight: isWinner && total > 0 ? 600 : 400 }}>{o.text}</span>
+                              <span style={{ position: 'relative', fontSize: 12, fontWeight: 700, color: isWinner && total > 0 ? '#e5c76b' : 'var(--meeting-muted)' }}>{pct}%</span>
                             </div>
                           </div>
                         );
                       })}
-                      {isHost && poll.active && (
+                      {canHost && poll.active && (
                         <button
                           onClick={() => { endPoll?.(poll.id); }}
-                          style={{ marginTop: 4, padding: '9px', borderRadius: 9, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#f87171', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                          style={{ marginTop: 4, padding: '9px', borderRadius: 9, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.08)', color: '#f87171', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}
                         >End poll</button>
                       )}
                     </div>
@@ -861,25 +741,24 @@ export default function VideoRoom({ roomCode, isHost }) {
                     {polls.length === 0 ? (
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '32px 16px', textAlign: 'center' }}>
                         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.2)' }}><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                        <p style={{ margin: 0, fontSize: 13, color: '#a89878', lineHeight: 1.5 }}>No polls yet.<br />Ask the room a question.</p>
-                        {isHost && (
-                          <button onClick={() => setPollView('create')} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#d4af37,#b8860b)', color: '#050505', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>Create a poll</button>
+                        <p style={{ margin: 0, fontSize: 13, color: 'var(--meeting-muted)', lineHeight: 1.5 }}>No polls yet.<br />Ask the room a question.</p>
+                        {canHost && (
+                          <button onClick={() => setPollView('create')} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>Create a poll</button>
                         )}
                       </div>
                     ) : (
                       <>
                         {polls.map(poll => {
                           const total = poll.options.reduce((a, o) => a + o.voters.length, 0);
-                          const voted = myVotes[poll.id] !== undefined;
                           return (
                             <div key={poll.id} style={{ borderRadius: 12, border: `1px solid ${poll.active ? 'rgba(212,175,55,.2)' : 'rgba(255,255,255,.08)'}`, background: poll.active ? 'rgba(212,175,55,.04)' : 'rgba(255,255,255,.02)', overflow: 'hidden' }}>
                               {/* Poll header */}
                               <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p style={{ margin: '0 0 2px', fontSize: 12.5, fontWeight: 600, color: '#f0e6d3', lineHeight: 1.4 }}>{poll.question}</p>
+                                  <p style={{ margin: '0 0 2px', fontSize: 12.5, fontWeight: 600, color: 'var(--meeting-text)', lineHeight: 1.4 }}>{poll.question}</p>
 
                                 </div>
-                                <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 99, border: `1px solid ${poll.active ? 'rgba(34,197,94,.3)' : 'rgba(255,255,255,.1)'}`, color: poll.active ? '#4ade80' : '#a89878', background: poll.active ? 'rgba(34,197,94,.08)' : 'rgba(255,255,255,.04)' }}>
+                                <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 99, border: `1px solid ${poll.active ? 'rgba(34,197,94,.3)' : 'rgba(255,255,255,.1)'}`, color: poll.active ? '#4ade80' : 'var(--meeting-muted)', background: poll.active ? 'rgba(34,197,94,.08)' : 'rgba(255,255,255,.04)' }}>
                                   {poll.active ? 'OPEN' : 'CLOSED'}
                                 </span>
                               </div>
@@ -894,10 +773,10 @@ export default function VideoRoom({ roomCode, isHost }) {
                                         key={i}
                                         className="poll-option-btn"
                                         onClick={() => { setMyVotes(v => ({ ...v, [poll.id]: i })); votePoll?.(poll.id, i); }}
-                                        style={{ width: '100%', textAlign: 'left', padding: '8px 11px', borderRadius: 7, border: `1px solid ${isSelected ? 'rgba(212,175,55,.5)' : 'rgba(212,175,55,.18)'}`, background: isSelected ? 'rgba(212,175,55,.18)' : 'rgba(212,175,55,.05)', color: isSelected ? '#e5c76b' : '#e0d4b0', fontSize: 12.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif", fontWeight: isSelected ? 600 : 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                        style={{ width: '100%', textAlign: 'left', padding: '8px 11px', borderRadius: 7, border: `1px solid ${isSelected ? 'rgba(212,175,55,.5)' : 'rgba(212,175,55,.18)'}`, background: isSelected ? 'rgba(212,175,55,.18)' : 'rgba(212,175,55,.05)', color: isSelected ? '#e5c76b' : '#e0d4b0', fontSize: 12.5, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif", fontWeight: isSelected ? 600 : 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                                       >
                                         <span>{o.text}{isSelected ? ' ✓' : ''}</span>
-                                        {o.voters.length > 0 && <span style={{ fontSize: 11, color: isSelected ? '#e5c76b' : '#a89878', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{o.voters.length} vote{o.voters.length !== 1 ? 's' : ''}</span>}
+                                        {o.voters.length > 0 && <span style={{ fontSize: 11, color: isSelected ? '#e5c76b' : 'var(--meeting-muted)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{o.voters.length} vote{o.voters.length !== 1 ? 's' : ''}</span>}
                                       </button>
                                     );
                                   })}
@@ -915,8 +794,8 @@ export default function VideoRoom({ roomCode, isHost }) {
                                         <div style={{ position: 'relative', padding: '6px 10px', background: mine ? 'rgba(212,175,55,.08)' : 'transparent' }}>
                                           <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: mine ? 'rgba(212,175,55,.18)' : 'rgba(255,255,255,.05)', transition: 'width .5s ease' }} />
                                           <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: 12, color: mine ? '#e5c76b' : '#c9bda2', fontWeight: mine ? 600 : 400 }}>{o.text}{mine ? ' ✓' : ''}</span>
-                                            <span style={{ fontSize: 11, color: mine ? '#e5c76b' : '#a89878', fontWeight: 600 }}>{pct}%</span>
+                                            <span style={{ fontSize: 12, color: mine ? '#e5c76b' : 'var(--meeting-muted)', fontWeight: mine ? 600 : 400 }}>{o.text}{mine ? ' ✓' : ''}</span>
+                                            <span style={{ fontSize: 11, color: mine ? '#e5c76b' : 'var(--meeting-muted)', fontWeight: 600 }}>{pct}%</span>
                                           </div>
                                         </div>
                                       </div>
@@ -929,20 +808,20 @@ export default function VideoRoom({ roomCode, isHost }) {
                               <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6 }}>
                                 <button
                                   onClick={() => { setViewingPollId(poll.id); setPollView('results'); }}
-                                  style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: '#a89878', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                  style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(212,175,55,.18)', background: 'transparent', color: 'var(--meeting-muted)', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}
                                 >View results</button>
-                                {isHost && poll.active && (
+                                {canHost && poll.active && (
                                   <button
                                     onClick={() => endPoll?.(poll.id)}
-                                    style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#f87171', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}
+                                    style={{ flex: 1, padding: '6px', borderRadius: 7, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#f87171', fontSize: 11.5, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}
                                   >End poll</button>
                                 )}
                               </div>
                             </div>
                           );
                         })}
-                        {isHost && (
-                          <button onClick={() => setPollView('create')} style={{ padding: '10px', borderRadius: 10, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: '#a89878', fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>+ Create another poll</button>
+                        {canHost && (
+                          <button onClick={() => setPollView('create')} style={{ padding: '10px', borderRadius: 10, border: '1px solid rgba(212,175,55,.2)', background: 'transparent', color: 'var(--meeting-muted)', fontSize: 13, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>+ Create another poll</button>
                         )}
                       </>
                     )}
@@ -959,7 +838,9 @@ export default function VideoRoom({ roomCode, isHost }) {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Drop zone / upload button */}
                 {canHost && <div
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#d4af37'; e.currentTarget.style.background = 'rgba(212,175,55,.12)'; }}
+                  data-file-upload role="button" tabIndex={0} aria-label="Upload files"
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.click(); } }}
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--meeting-gold)'; e.currentTarget.style.background = 'rgba(212,175,55,.12)'; }}
                   onDragLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(212,175,55,.2)'; e.currentTarget.style.background = 'rgba(212,175,55,.04)'; }}
                   onDrop={(e) => {
                     e.preventDefault();
@@ -993,7 +874,7 @@ export default function VideoRoom({ roomCode, isHost }) {
                   }}
                 >
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ color: 'rgba(212,175,55,.5)', margin: '0 auto 8px', display: 'block' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                  <p style={{ margin: 0, fontSize: 12.5, color: '#a89878', fontWeight: 500 }}>Click or drag files here</p>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--meeting-muted)', fontWeight: 500 }}>Click or drag files here</p>
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(168,152,120,.6)' }}>Max 10 MB per file</p>
                 </div>}
                 {/* File list */}
@@ -1024,17 +905,17 @@ export default function VideoRoom({ roomCode, isHost }) {
                             <audio src={file.url} controls style={{ width: '100%', display: 'block', padding: '8px 10px 0', boxSizing: 'border-box' }} />
                           )}
                           <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color: '#d4af37', flexShrink: 0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--meeting-gold)', flexShrink: 0 }}><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: '#f0e6d3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
-                              <p style={{ margin: '2px 0 0', fontSize: 11, color: '#a89878' }}>{fmtSize} · {file.sharedBy}</p>
+                              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--meeting-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
+                              <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--meeting-muted)' }}>{fmtSize} · {file.sharedBy}</p>
                             </div>
                             {isPdf && (
-                              <a href={file.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', padding: '6px 10px', borderRadius: 8, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: '#d4af37', textDecoration: 'none', fontSize: 11.5, fontWeight: 600, flexShrink: 0, alignItems: 'center', gap: 4 }}>
+                              <a href={file.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', padding: '6px 10px', borderRadius: 8, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: 'var(--meeting-gold)', textDecoration: 'none', fontSize: 11.5, fontWeight: 600, flexShrink: 0, alignItems: 'center', gap: 4 }}>
                                 Open
                               </a>
                             )}
-                            <a href={file.url} download={file.name} style={{ display: 'flex', padding: '6px 10px', borderRadius: 8, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: '#d4af37', textDecoration: 'none', fontSize: 11.5, fontWeight: 600, flexShrink: 0, alignItems: 'center', gap: 4 }}>
+                            <a href={file.url} download={file.name} style={{ display: 'flex', padding: '6px 10px', borderRadius: 8, background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.2)', color: 'var(--meeting-gold)', textDecoration: 'none', fontSize: 11.5, fontWeight: 600, flexShrink: 0, alignItems: 'center', gap: 4 }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                               Save
                             </a>
@@ -1051,39 +932,39 @@ export default function VideoRoom({ roomCode, isHost }) {
 
         {/* PARTICIPANTS RIGHT PANEL */}
         {showPeople && (
-          <div className="room-side-panel" style={{ width: 290, flexShrink: 0, background: '#050505', borderLeft: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
+          <div className="room-side-panel exmeet-side-panel" style={{ width: 290, flexShrink: 0, background: 'var(--meeting-panel)', borderLeft: '1px solid rgba(212,175,55,.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'exmeet-fadeIn .18s ease-out', position: 'relative', zIndex: 150 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 18px 12px' }}>
               <span style={{ fontSize: 14, fontWeight: 700 }}>Participants ({totalP})</span>
-              <button onClick={() => setShowPeople(false)} style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', fontSize: 16 }}>✕</button>
+              <button aria-label="Close participants" onClick={() => setShowPeople(false)} style={{ background: 'none', border: 'none', color: 'var(--meeting-muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {canHost && <button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#d4af37', color: '#0a0a0a', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>
+              {<button onClick={() => { setInviteOpen(true); setShowPeople(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: 11, borderRadius: 10, border: 'none', background: 'var(--meeting-gold)', color: '#1a1608', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
                 Invite someone
               </button>}
-              <input placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: '#f0e6d3', fontSize: 12.5, outline: 'none', fontFamily: "'Sora',sans-serif", boxSizing: 'border-box' }} />
+              <input aria-label="Search participants" value={participantQuery} onChange={e=>setParticipantQuery(e.target.value)} placeholder="Search participants" style={{ width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(212,175,55,.15)', background: 'rgba(212,175,55,.05)', color: 'var(--meeting-text)', fontSize: 12.5, outline: 'none', fontFamily: "'Instrument Sans',sans-serif", boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ id, socketId: id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].map((u, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
+              {[{ name: userName || 'You', local: true, muted: micMuted, camOff: cameraOff, socketId: null }, ...peerList.map(([id, p]) => ({ id, socketId: id, name: p.userName || 'Guest', local: false, muted: !!p.isMuted, mutedByHost: !!p.mutedByHost, camOff: !p.stream || !!p.videoOff }))].filter(u=>u.name.toLowerCase().includes(participantQuery.trim().toLowerCase())).map((u, i) => (
+                <div data-room-participant key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(160deg,${avatarColor(u.name)},${avatarColor(u.name)}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{(u.name[0] || '?').toUpperCase()}</div>
-                  <span style={{ fontSize: 13, flex: 1, color: '#f0e6d3' }}>{u.name}{u.local ? ' (you)' : ''}</span>
-                  {coHost?.socketId === u.socketId && <span style={{ fontSize: 10, fontWeight: 700, color: '#d4af37', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)', borderRadius: 999, padding: '2px 7px' }}>Co-host</span>}
+                  <span style={{ fontSize: 13, flex: 1, color: 'var(--meeting-text)' }}>{u.name}{u.local ? ' (you)' : ''}</span>
+                  {coHost?.socketId === u.socketId && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--meeting-gold)', background: 'rgba(212,175,55,.12)', border: '1px solid rgba(212,175,55,.3)', borderRadius: 999, padding: '2px 7px' }}>Co-host</span>}
                   {canManageCoHost && !u.local && (
                     coHost?.socketId === u.socketId ? (
-                      <button onClick={() => removeCoHost()} title="Remove co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#a89878', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Remove co-host</button>
+                      <button onClick={() => removeCoHost()} title="Remove co-host" style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--meeting-muted)', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Remove co-host</button>
                     ) : (
-                      <button onClick={() => makeCoHost(u.socketId)} title="Make co-host" style={{ fontSize: 10.5, fontWeight: 600, color: '#d4af37', background: 'rgba(212,175,55,.08)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Make co-host</button>
+                      <button onClick={() => makeCoHost(u.socketId)} title="Make co-host" style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--meeting-gold)', background: 'rgba(212,175,55,.08)', border: '1px solid rgba(212,175,55,.25)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>Make co-host</button>
                     )
                   )}
-                  {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#a89878' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
+                  {u.camOff && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--meeting-muted)' }}><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                   {u.muted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: '#f87171' }}><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
-                  {canHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Sora',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
+                  {canHost && !u.local && <button onClick={() => u.mutedByHost ? unmuteParticipant(u.id) : muteParticipant(u.id)} title={u.mutedByHost ? `Allow ${u.name} to speak` : `Mute ${u.name}`} style={{ border: '1px solid rgba(212,175,55,.25)', borderRadius: 7, background: u.mutedByHost ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)', color: u.mutedByHost ? '#86efac' : '#fca5a5', padding: '4px 7px', fontSize: 10, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>{u.mutedByHost ? 'Unmute' : 'Mute'}</button>}
                   {canHost && !u.local && (
                     <button
                       onClick={() => kickParticipant(u.socketId)}
                       title="Remove participant"
-                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '3px 8px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Sora',sans-serif", transition: 'background 0.15s' }}
+                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', cursor: 'pointer', padding: '3px 8px', fontSize: 11, fontWeight: 600, flexShrink: 0, fontFamily: "'Instrument Sans',sans-serif", transition: 'background 0.15s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
                     >
@@ -1097,298 +978,65 @@ export default function VideoRoom({ roomCode, isHost }) {
         )}
 
         {/* MAIN VIDEO AREA */}
-        <div style={{ flex: 1, position: 'relative', borderRadius: 0, overflow: 'hidden', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ position: 'absolute', inset: 0, opacity: .5, background: 'radial-gradient(600px 400px at 50% 40%,rgba(212,175,55,.10),transparent 70%)', pointerEvents: 'none' }} />
-
-
-          {gridView && (
-            <div style={{
-              position: 'relative', width: '100%', height: '100%',
-              display: 'grid',
-              gridTemplateColumns: `repeat(${Math.ceil(Math.sqrt(totalP))},1fr)`,
-              gridAutoRows: '1fr',
-              gap: 2,
-              background: '#000',
-            }}>
-              {/* Local tile */}
-              <div style={{
-                position: 'relative',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: '#0a0a0a',
-                ...((cameraOff || selfViewHidden || !localStream) && selfBgStyle ? selfBgStyle : {}),
-                overflow: 'hidden',
-              }}>
-                {localStream && !cameraOff && !selfViewHidden ? (
-                  <VideoTile
-                    stream={localStream}
-                    userName={userName || 'You'}
-                    isLocal
-                    isMuted={micMuted}
-                    isCameraOff={cameraOff}
-                    filter={activeFilter}
-                    bgImage={selectedBgImage}
-                  />
-                ) : (
-                  <div style={{
-                    width: 130, height: 130, borderRadius: '50%',
-                    background: userColor,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 54, fontWeight: 600, color: '#fff',
-                    fontFamily: 'Inter,sans-serif',
-                    userSelect: 'none',
-                    flexShrink: 0,
-                  }}>{initial}</div>
-                )}
-                {/* Name label */}
-                <div style={{
-                  position: 'absolute', bottom: 14, left: 12,
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity: .85 }}>
-                    {micMuted
-                      ? <><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="#f87171" strokeWidth="2" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="#f87171" strokeWidth="2" strokeLinecap="round" /></>
-                      : <><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2" /><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round" /></>}
-                  </svg>
-                  <span style={{ fontSize: 12, color: '#e0e0e0', fontFamily: 'Inter,sans-serif', fontWeight: 500, letterSpacing: '.01em' }}>
-                    {userName || 'You'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Peer tiles */}
-              {peerList.map(([id, p]) => {
-                const pName = p.userName || 'Guest';
-                const pColor = avatarColor(pName);
-                const pInitial = pName.charAt(0).toUpperCase();
-                return (
-                  <div key={id} style={{
-                    position: 'relative',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: '#0a0a0a',
-                    overflow: 'hidden',
-                    cursor: 'pointer',
-                  }} onClick={() => { setSpotlightId(id); setGridView(false); }}>
-                    {p.stream && (!p.videoOff || id === screenSharerId) ? (
-                      <VideoTile stream={p.stream} userName={pName} isMuted={!!p.isMuted} isCameraOff={false} fit={id === screenSharerId ? 'contain' : 'cover'} />
-                    ) : (
-                      <div style={{
-                        width: 130, height: 130, borderRadius: '50%',
-                        background: pColor,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 54, fontWeight: 600, color: '#fff',
-                        fontFamily: 'Inter,sans-serif',
-                        userSelect: 'none',
-                        flexShrink: 0,
-                      }}>{pInitial}</div>
-                    )}
-                    {/* Name label */}
-                    <div style={{
-                      position: 'absolute', bottom: 14, left: 12,
-                      display: 'flex', alignItems: 'center', gap: 5,
-                    }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ opacity: .85 }}>
-                        <path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="#e0e0e0" strokeWidth="2" />
-                        <path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#e0e0e0" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                      <span style={{ fontSize: 12, color: '#e0e0e0', fontFamily: 'Inter,sans-serif', fontWeight: 500, letterSpacing: '.01em' }}>
-                        {pName}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {!gridView && (
-            <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {spotlight ? (
-                <div style={{ width: '100%', height: '100%' }}><VideoTile stream={spotlight[1].stream} userName={spotlight[1].userName || 'Guest'} isMuted={!!spotlight[1].isMuted} isCameraOff={!spotlight[1].stream || (!!spotlight[1].videoOff && spotlight[0] !== screenSharerId)} fit={spotlight[0] === screenSharerId ? 'contain' : 'cover'} /></div>
-              ) : localStream && !cameraOff ? (
-                <div style={{ width: '100%', height: '100%' }}>
-                  <VideoTile
-                    stream={localStream}
-                    userName={userName || 'You'}
-                    isLocal
-                    isMuted={micMuted}
-                    isCameraOff={cameraOff}
-                    filter={activeFilter}
-                    bgImage={selectedBgImage}
-                  />
-                </div>
-              ) : (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, ...(selfBgStyle || {}) }}>
-                  <div style={{ width: 168, height: 168, borderRadius: '50%', background: `linear-gradient(160deg,${userColor},${userColor}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60, fontWeight: 700, animation: 'speak 2.2s infinite' }}>{initial}</div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 600 }}>{userName || 'You'}</div>
-                    <div style={{ fontSize: 12, color: '#a89878', marginTop: 4 }}>{peerList.length === 0 ? 'Waiting for others to join…' : 'Camera is off'}</div>
-                  </div>
-                </div>
-              )}
-              {peerList.length > 0 && (
-                <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {peerList.map(([id, p]) => (
-                    <div key={id} onClick={() => setSpotlightId(spotlightId === id ? null : id)} style={{ width: 120, height: 80, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${spotlightId === id ? '#d4af37' : 'rgba(212,175,55,.15)'}`, flexShrink: 0 }}>
-                      <VideoTile stream={p.stream} userName={p.userName || 'Guest'} isMuted={!!p.isMuted} isCameraOff={!p.stream || !!p.videoOff} isSmall />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-
-
-          {/* LIVE CAPTIONS — subtitle bar at the bottom of the meeting screen (sits above the toolbar) */}
-          {(captionsOn || captionsDemand) && (
-            <CaptionsOverlay
-              socket={socket}
-              roomCode={roomCode}
-              show={captionsOn}
-              transcribe={captionsDemand && !micMuted && !hostMuted}
-              bottom={toolbarVisible ? 112 : 28}
-            />
-          )}
-
-          {/* BOTTOM TOOLBAR */}
-          <div className={`toolbar-wrap${toolbarVisible ? '' : ' hidden'}`} style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(16px)', padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(212,175,55,.35)', boxShadow: '0 20px 48px -16px rgba(0,0,0,.65)', background: 'linear-gradient(180deg,rgba(0,0,7,.8),rgba(0,0,0,.95))' }}>
-
-              {/* Group 1 — A/V controls: Mic + Camera */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                  <button onClick={() => { setShowSettingsModal(true); setModalTab('audio'); }} title="Audio settings" style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', padding: 0, display: 'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
-                  <button onClick={toggleMic} disabled={hostMuted} title={hostMuted ? 'Muted by host' : (micMuted ? 'Unmute' : 'Mute')} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: micMuted ? 'rgba(239,68,68,.18)' : 'rgba(212,175,55,.15)', color: micMuted ? '#f87171' : '#f0e6d3', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: hostMuted ? 'not-allowed' : 'pointer', opacity: hostMuted ? .7 : 1, transition: 'background .15s' }}>
-                    {micMuted ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-5.6-1.5M9 9v3a3 3 0 004.24 2.74" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M19 11a7 7 0 01-9.8 6.4M5 5l14 14M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z" stroke="currentColor" strokeWidth="1.8" /><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>}
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                  <button onClick={() => { setShowSettingsModal(true); setModalTab('video'); }} title="Video settings" style={{ background: 'none', border: 'none', color: '#a89878', cursor: 'pointer', padding: 0, display: 'flex' }}><svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 14l6-6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
-                  <button onClick={toggleCamera} title={cameraOff ? 'Start camera' : 'Stop camera'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: cameraOff ? 'rgba(239,68,68,.18)' : 'rgba(212,175,55,.15)', color: cameraOff ? '#f87171' : '#f0e6d3', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .15s' }}>
-                    {cameraOff ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9M13.5 17H4.5A1.5 1.5 0 013 15.5v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M17 10l4-2.2v8.4L17 14M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 7.5A1.5 1.5 0 014.5 6h9A1.5 1.5 0 0115 7.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 013 16.5v-9z" stroke="currentColor" strokeWidth="1.8" /><path d="M17 10l4-2.2v8.4L17 14" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>}
-                  </button>
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
-
-              {/* Group 2 — Screen share */}
-              {canHost && <button onClick={toggleScreenShare} title={isScreenSharing ? 'Stop sharing' : 'Share screen'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isScreenSharing ? 'rgba(212,175,55,.25)' : 'transparent', color: isScreenSharing ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                {isScreenSharing ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg> : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M12 8v5m0-5l-2.5 2.5M12 8l2.5 2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-              </button>}
-
-              {canHost && <button
-                onClick={() => { if (isRecording) stopRecording(); else startRecording(); }}
-                disabled={recordingState === 'stopping'}
-                title={isRecording ? 'Stop recording' : 'Start recording'}
-                style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: isRecording ? 'rgba(239,68,68,.2)' : 'transparent', color: isRecording ? '#f87171' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: recordingState === 'stopping' ? 'wait' : 'pointer', opacity: recordingState === 'stopping' ? .6 : 1 }}
-              >
-                <span style={{ width: 14, height: 14, borderRadius: isRecording ? 3 : '50%', background: 'currentColor', display: 'block' }} />
-              </button>}
-
-              {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
-
-              {/* Group 3 — Interaction: Chat + Raise hand + Participants */}
-              <button onClick={() => { setChatOpen(v => !v); if (!chatOpen) setPanelTab('chat'); }} title="Chat" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: chatOpen && panelTab === 'chat' ? 'rgba(212,175,55,.15)' : 'transparent', color: chatOpen && panelTab === 'chat' ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
-              </button>
-
-              <button onClick={() => setCaptionsOn(v => !v)} title={captionsOn ? 'Turn off live captions' : 'Turn on live captions'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: captionsOn ? 'rgba(212,175,55,.22)' : 'transparent', color: captionsOn ? '#e5c76b' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.02em' }}>CC</span>
-              </button>
-
-              <button onClick={handleRaiseHand} title={raised ? 'Lower hand' : 'Raise hand'} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: raised ? 'rgba(212,175,55,.22)' : 'transparent', color: raised ? '#e8c789' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                {raised && <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#d4af37', color: '#050505', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>1</span>}
-              </button>
-
-              {canHost && <button onClick={() => { if (chatOpen && panelTab === 'agenda') { setChatOpen(false); } else { setChatOpen(true); setPanelTab('agenda'); } }} title="Meeting Agenda" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: (chatOpen && panelTab === 'agenda') ? 'rgba(212,175,55,.22)' : 'transparent', color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2, position: 'relative' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.02em', lineHeight: 1, color: (chatOpen && panelTab === 'agenda') ? '#e5c76b' : '#a89878' }}>Agenda</span>
-              </button>}
-
-              <button onClick={() => setShowPeople(v => !v)} title="Participants" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: showPeople ? 'rgba(212,175,55,.15)' : 'transparent', color: showPeople ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.6" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, padding: '0 2px', borderRadius: 7, background: '#d4af37', color: '#0a0a0a', fontSize: 8.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{totalP}</span>
-              </button>
-
-              {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
-
-              {/* Group 4 — Layout / Utility: Grid + Invite + More */}
-              <button onClick={() => setGridView(v => !v)} title="Grid view" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: gridView ? 'rgba(212,175,55,.15)' : 'transparent', color: gridView ? '#f0e6d3' : '#a89878', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.7" /></svg>
-              </button>
-
-              {canHost && <button onClick={() => setInviteOpen(true)} title="Invite people" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M18 8v6M15 11h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
-              </button>}
-
-              {canHost && <button onClick={() => setWhiteboardOpen(v => !v)} title="Whiteboard" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: whiteboardOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: whiteboardOpen ? '#f0e6d3' : '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 20h16M6 20V8l6-4 6 4v12M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>}
-
-              <div style={{ position: 'relative' }} ref={moreRef}>
-                <button onClick={() => setMoreOpen(v => !v)} title="More" style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: moreOpen ? 'rgba(212,175,55,.15)' : 'transparent', color: '#c9bda2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.6" fill="currentColor" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /><circle cx="19" cy="12" r="1.6" fill="currentColor" /></svg>
-                </button>
-                {moreOpen && (
-                  <div style={{ position: 'absolute', bottom: 50, left: '50%', transform: 'translateX(-50%)', width: 250, background: '#0a0a0a', border: '1px solid rgba(212,175,55,.12)', borderRadius: 14, boxShadow: '0 20px 50px -20px rgba(0,0,0,.7)', padding: 8, display: 'flex', flexDirection: 'column', zIndex: 200, animation: 'fadeIn .15s ease-out' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderBottom: '1px solid rgba(212,175,55,.12)', marginBottom: 6 }}>
-                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(160deg,${userColor},${userColor}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{initial}</div>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{userName || 'You'}</span>
-                    </div>
-                    {[
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 2v7h7" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Performance settings', divider: false, action: () => { setMoreOpen(false); setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'View full screen', divider: false, action: () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen().catch(() => { }); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Meeting Agenda', divider: false, hostOnly: true, action: () => { setPanelTab('agenda'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>, label: 'Closed captions', divider: false, action: () => { setCaptionsOn(v => !v); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 20V10M12 20V4M18 20v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Polls', divider: false, hostOnly: true, action: () => { setPanelTab('polls'); setChatOpen(true); setPollView('list'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'File sharing', divider: true, hostOnly: true, action: () => { setPanelTab('files'); setChatOpen(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>, label: 'Share video', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste a video URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Video shared with everyone.'); } } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>, label: 'Share audio', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const url = window.prompt('Paste an audio file URL to share with everyone in the meeting:'); if (url && url.trim()) { shareMedia(url.trim()); showToast('Audio shared with everyone.'); } } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 013 3v7a3 3 0 01-6 0V5a3 3 0 013-3z" stroke="currentColor" strokeWidth="1.5" /><path d="M19 10a7 7 0 01-14 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Noise suppression', divider: false, action: () => { setMoreOpen(false); toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.4" /></svg>, label: 'Select background', divider: false, action: () => { setShowSettingsModal(true); setModalTab('backgrounds'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M16 11c1.657 0 3-1.79 3-4s-1.343-4-3-4M8 11c1.657 0 3-1.79 3-4S9.657 3 8 3 5 4.79 5 7s1.343 4 3 4z" stroke="currentColor" strokeWidth="1.5" /><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M13 15c3 0 5.5 2 5.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>, label: 'Participant stats', divider: true, action: () => { setShowPeople(true); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'Settings', divider: false, action: () => { setShowSettingsModal(true); setModalTab('audio'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="3" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="2" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="14" y="10" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /><rect x="8" y="17" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" /></svg>, label: 'View shortcuts', divider: false, action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); setMoreOpen(false); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>, label: 'Security options', divider: false, hostOnly: true, action: () => { setMoreOpen(false); const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); } },
-                      { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>, label: 'Leave feedback', divider: false, action: () => { setMoreOpen(false); setFeedbackOpen(true); } },
-                    ].filter((item) => canHost || !item.hostOnly).map((item, idx) => (
-                      <div key={idx}>
-                        <button onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: 'none', background: 'none', color: '#f0e6d3', fontSize: 12.5, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'Sora',sans-serif", transition: 'background .15s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,.08)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                        >
-                          <span style={{ color: '#a89878', flexShrink: 0, display: 'flex' }}>{item.icon}</span>
-                          {item.label}
-                        </button>
-                        {item.divider && <div style={{ height: 1, background: 'rgba(212,175,55,.12)', margin: '4px 4px' }} />}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Divider */}
-              <div style={{ width: 1, height: 16, background: 'rgba(212,175,55,.25)', margin: '0 2px', flexShrink: 0 }} />
-
-              {/* Group 5 — Leave */}
-              <button onClick={handleEnd} title="Leave call" style={{ padding: '0 16px', height: 38, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#ef4444,#b91c1c)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 6, fontWeight: 600, fontSize: 13, marginLeft: 2, fontFamily: "'Sora',sans-serif" }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12c3-4 6-6 9-6s6 2 9 6c-1 1.3-2 2.4-3.1 3.3a1 1 0 01-1.3-.1l-1.7-1.7a1 1 0 00-1-.25 8 8 0 01-3.8 0 1 1 0 00-1 .25l-1.7 1.7a1 1 0 01-1.3.1C5 14.4 4 13.3 3 12z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
-                Leave
-              </button>
-            </div>
-          </div>
-        </div>
+        <main className="exmeet-stage" aria-label="Meeting stage">
+          <RoomStage roomCode={roomCode} localStream={localStream} peers={peers} userName={userName} micMuted={micMuted}
+            cameraOff={cameraOff} selfViewHidden={selfViewHidden} filter={activeFilter} background={selectedBgImage}
+            gridView={gridView} spotlightId={spotlightId} setSpotlightId={id => { setSpotlightId(id); setGridView(false); }} screenStream={screenStream}
+            isScreenSharing={isScreenSharing} onStopScreen={toggleScreenShare} screenSharerId={screenSharerId}
+            handQueue={handQueue} mySocketId={mySocketId} canHost={canHost} isCoHost={isCoHost} coHost={coHost}
+            account={account} copied={copied} onCopyLink={handleCopyLink}/>
+          {(captionsOn || captionsDemand) && <CaptionsOverlay socket={socket} roomCode={roomCode} show={captionsOn}
+            transcribe={captionsDemand && !micMuted && !hostMuted} bottom={20} language={preferences.captionLanguage}/>}
+        </main>
       </div>
+      <RoomControls micMuted={micMuted} hostMuted={hostMuted} cameraOff={cameraOff} toggleMic={toggleMic} toggleCamera={toggleCamera}
+        onSettings={tab => { setModalTab(tab); setShowSettingsModal(true); }} canHost={canHost}
+        isScreenSharing={isScreenSharing} toggleScreenShare={toggleScreenShare}
+        chatOpen={chatOpen && panelTab === 'chat'} chatUnread={chatUnread} toggleChat={() => { setShowPeople(false); setChatUnread(false); if (chatOpen && panelTab === 'chat') setChatOpen(false); else { setPanelTab('chat'); setChatOpen(true); } }}
+        raised={raised} handPosition={myHandPos} toggleHand={handleRaiseHand}
+        peopleOpen={showPeople} togglePeople={() => { setChatOpen(false); setShowPeople(v => !v); }} total={totalP}
+        onLeave={handleEnd} sendReaction={sendReaction}>
+        <RoomMoreMenu groups={[
+          { label: 'Meeting controls', items: [
+            ...(canHost ? [
+              { icon: <MonitorUp/>, label: isScreenSharing ? 'Stop sharing screen' : 'Share screen', action: toggleScreenShare, active: isScreenSharing, compactOnly: true },
+              { icon: <Circle/>, label: isRecording ? 'Stop recording' : 'Start recording', action: () => { if (isRecording) stopRecording(); else startRecording(); }, disabled: recordingState === 'stopping' },
+            ] : []),
+            { icon: <LayoutGrid/>, label: gridView ? 'Speaker view' : 'Grid view', action: () => setGridView(v => !v), active: gridView },
+            { icon: <UserPlus/>, label: 'Invite people', action: () => setInviteOpen(true) },
+            { icon: <Captions/>, label: 'Closed captions', action: () => setCaptionsOn(v => !v), active: captionsOn },
+            { icon: <Smile/>, label: 'Send applause', action: () => sendReaction('👏'), compactOnly: true },
+          ] },
+          { label: 'Meeting tools', items: [
+            { icon: <Presentation/>, label: 'Whiteboard', action: () => setWhiteboardOpen(true) },
+            { icon: <File/>, label: 'Meeting Agenda', action: () => { setShowPeople(false); setPanelTab('agenda'); setChatOpen(true); } },
+            { icon: <ChartNoAxesColumn/>, label: 'Polls', action: () => { setShowPeople(false); setPanelTab('polls'); setChatOpen(true); setPollView('list'); } },
+            { icon: <File/>, label: 'File sharing', action: () => { setShowPeople(false); setPanelTab('files'); setChatOpen(true); } },
+          ] },
+          { label: 'Media & view', items: [
+            ...(canHost ? [
+              { icon: <MonitorUp/>, label: 'Share video', action: () => setSharingMediaKind('video') },
+              { icon: <Music/>, label: 'Share audio', action: () => setSharingMediaKind('audio') },
+            ] : []),
+            { icon: <MicOff/>, label: 'Noise suppression', action: () => { toggleNoiseSuppression(); showToast(noiseSuppressed ? 'Noise suppression off.' : 'Noise suppression on.'); }, active: noiseSuppressed },
+            { icon: <Image/>, label: 'Select background', action: () => { setShowSettingsModal(true); setModalTab('backgrounds'); } },
+            { icon: <Gauge/>, label: 'Performance settings', action: () => { setSelfViewHidden(v => { const next = !v; showToast(next ? 'Self-view hidden — reduces local rendering load.' : 'Self-view restored.'); return next; }); }, active: selfViewHidden },
+            { icon: <Maximize/>, label: 'View full screen', action: () => { if (!document.fullscreenEnabled) showToast('Full screen is unavailable in this browser.'); else if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => showToast('Could not enter full screen.')); else document.exitFullscreen().catch(() => {}); } },
+          ] },
+          { label: 'Preferences', items: [
+            { icon: <Settings/>, label: 'Settings', action: () => { setShowSettingsModal(true); setModalTab('audio'); } },
+            { icon: <Keyboard/>, label: 'View shortcuts', action: () => { setShowSettingsModal(true); setModalTab('shortcuts'); } },
+            ...(canHost ? [{ icon: <Shield/>, label: 'Security options', action: () => { const next = !roomLocked; setRoomLocked(next); showToast(next ? 'Room locked — no new participants can join.' : 'Room unlocked.'); }, active: roomLocked }] : []),
+            { icon: <MessageSquare/>, label: 'Leave feedback', action: () => setFeedbackOpen(true) },
+          ] },
+        ]}/>
+
+      </RoomControls>
 
       {connectionError && (
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(239,68,68,.15)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 12, padding: '20px 28px', color: '#fca5a5', fontSize: 13, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <p style={{ margin: 0 }}>{connectionError}</p>
-          <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ background: '#b8860b', border: 'none', color: '#f0e6d3', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontFamily: "'Sora',sans-serif" }}>Back to Dashboard</button>
+          <button onClick={() => navigate(ROUTES.DASHBOARD)} style={{ background: '#b8860b', border: 'none', color: 'var(--meeting-text)', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontFamily: "'Instrument Sans',sans-serif" }}>Back to Dashboard</button>
         </div>
       )}
 
@@ -1398,11 +1046,11 @@ export default function VideoRoom({ roomCode, isHost }) {
         </div>
       )}
       {/* One audio element per remote peer — the only place remote voice is played. */}
-      {peerList.map(([id, p]) => (p.stream ? <RemoteAudio key={id} stream={p.stream} /> : null))}
+      {peerList.map(([id, p]) => (p.stream ? <RemoteAudio key={id} stream={p.stream} outputDevice={preferences.outputDevice} onError={showToast}/> : null))}
 
       {toast && (
-        <div style={{ position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1100, background: 'rgba(5,5,5,.85)', backdropFilter: 'blur(20px)', border: '1px solid rgba(212,175,55,.15)', borderRadius: 12, padding: '12px 24px', color: '#f0e6d3', fontSize: 13, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', gap: 10, animation: 'slideDown .3s ease-out forwards', fontFamily: "'Sora',sans-serif" }}>
-          <span style={{ fontSize: 16 }}>ℹ️</span><span>{toast}</span>
+        <div className="exmeet-toast" role="status" aria-live="polite">
+          <Info size={18}/><span>{toast}</span>
         </div>
       )}
     </div>

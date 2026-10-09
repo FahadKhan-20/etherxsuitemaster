@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { useWhiteboardSync } from '../../../hooks/useWhiteboardSync';
+import { useDialogFocus } from '../../../hooks/useDialogFocus';
 
 const stickyPalette = ['#d4af37', '#b8860b', '#e5c76b', '#a89878'];
 const templates = ['blank', 'kanban', 'mindmap', 'retro', 'flow'];
@@ -25,6 +26,8 @@ const outlineBtn = 'flex items-center justify-center gap-2 rounded-lg border bor
 const goldBtn = 'flex items-center justify-center gap-2 rounded-lg border border-[#e5c76b]/40 bg-[linear-gradient(135deg,#d4af37,#b8860b)] px-4 py-2 text-base font-bold text-[#050505] shadow-lg shadow-[#d4af37]/20 transition-all hover:brightness-110';
 
 export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomCode, isHost }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, onClose, isOpen);
   const canvasRef = useRef(null);
   const [tool, setTool] = useState('pen');
   const [color, setColor] = useState('#d4af37');
@@ -237,10 +240,11 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
 
   return (
     <motion.div
+      ref={dialogRef} role="dialog" aria-modal="true" aria-label="Live Whiteboard"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[2000] bg-black/75 p-2 sm:p-3 backdrop-blur-sm"
+      className="exmeet-whiteboard fixed inset-0 z-[2000] bg-black/75 p-2 sm:p-3 backdrop-blur-sm"
     >
       <div className="flex h-full flex-col rounded-[24px] sm:rounded-[36px] border border-[#d4af37]/15 bg-[#050505]/95 p-3 sm:p-4 shadow-[0_30px_100px_rgba(0,0,0,0.7)] backdrop-blur-2xl overflow-y-auto">
         <div className="mb-3 sm:mb-4 flex items-start justify-between gap-3">

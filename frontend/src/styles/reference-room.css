@@ -1,0 +1,47 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+.exmeet-reference{position:fixed;inset:0;color:#f3eee2;background:#0b0a08;font-family:"Instrument Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}.exmeet-reference *{box-sizing:border-box}.exmeet-reference button{touch-action:manipulation}.exmeet-reference :is(button,input,textarea,select){font-family:inherit}.exmeet-reference input::placeholder,.exmeet-reference textarea::placeholder{color:#6f685a}.exmeet-reference select option{background:#13110e;color:#f3eee2}.exmeet-reference a{color:#d9b54a;text-decoration:none}.exmeet-reference button:disabled{opacity:.45;cursor:not-allowed}.exmeet-reference :is(button,input,textarea,select):focus-visible{outline:2px solid #d9b54a;outline-offset:2px}.exmeet-reference ::-webkit-scrollbar{width:6px;height:6px}.exmeet-reference ::-webkit-scrollbar-thumb{background:#2e2a21;border-radius:6px}
+.exmeet-reference .dc-0:hover{background:#1d1a14}
+.exmeet-reference .dc-1:hover{background:#1d1a14}
+.exmeet-reference .dc-2:hover{background:#1d1a14}
+.exmeet-reference .dc-3:hover{background:#1d1a14}
+.exmeet-reference .dc-4:hover{background:#1d1a14}
+.exmeet-reference .dc-5:hover{background:#1d1a14}
+.exmeet-reference .dc-6:hover{background:#1d1a14}
+.exmeet-reference .dc-7:hover{background:#e5554e}
+.exmeet-reference .dc-8:hover{background:#24201a}
+.exmeet-reference .dc-9:hover{background:#24201a}
+.exmeet-reference .dc-10:hover{background:#24201a}
+.exmeet-reference .dc-11:hover{background:#24201a}
+.exmeet-reference .dc-12:hover{background:#24201a}
+.exmeet-reference .dc-13:hover{background:#24201a}
+.exmeet-reference .dc-14:hover{background:#24201a}
+.exmeet-reference .dc-15:hover{background:#24201a}
+.exmeet-reference .dc-16:hover{border-color:#4a4230}
+.exmeet-reference .dc-17:hover{background:#1d1a14}
+.exmeet-reference .dc-18:hover{background:#24201a}
+.exmeet-reference .dc-19:hover{background:#2a1513}
+.exmeet-reference .dc-20:hover{background:#1d1a14;color:#f3eee2}
+.exmeet-reference .dc-21:focus{border-color:#d9b54a}
+.exmeet-reference .dc-22:hover{background:#1a1712}
+.exmeet-reference .dc-23:hover{background:#24201a}
+.exmeet-reference .dc-24:hover{background:#24201a}
+.exmeet-reference .dc-25:hover{background:#2a1513}
+.exmeet-reference .dc-26:hover{background:#1a1712}
+.exmeet-reference .dc-27:hover{color:#f3eee2}
+.exmeet-reference .dc-28:focus{border-color:#d9b54a}
+.exmeet-reference .dc-29:focus{border-color:#d9b54a}
+.exmeet-reference .dc-30:focus{border-style:solid;border-color:#d9b54a}
+.exmeet-reference .dc-31:hover{border-color:#d9b54a}
+.exmeet-reference .dc-32:hover{background:#1a1712}
+.exmeet-reference .dc-33:hover{color:#f3eee2}
+.exmeet-reference .dc-34:hover{color:#f3eee2}
+.exmeet-reference .dc-35:hover{background:#1d1a14;color:#f3eee2}
+.exmeet-reference .dc-36:focus{border-color:#d9b54a}
+.exmeet-reference .dc-37:focus{border-color:#d9b54a}
+.exmeet-reference .dc-38:focus{border-color:#d9b54a}
+.exmeet-reference .dc-39:focus{border-color:#d9b54a}
+.exmeet-reference .dc-40:focus{border-color:#d9b54a}
+@media(max-width:699px){.exmeet-reference>div:first-child>header{grid-template-columns:1fr auto!important;padding:10px 12px!important;gap:8px!important}.exmeet-reference>div:first-child>header>div:nth-child(2){grid-column:1/-1;grid-row:2;max-width:100%;justify-content:center}.exmeet-reference>div:first-child>header>div:nth-child(3){grid-column:2;grid-row:1}.exmeet-reference footer{padding:10px 6px 12px!important}.exmeet-reference footer>div{gap:2px!important;padding:6px!important}.exmeet-reference footer>div>div>button:first-child{width:36px!important}.exmeet-reference footer>div>div>button:nth-child(2){width:16px!important}.exmeet-reference footer>div>button{width:40px!important}.exmeet-reference footer>div>button:last-of-type{padding:0!important;font-size:0!important}.exmeet-reference [data-pop="menu"]{position:fixed!important;left:8px!important;right:8px!important;bottom:82px!important;width:auto!important;max-height:calc(100dvh - 190px)!important}.exmeet-reference [data-pop="modal"]{max-height:calc(100dvh - 24px)!important;overflow:auto}.exmeet-reference [data-tile]{min-height:110px!important}.exmeet-reference [data-pop="panel"]{top:112px!important;bottom:80px!important}}
+@media(prefers-reduced-motion:reduce){.exmeet-reference *{transition:none!important;animation:none!important}}
+
+.reference-breakout-navigation{position:fixed;left:50%;transform:translateX(-50%);top:70px;z-index:15;display:flex;gap:8px;align-items:center;background:#1d1a14;color:#ecd389;border:1px solid #3a3424;border-radius:12px;padding:8px;max-width:95vw;overflow:auto;font:13px system-ui}.reference-breakout-navigation button{white-space:nowrap;background:#2a2519;color:#ecd389;border:1px solid #4a4230;border-radius:8px;padding:6px;cursor:pointer}.exmeet-reference [data-toast]{animation:reference-enter .2s ease-out}.exmeet-reference [data-pop=modal],.exmeet-reference footer [data-pop=menu]{animation:reference-enter .15s ease-out}@keyframes reference-enter{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}@media(max-width:699px){.exmeet-reference [data-pop=modal][aria-label=Settings]{display:flex!important;flex-direction:column;height:calc(100dvh - 24px)!important}.exmeet-reference [data-pop=modal][aria-label=Settings]>nav{flex-direction:row!important;flex-shrink:0;overflow:auto;padding:12px!important;align-items:center;border-bottom:1px solid #26231c}.exmeet-reference [data-pop=modal][aria-label=Settings]>nav>span{display:none}.exmeet-reference [data-pop=modal][aria-label=Settings]>nav>button{white-space:nowrap;padding:10px!important}.exmeet-reference [data-pop=modal][aria-label=Settings]>div{min-height:0;flex:1}.exmeet-reference [data-tile=me]>div{max-width:100%}.exmeet-reference [data-tile] button{flex-shrink:0}}

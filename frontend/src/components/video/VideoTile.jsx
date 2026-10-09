@@ -1,202 +1,44 @@
 import { useEffect, useRef } from 'react';
+import { MicOff, ShieldCheck } from 'lucide-react';
+import { useStreamLevel } from '../../hooks/useStreamLevel';
 import VideoCanvasProcessor from './VideoCanvasProcessor';
 
-const AVATAR_COLORS = [
-  '#ec4899', '#8b5cf6', '#3b82f6', '#10b981',
-  '#f59e0b', '#A78BFA', '#7C3AED', '#a855f7',
-];
-
-function avatarColor(name) {
-  const code = (name || 'A').charCodeAt(0);
-  return AVATAR_COLORS[code % AVATAR_COLORS.length];
-}
-
-export default function VideoTile({
-  stream,
-  userName,
-  isLocal = false,
-  isMuted = false,
-  isCameraOff = false,
-  isSpotlight = false,
-  isSmall = false,
-  onClick,
-  hasWallet = false,
-  filter = 'none',
-  bgImage = 'none',
-  fit = 'cover',
-  isHandRaised = false,
-}) {
+export default function VideoTile({ stream, userName = 'Guest', isLocal = false, isMuted = false,
+  isCameraOff = false, isSmall = false, onClick, hasWallet = false, filter = 'none',
+  bgImage = 'none', fit = 'cover', isHandRaised = false, handPosition, badge, children, hidden = false }) {
   const videoRef = useRef(null);
-  const initial = (userName || 'A').charAt(0).toUpperCase();
-  const color = avatarColor(initial);
-  const hasVideo = stream && stream.getVideoTracks().length > 0;
-  const cssFilter = filter === 'blur' ? 'blur(8px)' : filter === 'half-blur' ? 'blur(4px)' : 'none';
+  const hasVideo = !!stream?.getVideoTracks().some(track => track.readyState !== 'ended');
+  const hasEffects = filter !== 'none' || bgImage !== 'none';
+  const showVideo = hasVideo && !isCameraOff && !hidden;
+  const initials = userName.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || '?';
+  const level = useStreamLevel(stream, !isMuted && fit !== 'contain');
+  const speaking = !isMuted && level > .2;
 
   useEffect(() => {
-    if (videoRef.current && stream && filter === 'none' && bgImage === 'none') {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => { });
-    }
-  }, [stream, filter, bgImage, hasVideo, isCameraOff, isSpotlight, isSmall]);
+    if (!videoRef.current || !showVideo || hasEffects) return;
+    videoRef.current.srcObject = stream;
+    videoRef.current.play().catch(() => {});
+  }, [stream, showVideo, hasEffects]);
 
-  const hasEffects = (filter && filter !== 'none') || (bgImage && bgImage !== 'none');
-
-  // Small grid tile view
-  if (isSmall || !isSpotlight) {
-    return (
-      <div
-        onClick={onClick}
-        style={{
-          position: 'relative', width: '100%', height: '100%',
-          borderRadius: 10, overflow: 'hidden',
-          background: '#111', cursor: onClick ? 'pointer' : 'default',
-          border: hasWallet ? '2px solid #7C3AED' : '1px solid rgba(255,255,255,0.08)',
-          boxShadow: hasWallet ? '0 0 12px rgba(124,58,237,0.3)' : 'none',
-        }}
-      >
-        {hasWallet && (
-          <div style={{
-            position: 'absolute', top: 4, right: 4, zIndex: 10,
-            background: 'rgba(124,58,237,0.85)',
-            borderRadius: 999, padding: '2px 6px',
-            fontSize: 9, fontWeight: 700, color: '#fff', letterSpacing: '0.05em',
-            pointerEvents: 'none',
-          }}>✦ Verified</div>
-        )}
-        {isHandRaised && (
-          <div
-            aria-label={`${userName} raised their hand`}
-            title="Hand raised"
-            style={{
-              position: 'absolute', top: 6, left: 6, zIndex: 10,
-              width: 28, height: 28, borderRadius: 999,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#111', background: '#fbbc04',
-              boxShadow: '0 2px 10px rgba(0,0,0,.35)',
-            }}
-          >
-            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" aria-hidden="true">
-              <path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-        )}
-        {hasVideo && !isCameraOff ? (
-          hasEffects ? (
-            <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
-          ) : (
-            <video ref={videoRef} autoPlay playsInline muted
-              disablePictureInPicture disableRemotePlayback
-              style={{ width: '100%', height: '100%', objectFit: fit, outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
-          )
-        ) : (
-          <div style={{
-            width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: bgImage === 'none' ? '#0a0a0a' : `url(${bgImage}) center/cover`,
-            transition: 'background 0.3s'
-          }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              background: `linear-gradient(135deg, ${color}, ${color}cc)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, fontWeight: 600, color: '#fff',
-            }}>{initial}</div>
-          </div>
-        )}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          padding: '12px 6px 5px',
-          background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
-        }}>
-          <span style={{ fontSize: 10, color: '#fff', fontFamily: 'Inter, sans-serif', fontWeight: 500 }}>
-            {isLocal ? `${userName} (you)` : userName}
-          </span>
-        </div>
-        {isMuted && (
-          <div style={{
-            position: 'absolute', top: 6, right: 6,
-            width: 18, height: 18, borderRadius: '50%', background: '#E04F5F',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg viewBox="0 0 24 24" width={10} height={10}>
-              <line x1="3" y1="3" x2="21" y2="21" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Spotlight / solo view — floating avatar
   return (
-    <div style={{
-      width: '100%', height: '100%',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      position: 'relative', overflow: 'hidden',
-      background: bgImage === 'none' ? 'transparent' : `url(${bgImage}) center/cover`,
-      transition: 'background 0.3s'
-    }}>
-      {isHandRaised && (
-        <div
-          aria-label={`${userName} raised their hand`}
-          title="Hand raised"
-          style={{
-            position: 'absolute', top: 24, left: 24, zIndex: 10,
-            width: 36, height: 36, borderRadius: 999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#111', background: '#fbbc04',
-            boxShadow: '0 2px 12px rgba(0,0,0,.4)',
-          }}
-        >
-          <svg viewBox="0 0 24 24" width={20} height={20} fill="none" aria-hidden="true">
-            <path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-.5v-2a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m-9 0V9.5a1.5 1.5 0 00-3 0V14c0 3.5 2.5 6.5 6.5 6.5S17 17.5 17 14v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-      )}
-
-      {hasVideo && !isCameraOff ? (
-        hasEffects ? (
-          <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal} />
-        ) : (
-          <video ref={videoRef} autoPlay playsInline muted
-            disablePictureInPicture disableRemotePlayback
-            style={{ width: '100%', height: '100%', objectFit: fit, outline: 'none', transform: isLocal ? 'scaleX(-1)' : 'none', filter: cssFilter }} />
-        )
-      ) : (
-        <div className="float-avatar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          {/* Pulse ring */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div className="pulse-ring" style={{
-              position: 'absolute',
-              width: 222, height: 222,
-              borderRadius: '50%',
-              border: '1px solid rgba(167,139,250,0.30)',
-            }} />
-            {/* Avatar circle */}
-            <div style={{
-              width: 130, height: 130, borderRadius: '50%',
-              background: `linear-gradient(135deg, ${color}, ${color}cc)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 52, fontWeight: 700, color: '#fff',
-              boxShadow: '0 0 40px rgba(124,58,237,0.35)',
-              userSelect: 'none', zIndex: 1,
-            }}>
-              {initial}
-            </div>
-          </div>
-          {/* Name below avatar */}
-          <div style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 999,
-            padding: '5px 16px',
-            fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.8)',
-            fontFamily: 'Inter, sans-serif',
-          }}>
-            {isLocal ? `${userName} (you)` : userName}
-            {isMuted && <span style={{ color: '#E04F5F', marginLeft: 6 }}>· muted</span>}
-          </div>
-        </div>
-      )}
+    <div className={`exmeet-tile${isSmall ? ' exmeet-tile-small' : ''}`} data-local={isLocal} data-speaking={speaking || undefined}
+      onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Spotlight ${userName}` : undefined}
+      onKeyDown={onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined}
+      style={!showVideo && bgImage !== 'none' ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+      {showVideo ? hasEffects ? <VideoCanvasProcessor stream={stream} activeFilter={filter} selectedBgImage={bgImage} mirror={isLocal}/>
+        : <video ref={videoRef} autoPlay playsInline muted disablePictureInPicture disableRemotePlayback
+          style={{ objectFit: fit, transform: isLocal && fit !== 'contain' ? 'scaleX(-1)' : undefined }}/>
+        : <div className="exmeet-tile-empty"><div className="exmeet-avatar">{initials}</div>
+          {hidden && <p className="exmeet-muted">Self view hidden</p>}{children}</div>}
+      {isHandRaised && <span className="exmeet-hand-badge" aria-label={`${userName} raised their hand${handPosition ? `, position ${handPosition}` : ''}`}>Hand {handPosition || 'raised'}</span>}
+      {hasWallet && <span className="exmeet-verified"><ShieldCheck size={13}/> Verified</span>}
+      <div className="exmeet-tile-name">{isMuted && <MicOff size={14} className="exmeet-danger"/>}
+        <span>{userName}{isLocal ? ' (you)' : ''}</span>
+        {!isMuted && <span className="exmeet-voice-meter" aria-label={speaking ? `${userName} is speaking` : `${userName} microphone on`}>
+          {[.55, 1, .7].map((scale, index) => <i key={index} style={{height: Math.max(3, Math.round(12 * scale * (.2 + level * .8)))}}/>)}</span>}
+        {badge && <span className="exmeet-role">{badge}</span>}
+      </div>
     </div>
   );
 }

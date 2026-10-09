@@ -1,141 +1,107 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { acquireMeetingMedia, deviceConstraint, listMeetingDevices } from '../utils/meetingMedia';
 
-export function useMediaDevices() {
+export function useMediaDevices({ initialDevices = {} } = {}) {
   const [stream, setStream] = useState(null);
-  const [devices, setDevices] = useState({ cameras: [], microphones: [] });
-  const [selectedDevices, setSelectedDevices] = useState({ video: null, audio: null });
-  const [permissions, setPermissions] = useState({ video: null, audio: null });
+  const streamRef = useRef(null), requestIdRef = useRef(0);
+  const pendingPermissionRef = useRef(null);
+  const enabledRef = useRef({ audio: true, video: true });
+  const [devices, setDevices] = useState({ cameras: [], microphones: [], speakers: [] });
+  const [selectedDevices, setSelectedDevices] = useState(initialDevices);
+  const selectedRef = useRef(initialDevices);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
   const videoRef = useRef(null);
 
-  const requestPermission = async () => {
-    if (!navigator.mediaDevices) {
-      setError('Media access requires a secure context (HTTPS). Please configure SSL or connect via localhost.');
-      setPermissions({ video: 'denied', audio: 'denied' });
-      return;
-    }
-    try {
-      const constraints = {
-        video: selectedDevices.video ? { deviceId: { exact: selectedDevices.video } } : true,
-        audio: selectedDevices.audio ? { deviceId: { exact: selectedDevices.audio } } : true
-      };
-      
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(mediaStream);
-      setPermissions({ video: 'granted', audio: 'granted' });
-      setError(null);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      console.error('Error accessing media devices:', err);
-      let errorMessage = 'Failed to access media devices';
-      
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage = 'Permission denied. Please allow camera/microphone access in your browser settings.';
-        setPermissions({ video: 'denied', audio: 'denied' });
-      } else if (err.name === 'NotFoundError') {
-        errorMessage = 'No camera or microphone found.';
-      } else if (err.name === 'NotReadableError') {
-        errorMessage = 'Device is already in use.';
-      }
-      
-      setError(errorMessage);
-      setPermissions({ video: 'error', audio: 'error' });
-    }
-  };
-
-  const enumerateDevices = async () => {
-    if (!navigator.mediaDevices) {
-      return;
-    }
-    try {
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = allDevices.filter(d => d.kind === 'videoinput');
-      const microphones = allDevices.filter(d => d.kind === 'audioinput');
-      setDevices({ cameras, microphones });
-      
-      if (!selectedDevices.video && cameras.length > 0) {
-        setSelectedDevices(prev => ({ ...prev, video: cameras[0].deviceId }));
-      }
-      if (!selectedDevices.audio && microphones.length > 0) {
-        setSelectedDevices(prev => ({ ...prev, audio: microphones[0].deviceId }));
-      }
-    } catch (err) {
-      console.error('Error enumerating devices:', err);
-    }
-  };
-
-  const stopStream = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-  };
-
-  const toggleVideo = () => {
-    if (stream) {
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoEnabled(videoTrack.enabled);
-      }
-    }
-  };
-
-  const toggleAudio = () => {
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsAudioEnabled(audioTrack.enabled);
-      }
-    }
-  };
-
-  const switchDevice = async (kind, deviceId) => {
-    if (kind === 'video') {
-      setSelectedDevices(prev => ({ ...prev, video: deviceId }));
+  const enumerateDevices = useCallback(async () => {
+    try { setDevices(await listMeetingDevices()); } catch { /* Device list is optional. */ }
+  }, []);
+  const stopStream = useCallback(() => {
+    requestIdRef.current++;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setStream(null);
+  }, []);
+  const releaseStream = useCallback(() => {
+    // Transfer ownership to the call. Lobby cleanup must not stop these tracks.
+    requestIdRef.current++;
+    const current = streamRef.current;
+    streamRef.current = null;
+    setStream(null);
+    return current;
+  }, []);
+  const requestPermission = useCallback(async () => {
+    const id = ++requestIdRef.current;
+    pendingPermissionRef.current = id;
+    const result = await acquireMeetingMedia({ devices: selectedRef.current });
+    if (id !== requestIdRef.current) { result.stream.getTracks().forEach(t => t.stop()); return; }
+    pendingPermissionRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    result.stream.getTracks().forEach(track => { track.enabled = enabledRef.current[track.kind]; });
+    streamRef.current = result.stream;
+    setStream(result.stream);
+    enabledRef.current = {
+      video: result.stream.getVideoTracks().some(track => track.enabled),
+      audio: result.stream.getAudioTracks().some(track => track.enabled),
+    };
+    setIsVideoEnabled(enabledRef.current.video);
+    setIsAudioEnabled(enabledRef.current.audio);
+    setError(result.error);
+    await enumerateDevices();
+  }, [enumerateDevices]);
+  const toggleKind = useCallback(async kind => {
+    const current = streamRef.current;
+    const track = current?.getTracks().find(t => t.kind === kind && t.readyState === 'live');
+    if (track) {
+      track.enabled = !track.enabled;
+      enabledRef.current[kind] = track.enabled;
+      (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(track.enabled);
+    } else if (pendingPermissionRef.current === requestIdRef.current) {
+      // Keep fast prejoin choices while the browser permission request is still pending.
+      enabledRef.current[kind] = !enabledRef.current[kind];
+      (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(enabledRef.current[kind]);
     } else {
-      setSelectedDevices(prev => ({ ...prev, audio: deviceId }));
+      const id = requestIdRef.current;
+      try {
+        const extra = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(selectedRef.current[kind]) });
+        if (id !== requestIdRef.current) { extra.getTracks().forEach(t => t.stop()); return; }
+        const target = current || new MediaStream();
+        extra.getTracks().forEach(t => target.addTrack(t));
+        streamRef.current = target;
+        setStream(new MediaStream(target.getTracks()));
+        enabledRef.current[kind] = true;
+        (kind === 'video' ? setIsVideoEnabled : setIsAudioEnabled)(true);
+        setError('');
+        await enumerateDevices();
+      } catch { setError(`Could not enable ${kind === 'video' ? 'camera' : 'microphone'}. Check browser permissions.`); }
     }
-  };
-
+  }, [enumerateDevices]);
+  const switchDevice = useCallback(async (kind, deviceId) => {
+    if (selectedRef.current[kind] === deviceId) return;
+    const current = streamRef.current, id = requestIdRef.current;
+    if (current) {
+      const extra = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(deviceId) });
+      if (id !== requestIdRef.current) { extra.getTracks().forEach(t => t.stop()); return; }
+      const old = current.getTracks().filter(t => t.kind === kind);
+      const enabled = old.length > 0 && old[0].enabled;
+      old.forEach(t => { current.removeTrack(t); t.stop(); });
+      extra.getTracks().forEach(t => { t.enabled = enabled; current.addTrack(t); });
+      setStream(new MediaStream(current.getTracks()));
+    }
+    selectedRef.current = { ...selectedRef.current, [kind]: deviceId };
+    setSelectedDevices(selectedRef.current);
+  }, []);
   useEffect(() => {
     enumerateDevices();
-    
     navigator.mediaDevices?.addEventListener('devicechange', enumerateDevices);
-    
     return () => {
-      stopStream();
+      requestIdRef.current++;
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
       navigator.mediaDevices?.removeEventListener('devicechange', enumerateDevices);
     };
-  }, []);
-
-  useEffect(() => {
-    if (stream && (selectedDevices.video || selectedDevices.audio)) {
-      stopStream();
-      requestPermission();
-    }
-  }, [selectedDevices.video, selectedDevices.audio]);
-
-  return {
-    stream,
-    devices,
-    permissions,
-    error,
-    videoRef,
-    isVideoEnabled,
-    isAudioEnabled,
-    requestPermission,
-    stopStream,
-    toggleVideo,
-    toggleAudio,
-    switchDevice,
-    selectedDevices,
-    setSelectedDevices
-  };
+  }, [enumerateDevices]);
+  useEffect(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, [stream]);
+  return { stream, devices, selectedDevices, error, videoRef, isVideoEnabled, isAudioEnabled, requestPermission, stopStream, releaseStream, switchDevice, toggleVideo: () => toggleKind('video'), toggleAudio: () => toggleKind('audio') };
 }

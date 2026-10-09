@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { getAuthToken } from '../utils/auth';
 
 // Module-level singleton so all panels share one connection per session
 let _socket = null;
@@ -14,7 +15,7 @@ export function useRoomSocket(roomCode) {
         import.meta.env.VITE_SOCKET_URL ||
         import.meta.env.VITE_API_BASE_URL ||
         (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
-      _socket = io(socketUrl);
+      _socket = io(socketUrl, { auth: { token: getAuthToken(), roomCode } });
     }
     socketRef.current = _socket;
     _socket.emit('room:join', roomCode);
