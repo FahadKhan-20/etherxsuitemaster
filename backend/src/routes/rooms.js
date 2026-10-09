@@ -28,7 +28,8 @@ router.post('/:code/files', auth, handleFileUpload, (req, res) => {
   }
   if (!req.file) return res.status(400).json({ success: false, message: 'Choose a file to share.' });
   const entry = roomFiles.add(code, { name: req.file.originalname, size: req.file.size, type: req.file.mimetype, tempPath: req.file.path, sharedBy: member.userName || 'Someone' });
-  req.app.get('io')?.to(code).emit('file-shared', roomFiles.publicFile(entry));
+  // The sharer's socket id lets the sharer skip their own "shared a file" popup.
+  req.app.get('io')?.to(code).emit('file-shared', { ...roomFiles.publicFile(entry), sharedBySocketId: member.socketId });
   return res.status(201).json({ success: true, file: roomFiles.publicFile(entry) });
 });
 
