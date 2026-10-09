@@ -507,7 +507,9 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       // ── Feature 3: Reactions + Hand Queue ──────────────────────────────────
 
       // A remote participant sent a reaction emoji
-      socket.on('reaction', ({ emoji, socketId, userName: uName }) => {
+      socket.on('reaction', ({ emoji, socketId, userName: uName } = {}) => {
+        // Rendered as text in everyone's UI: ignore anything that is not a short string.
+        if (typeof emoji !== 'string' || emoji.length > 16) return;
         const id = ++reactionIdRef.current;
         setReactions(prev => [...prev, { id, emoji, socketId, userName: uName }]);
         // Auto-remove after 3 seconds

@@ -297,3 +297,44 @@ test('recording cannot start in a room whose host turned recording off', async t
   assert.equal(reply.ok, false);
   assert.match(reply.error, /turned recording off/);
 });
+
+test('malformed callbacks and payloads never throw out of an event handler', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket');
+  const rejections = [];
+  const onRejection = e => rejections.push(e);
+  process.on('unhandledRejection', onRejection);
+  t.after(() => process.off('unhandledRejection', onRejection));
+  for (const ack of ['not-a-function', 42, {}, null]) {
+    for (const [socket, event, payload] of [
+      [g, 'recording-start', { roomCode: f.code }], [h, 'recording-stop', { roomCode: f.code }],
+      [g, 'share-file', { roomCode: f.code, file: 'nope' }], [g, 'breakout-visit', { roomCode: f.code, groupId: 'x' }],
+      [h, 'create-poll', { roomCode: f.code, question: { $gt: '' }, options: 'not-an-array' }],
+      [g, 'vote-poll', { roomCode: f.code, pollId: { a: 1 }, optionIndex: 'x' }],
+    ]) assert.doesNotThrow(() => socket.trigger(event, payload, ack), `${event} with ack ${JSON.stringify(ack)}`);
+  }
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(rejections, []);
+});
+
+test('reactions relay only short text emoji', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket');
+  for (const emoji of [{ $$typeof: 'x' }, ['a'], 'x'.repeat(40), 7, null]) g.trigger('reaction', { roomCode: f.code, emoji });
+  g.trigger('reaction', { roomCode: f.code, emoji: '👏' });
+  assert.deepEqual(g.roomEvents.filter(e => e.event === 'reaction').map(e => e.payload.emoji), ['👏']);
+});
+
+test('polls created in the same instant get unique ids and clean text', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  for (let i = 0; i < 100; i++) h.trigger('create-poll', { roomCode: f.code, question: `Q${i}`, options: ['Yes', 'No'] });
+  const polls = f.io.emittedEvents.filter(e => e.event === 'poll-created').map(e => e.payload);
+  assert.equal(polls.length, 100);
+  assert.equal(new Set(polls.map(p => p.id)).size, 100);
+  h.trigger('create-poll', { roomCode: f.code, question: 'Bad', options: [{ evil: true }, 'Ok'] });
+  h.trigger('create-poll', { roomCode: f.code, question: 'Too few', options: ['One'] });
+  assert.equal(f.io.emittedEvents.filter(e => e.event === 'poll-created').length, 100);
+});

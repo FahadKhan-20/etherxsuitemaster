@@ -47,7 +47,10 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   const animationFrameRef = useRef(null);
   const chunksRef = useRef([]);
   const finishWaitersRef = useRef([]);
-  const completeFinish = useCallback(() => { finishWaitersRef.current.splice(0).forEach(resolve => resolve()); }, []);
+  // True from Stop until the file is saved. The recorder, canvas and chunks are shared refs, so a new
+  // recording must not start (and server 'idle' must not hide the status) until the last one is saved.
+  const savingRef = useRef(false);
+  const completeFinish = useCallback(() => { savingRef.current = false; finishWaitersRef.current.splice(0).forEach(resolve => resolve()); }, []);
 
   const cleanupCapture = useCallback(() => {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
@@ -93,6 +96,7 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
     if (!recorder && !finishWaitersRef.current.length) return Promise.resolve();
     const completion = new Promise(resolve => finishWaitersRef.current.push(resolve));
     if (!recorder || recorder.state === 'inactive') return completion;
+    savingRef.current = true;
     setRecordingState('stopping');
     recorder.stop();
     return completion;
@@ -182,7 +186,8 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
         if (!uploaded) downloadRecording(blob, `etherx-meeting-${roomCode}-${Date.now()}.webm`);
         setRecordingState('completed');
       } finally { completeFinish(); }
-      window.setTimeout(() => setRecordingState('idle'), 2500);
+      // Only clear the "saved" notice; never a recording that started since.
+      window.setTimeout(() => setRecordingState(current => (current === 'completed' ? 'idle' : current)), 2500);
     };
     recorder.start(1000);
   }, [cleanupCapture, completeFinish, downloadRecording, roomCode, uploadRecording]);
@@ -248,7 +253,9 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   useEffect(() => {
     if (!socket || !socketReady) return undefined;
     const onState = ({ state, error }) => {
-      if(state==='idle'&&recorderRef.current?.state==='recording')finishRecording();else setRecordingState(state || 'idle');
+      if (state === 'idle' && recorderRef.current?.state === 'recording') finishRecording();
+      else if (state === 'idle' && savingRef.current) { /* keep 'stopping' until the file is saved */ }
+      else setRecordingState(state || 'idle');
       if (error) { setRecordingError(error); onError?.(error); }
     };
     socket.on('recording-state', onState);
@@ -261,8 +268,11 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   }, [cleanupCapture]);
 
   const startRecording = useCallback(() => {
-    if (!isHost || !socket || recordingState === 'recording' || recordingState === 'stopping') return;
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') return;
+    if (!isHost || !socket || recordingState === 'recording') return;
+    if (savingRef.current || recordingState === 'stopping' || (recorderRef.current && recorderRef.current.state !== 'inactive')) {
+      onError?.('Still saving the last recording. Try again in a moment.');
+      return;
+    }
     setRecordingError('');
     socket.emit('recording-start', { roomCode }, response => {
       if (!response?.ok) {

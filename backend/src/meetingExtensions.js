@@ -1,4 +1,5 @@
 const { meetingMetrics } = require('./meetingMetrics');
+const { safeAck, guardedOn } = require('./socketGuard');
 // Server-authoritative policies and subgroup membership for the reference meeting UI.
 const policies = new Map(), breakouts = new Map(), ended = new Set();
 const defaults = { waitingRoom: true, allowChat: true, allowShare: true };
@@ -24,12 +25,13 @@ function registerMeetingExtensions(io, socket, context) {
     roster();
   };
   const closeBreakouts = () => {const code=roomCode();const session=breakouts.get(code);if(session?.timer)clearTimeout(session.timer);breakouts.delete(code);io.to(code).emit('breakout-state',null);resetMedia(code);};
-  const on = (event,callback,admin=false) => socket.on(event,(payload={},ack=()=>{})=>{
+  const on = (event,callback,admin=false) => guardedOn(socket,event,(payload={},rawAck)=>{
+    const ack=safeAck(rawAck);
     if(!payload || typeof payload!=='object'||Array.isArray(payload))return;
     const room=getRoom(),member=room?.get(socket.id),code=roomCode();
     if(!member || (payload.roomCode&&payload.roomCode!==code))return ack({ok:false,error:'Join this meeting first.'});
     if(admin&&!privileged(code,member.userId))return ack({ok:false,error:'Host permission required.'});
-    callback(payload,ack,member,room,code);
+    return callback(payload,ack,member,room,code);
   });
   on('request-media-quality',({low},ack,_member,room,code)=>{socket.data.lowBandwidth=!!low;for(const member of room.values())if(member.socketId!==socket.id&&getGroup(code,member.socketId)===getGroup(code,socket.id))io.to(member.socketId).emit('peer-quality-request',{socketId:socket.id,low:!!low});ack({ok:true});});
   on('get-meeting-state',()=>snapshot());

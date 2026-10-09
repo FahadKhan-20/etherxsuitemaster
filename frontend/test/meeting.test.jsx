@@ -12,6 +12,7 @@ import ReferenceVideoRoom from '../src/components/room/ReferenceVideoRoom';
 import apiClient from '../src/utils/apiClient';
 import { useStreamLevel } from '../src/hooks/useStreamLevel';
 import { copyMeetingText } from '../src/utils/meetingClipboard';
+import { useMeetingRecording } from '../src/hooks/useMeetingRecording';
 
 const { sockets } = vi.hoisted(() => ({ sockets: [] }));
 vi.mock('socket.io-client', () => ({ io: vi.fn((_url, options) => {
@@ -314,5 +315,41 @@ describe('reminders across daylight saving',()=>{
     const after = new Date(2026, 3, 15, 8, 0).getTime();
     const next = new Date(nextStart({ startAt: before.toISOString(), duration: 30, recurring: 'daily' }, after));
     expect([next.getHours(), next.getMinutes(), next.getDate()]).toEqual([10, 0, 15]);
+  });
+});
+
+describe('malformed reactions',()=>{
+  it('ignores reactions that are not short text instead of crashing the room',async()=>{
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    act(()=>{for(const emoji of [{$$typeof:Symbol.for('react.element')},['x'],'x'.repeat(40),5])sockets[0].trigger('reaction',{emoji,socketId:'peer',userName:'Peer'});sockets[0].trigger('reaction',{emoji:'👏',socketId:'peer',userName:'Peer'});});
+    expect(hook.reactions.map(r=>r.emoji)).toEqual(['👏']);
+  });
+});
+
+describe('recording status across a quick stop and restart',()=>{
+  it('keeps REC accurate: no restart while saving, and the old save never hides a new recording',async()=>{
+    const recorders=[];
+    class FakeRecorder{constructor(){this.state='inactive';recorders.push(this);}static isTypeSupported(){return true;}start(){this.state='recording';}stop(){this.state='inactive';setTimeout(()=>{this.ondataavailable?.({data:new Blob(['x'])});this.onstop?.();},0);}}
+    vi.stubGlobal('MediaRecorder',FakeRecorder);
+    vi.stubGlobal('AudioContext',class{createMediaStreamDestination(){return{stream:new Stream([new Track('audio')])};}createMediaStreamSource(){return{connect(){},disconnect(){}};}close(){return Promise.resolve();}});
+    vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{});
+    vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({fillRect(){},drawImage(){},fillText(){}});
+    HTMLCanvasElement.prototype.captureStream=()=>new Stream([new Track('video')]);
+    let finishUpload;vi.mocked(apiClient.post).mockImplementation(()=>new Promise(r=>{finishUpload=()=>r({data:{}});}));
+    const handlers=new Map(),socket={on:(e,h)=>handlers.set(e,h),off:()=>{},emit:(e,_p,ack)=>{if(e==='recording-start'){ack?.({ok:true});handlers.get('recording-state')?.({state:'recording'});}if(e==='recording-stop'){ack?.({ok:true});handlers.get('recording-state')?.({state:'idle'});}}};
+    const onError=vi.fn();
+    renderHook(()=>useMeetingRecording({roomCode:'test-room',isHost:true,localStream:null,screenStream:null,peers:{},userName:'Host',socket,socketReady:true,onError}));
+    await act(async()=>hook.startRecording());expect(hook.recordingState).toBe('recording');
+    await act(async()=>{hook.stopRecording();await new Promise(r=>setTimeout(r,5));});
+    expect(hook.isRecording).toBe(true);expect(hook.recordingState).toBe('stopping'); // still saving: server 'idle' must not hide it
+    await act(async()=>hook.startRecording());
+    expect(recorders.length).toBe(1);expect(onError).toHaveBeenCalledWith(expect.stringMatching(/saving/i));
+    await act(async()=>{finishUpload();await new Promise(r=>setTimeout(r,5));});
+    expect(hook.recordingState).toBe('completed');
+    vi.useFakeTimers();
+    await act(async()=>hook.startRecording());expect(hook.recordingState).toBe('recording');expect(recorders.length).toBe(2);
+    await act(async()=>{vi.advanceTimersByTime(3000);});
+    vi.useRealTimers();
+    expect(hook.recordingState).toBe('recording');expect(hook.isRecording).toBe(true);
   });
 });

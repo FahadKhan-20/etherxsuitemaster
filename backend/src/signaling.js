@@ -1,6 +1,8 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
 const { meetingMetrics } = require('./meetingMetrics');
+const { safeAck, guardedOn } = require('./socketGuard');
 const {registerMeetingExtensions,getMeetingPolicy,getGroup,meetingEnded,clearMeetingExtensions} = require('./meetingExtensions');
 
 // roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
@@ -228,24 +230,26 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     let currentRoom = null;
 
     // Every collaborative event requires membership in this authenticated connection's room.
-    const onMember = (event, handler) => socket.on(event, (payload = {}, acknowledge) => {
+    const onMember = (event, handler) => guardedOn(socket, event, (payload = {}, rawAck) => {
+      const acknowledge = safeAck(rawAck);
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
       const room = currentRoom && rooms.get(currentRoom);
       const member = room?.get(socket.id);
       const requested = payload.roomCode && String(payload.roomCode).trim().toLowerCase();
       if (!member || (requested && requested !== currentRoom)) {
-        if (typeof acknowledge === 'function') acknowledge({ ok: false, error: 'Join this meeting first.' });
+        acknowledge({ ok: false, error: 'Join this meeting first.' });
         return;
       }
       if (payload.to && !room.has(payload.to)) return;
       if (['create-poll', 'end-poll', 'share-media'].includes(event) && !isPrivileged(currentRoom, member.userId)) return;
       if (payload.to && ['offer','answer','ice-candidate'].includes(event) && getGroup(currentRoom,socket.id)!==getGroup(currentRoom,payload.to)) return;
-      handler({ ...payload, roomCode: currentRoom }, acknowledge);
+      const result = handler({ ...payload, roomCode: currentRoom }, acknowledge);
       if(['microphone-state','camera-toggled'].includes(event)||(['mute-participant','unmute-participant'].includes(event)&&isPrivileged(currentRoom,member.userId)))extension.roster();
+      return result;
     });
 
     const extension = registerMeetingExtensions(io,socket,{roomCode:()=>currentRoom,getRoom:()=>rooms.get(currentRoom),privileged:isPrivileged,locked:code=>!!roomLocks[code],setHand,screenShares:roomScreenShares,recordings:roomRecordings,setNotes:(code,notes)=>roomNotes.set(code,notes),removeFile:(code,id)=>{roomFiles.set(code,(roomFiles.get(code)||[]).filter(f=>f.id!==id));io.to(code).emit('files-state',{files:roomFiles.get(code)});},setPlayback:(code,state)=>roomMediaPlayback.set(code,state)});
-    socket.on('join-room', (payload = {}) => {
+    guardedOn(socket, 'join-room', (payload = {}) => {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
       const { roomCode: rawCode, userName: chosenName, muted = false, videoOff = false } = payload;
       const userId = socket.data.user.id;
@@ -479,7 +483,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     });
 
     // ── Feature: Waiting Room / Admission ────────────────────────────────────
-    socket.on('request-join', (payload = {}) => {
+    guardedOn(socket, 'request-join', (payload = {}) => {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload) || currentRoom) return;
       const { roomCode: rawCode, userName: chosenName } = payload;
       const userId = socket.data.user.id;
@@ -549,6 +553,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
      * Broadcast an emoji reaction to all other participants in the room.
      */
     onMember('reaction', ({ roomCode, emoji }) => {
+      // Relayed straight into other people's UI: short text only.
+      if (typeof emoji !== 'string' || !emoji.trim() || emoji.length > 16) return;
       const user = rooms.get(roomCode)?.get(socket.id);
       meetingMetrics.count(roomCode, 'reactions');
       socket.to(roomCode).emit('reaction', {
@@ -607,14 +613,16 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
      * Create a new poll for the room. Broadcasts the poll to all participants.
      */
     onMember('create-poll', ({ roomCode, question, options }) => {
-      console.log('[create-poll] from:', socket.id, 'room:', roomCode, 'q:', question);
+      if (typeof question !== 'string' || !question.trim() || !Array.isArray(options)) return;
+      const choices = options.filter(o => typeof o === 'string' && o.trim()).map(o => o.trim().slice(0, 200));
+      if (choices.length !== options.length || choices.length < 2 || choices.length > 10) return;
       const user = rooms.get(roomCode)?.get(socket.id);
       const poll = {
-        id: Date.now(),
+        id: randomUUID(), // Date.now() repeats for polls created in the same millisecond
         createdBy: user?.userName || 'Host',
         createdById: socket.id,
-        question,
-        options: options.map(t => ({ text: t, voters: [] })),
+        question: question.trim().slice(0, 300),
+        options: choices.map(t => ({ text: t, voters: [] })),
         active: true,
       };
       if (!roomPolls.has(roomCode)) roomPolls.set(roomCode, []);
@@ -923,7 +931,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       socket.to(roomCode).emit('caption', { socketId: socket.id, userName: member.userName, text: clean, final: !!final });
     });
 
-    socket.on('disconnect', () => {
+    guardedOn(socket, 'disconnect', () => {
       const room = currentRoom ? rooms.get(currentRoom) : null;
       const departing = room?.get(socket.id);
       const hostLeftWhileRecording = departing

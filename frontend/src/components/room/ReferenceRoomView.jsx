@@ -230,7 +230,7 @@ export const REFERENCE_BINDINGS=[
 export default function ReferenceRoomView({v}) { return <div className="exmeet-reference" data-meeting-theme="dark" ref={v.rootRef}>
 
 <div style={{"height": "100vh","display": "flex","flexDirection": "column","background": "#0b0a08"}}>
-<header style={{"flexShrink": "0","display": "grid","gridTemplateColumns": "1fr auto 1fr","alignItems": "center","gap": "16px","padding": "12px " + String(v.headerPadR) + " 12px 20px","opacity": v.chromeOp,"transition": "padding-right 240ms ease, opacity 300ms ease"}}>
+<header style={{"flexShrink": "0","display": "grid","gridTemplateColumns": "1fr auto 1fr","alignItems": "center","gap": "16px","padding": "12px " + String(v.headerPadR) + " 12px 20px","opacity": v.chromeOp,"transition": "opacity 300ms ease"}}>
 <div style={{"display": "flex","alignItems": "baseline","gap": "7px"}}>
 <span style={{"fontWeight": "700","letterSpacing": "0.14em","fontSize": "15px","color": "#d9b54a"}}>{"ETHERX"}</span>
 <span style={{"fontWeight": "500","fontSize": "15px","color": "#a49c8a"}}>{"Meet"}</span>
@@ -268,7 +268,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </div>
 </div>
 </header>
-<div style={{"flex": "1","minHeight": "0","position": "relative","padding": "0 " + String(v.stagePadR) + " 0 16px","transition": "padding-right 240ms ease"}}>
+<div style={{"flex": "1","minHeight": "0","position": "relative","padding": "0 " + String(v.stagePadR) + " 0 16px"}}>
 <div style={{"position": "relative","height": "100%","display": "grid","gridTemplateColumns": v.gridCols,"gridTemplateRows": v.gridRows,"gap": "10px"}}>
 {(v.tiles || []).map(t=><ReferenceTile key={t.key} person={t}>{t=><>
 <div data-tile={t.key} onClick={t.click} style={{"position": "relative","minHeight": "0","minWidth": "0","gridColumn": t.col,"gridRow": t.row,"borderRadius": t.radius,"overflow": "hidden","background": t.bg,"border": "2px solid " + String(t.ring),"boxShadow": t.glow,"filter": t.freeze,"display": "flex","flexDirection": "column","gap": "18px","alignItems": "center","justifyContent": "center","cursor": "pointer","transition": "border-color 200ms, box-shadow 160ms ease, filter 400ms ease"}}>
@@ -869,7 +869,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.fbSent) && <><span style={{"fontSize": "14px","color": "#6fcf8f"}}>{"Thanks for the feedback"}</span></>}
 <div style={{"display": "flex","gap": "10px"}}>
 {(v.canRejoin) && <><button onClick={v.rejoin} style={{"height": "46px","padding": "0 20px","borderRadius": "12px","border": "0","background": "#d9b54a","color": "#1a1608","font": "inherit","fontSize": "15px","fontWeight": "600","cursor": "pointer"}}>{"Rejoin"}</button></>}
-<a href={v.lobbyUrl} style={{"height": "46px","padding": "0 20px","borderRadius": "12px","border": "1px solid #3a3424","color": "#e8e2d3","fontSize": "15px","fontWeight": "500","display": "flex","alignItems": "center"}}>{"Back to lobby"}</a>
+<a href={v.lobbyUrl} style={{"height": "46px","padding": "0 20px","borderRadius": "12px","border": "1px solid #3a3424","color": "#e8e2d3","fontSize": "15px","fontWeight": "500","display": "flex","alignItems": "center"}}>{"Back to home"}</a>
 </div>
 </div>
 </div>
