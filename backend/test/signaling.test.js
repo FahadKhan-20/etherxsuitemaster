@@ -389,6 +389,19 @@ test('any participant can launch a poll; only its creator or a host can end it',
   assert.equal(ended(), 2);
 });
 
+test('agenda items carry who added and who covered them, for popups', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  h.trigger('add-agenda-item', { roomCode: f.code, title: 'Budget' });
+  const [item] = f.io.emittedEvents.filter(e => e.event === 'agenda-updated').at(-1).payload;
+  assert.equal(item.createdById, h.id);
+  h.trigger('toggle-agenda-item', { roomCode: f.code, id: item.id });
+  const [covered] = f.io.emittedEvents.filter(e => e.event === 'agenda-updated').at(-1).payload;
+  assert.equal(covered.done, true);
+  assert.equal(covered.toggledById, h.id);
+  assert.equal(typeof covered.toggledBy, 'string');
+});
+
 test('YouTube links are shared as an embedded player; other pages cannot claim that kind', async t => {
   const f = fixture(t);
   const h = await f.host();

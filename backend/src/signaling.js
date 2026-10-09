@@ -736,6 +736,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         title: title.trim(),
         done: false,
         createdBy: user?.userName || 'Someone',
+        createdById: socket.id, // lets the author skip their own "added to the agenda" popup
       };
       if (!roomAgenda.has(roomCode)) roomAgenda.set(roomCode, []);
       roomAgenda.get(roomCode).push(item);
@@ -753,6 +754,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       const item = items.find(i => i.id === id);
       if (!item) return;
       item.done = !item.done;
+      item.toggledBy = user.userName; // who covered/reopened it, for the agenda popup
+      item.toggledById = socket.id;
       io.to(roomCode).emit('agenda-updated', items);
     });
 
