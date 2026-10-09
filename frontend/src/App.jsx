@@ -6,21 +6,26 @@ import { UserProvider } from './context/UserContext';
 import { UIProvider } from './context/UIContext';
 import { WalletProvider } from './context/WalletContext';
 import VideoBackground from './components/effects/VideoBackground';
-import Landing from './pages/Landing';
-import Join from './pages/Join';
-import Room from './pages/Room';
-import Dashboard from './pages/Dashboard';
-import Recordings from './pages/Recordings';
-import Analytics from './pages/Analytics';
-import Settings from './pages/Settings';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import AuthCallback from './pages/AuthCallback';
-import ResetPassword from './pages/ResetPassword';
+import { lazy, Suspense } from 'react';
 import CommandPalette from './components/layout/CommandPalette';
 import ToastSystem from './components/layout/ToastSystem';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ROUTES } from './utils/constants';
+
+// Each page loads on first visit, so the meeting room's media code and the charts are not in the first download.
+const Landing = lazy(() => import('./pages/Landing'));
+const Join = lazy(() => import('./pages/Join'));
+const Room = lazy(() => import('./pages/Room'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Recordings = lazy(() => import('./pages/Recordings'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+
+const PageLoading = () => <div role="status" aria-label="Loading" style={{ minHeight: '100dvh', background: '#000' }} />;
 
 /** Inner component so useLocation can be called inside BrowserRouter. */
 function AppRoutes() {
@@ -31,6 +36,7 @@ function AppRoutes() {
       <CommandPalette />
       <ToastSystem />
 
+      <Suspense fallback={<PageLoading />}>
       <Routes location={location}>
         <Route path={ROUTES.LOGIN}           element={<Login />} />
         <Route path={ROUTES.REGISTER}        element={<Register />} />
@@ -46,6 +52,7 @@ function AppRoutes() {
           <Route path={ROUTES.SETTINGS}    element={<Settings />} />
         </Route>
       </Routes>
+      </Suspense>
     </>
   );
 }

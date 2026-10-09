@@ -6,7 +6,8 @@ import { Check, Download, Play, Search, Share2, Video, Link2, Clock, Users, Refr
 import TopBar from '../components/layout/TopBar';
 import transcripts from '../data/transcripts';
 
-import apiClient from '../utils/apiClient';
+import apiClient, { getApiErrorMessage } from '../utils/apiClient';
+import { copyMeetingText } from '../utils/meetingClipboard';
 
 const GOLD = '#d4af37';
 const GOLD_DIM = 'rgba(212,175,55,0.08)';
@@ -17,15 +18,32 @@ const BORDER = 'rgba(255,255,255,0.07)';
 
 const API = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
 
+// Recording durations are stored in seconds.
+const formatDuration = (seconds) => {
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, sec = String(seconds % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
+
 export default function Recordings() {
   const [query, setQuery] = useState('');
   const [selectedRecording, setSelectedRecording] = useState(null);
   const [copied, setCopied] = useState(false);
   const [recordings, setRecordings] = useState([]);
   const [recLoading, setRecLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [playUrl, setPlayUrl] = useState('');
+  const [linkError, setLinkError] = useState('');
 
+  useEffect(() => { setPlayUrl(''); setLinkError(''); }, [selectedRecording?.id]);
+
+  // Signed, expiring link from the backend: <video> and downloads cannot send the Authorization header.
+  const recordingLink = async (share = false) => {
+    const res = await apiClient.post(`/api/recordings/${selectedRecording.id}/link`, { share });
+    return `${API.replace(/\/$/, '')}${res.data.url}`;
+  };
   const fetchRecordings = useCallback(async () => {
     setRecLoading(true);
+    setLoadError('');
     try {
       const res = await apiClient.get('/api/recordings');
       const raw = res.data?.data?.recordings ?? [];
@@ -36,11 +54,12 @@ export default function Recordings() {
         participants: [],
         date: r.createdAt,
         meetingId: r.roomCode,
-        videoUrl: `${API}/api/recordings/${r._id}`,
+        videoUrl: `/api/recordings/${r._id}`,
         transcriptPreview: '',
       })));
-    } catch {
-      setRecordings([]);
+    } catch (error) {
+      // Keep whatever was shown before; say the load failed instead of looking like an empty library.
+      setLoadError(getApiErrorMessage(error, 'Could not load your recordings.'));
     } finally {
       setRecLoading(false);
     }
@@ -48,23 +67,32 @@ export default function Recordings() {
 
   useEffect(() => { fetchRecordings(); }, [fetchRecordings]);
 
-  const handlePlay = () => {
-    if (selectedRecording?.videoUrl) window.open(selectedRecording.videoUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleDownload = () => {
+  const handlePlay = async () => {
     if (!selectedRecording?.videoUrl) return;
-    const a = document.createElement('a');
-    a.href = selectedRecording.videoUrl;
-    a.download = `${selectedRecording.title}.webm`;
-    a.click();
+    try { setLinkError(''); setPlayUrl(await recordingLink()); }
+    catch (error) { setLinkError(getApiErrorMessage(error, 'Could not open this recording.')); }
   };
 
+  const handleDownload = async () => {
+    if (!selectedRecording?.videoUrl) return;
+    try {
+      setLinkError('');
+      const a = document.createElement('a');
+      a.href = `${await recordingLink()}&download=1`;
+      a.download = `${selectedRecording.title}.webm`;
+      a.click();
+    } catch (error) { setLinkError(getApiErrorMessage(error, 'Could not download this recording.')); }
+  };
+
+  // Copies a link to the recording itself that anyone can play for 7 days (deleting the recording revokes it).
   const handleShare = async () => {
-    const url = `${window.location.origin}/room/${selectedRecording?.meetingId}`;
-    try { await navigator.clipboard.writeText(url); } catch { prompt('Copy this link:', url); }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (!selectedRecording?.videoUrl) return;
+    try {
+      setLinkError('');
+      await copyMeetingText(await recordingLink(true));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) { setLinkError(getApiErrorMessage(error, 'Could not create a share link.')); }
   };
 
 
@@ -164,6 +192,11 @@ export default function Recordings() {
                     <RefreshCw style={{ width: 13, height: 13, animation: recLoading ? 'spin 0.8s linear infinite' : 'none' }} />
                   </button>
                 </div>
+                {loadError && filteredRecordings.length > 0 && (
+                  <p role="alert" style={{ margin: '0 0 10px', fontSize: 12, color: '#f87171' }}>
+                    {loadError} Showing the last loaded list. <button type="button" onClick={fetchRecordings} style={{ background: 'none', border: 'none', color: GOLD, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Try again</button>
+                  </p>
+                )}
                 {filteredRecordings.length === 0 ? (
                   <div style={{
                     borderRadius: 22, border: '1px dashed rgba(255,255,255,0.1)',
@@ -177,10 +210,17 @@ export default function Recordings() {
                     }}>
                       <Video style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.2)' }} />
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.65)' }}>No recordings yet</p>
-                    <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, maxWidth: 220 }}>
-                      {recLoading ? 'Loading…' : 'Join a meeting → click Record → stop to save here'}
-                    </p>
+                    {loadError ? (
+                      <>
+                        <p role="alert" style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#f87171' }}>{loadError}</p>
+                        <button type="button" onClick={fetchRecordings} style={{ background: 'none', border: `1px solid ${GOLD_BORDER}`, borderRadius: 10, padding: '6px 14px', color: GOLD, fontSize: 12, cursor: 'pointer' }}>Try again</button>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.65)' }}>{recLoading ? 'Loading…' : 'No recordings yet'}</p>
+                        {!recLoading && <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, maxWidth: 220 }}>Join a meeting → click Record → stop to save here</p>}
+                      </>
+                    )}
                   </div>
                 ) : (
                   <motion.div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true }}>
@@ -214,7 +254,7 @@ export default function Recordings() {
                             </p>
                             <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>
-                                <Clock style={{ width: 11, height: 11 }} />{recording.duration}m
+                                <Clock style={{ width: 11, height: 11 }} />{formatDuration(recording.duration)}
                               </span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>
                                 <Users style={{ width: 11, height: 11 }} />{recording.participants.length}
@@ -272,7 +312,9 @@ export default function Recordings() {
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
                       overflow: 'hidden',
                     }}>
-                      {selectedRecording.videoUrl ? (
+                      {playUrl ? (
+                        <video src={playUrl} controls autoPlay style={{ width: '100%', height: '100%', background: '#000' }} />
+                      ) : selectedRecording.videoUrl ? (
                         <button
                           onClick={handlePlay}
                           style={{
@@ -310,6 +352,8 @@ export default function Recordings() {
                       </button>
                       <button
                         onClick={handleShare}
+                        disabled={!selectedRecording.videoUrl}
+                        title="Anyone with the link can watch for 7 days"
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           border: `1px solid ${BORDER}`, background: 'rgba(255,255,255,0.05)',
@@ -319,9 +363,10 @@ export default function Recordings() {
                         }}
                       >
                         {copied ? <Check style={{ width: 15, height: 15 }} /> : <Share2 style={{ width: 15, height: 15 }} />}
-                        {copied ? 'Copied!' : 'Share link'}
+                        {copied ? 'Copied! Valid for 7 days' : 'Share link'}
                       </button>
                     </div>
+                    {linkError && <p role="alert" style={{ margin: '10px 0 0', fontSize: 12, color: '#f87171' }}>{linkError}</p>}
                   </div>
 
                   {/* Chapters + Transcript */}

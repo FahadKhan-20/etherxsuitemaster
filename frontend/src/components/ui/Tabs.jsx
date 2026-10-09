@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { isValidElement, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
@@ -6,14 +6,20 @@ import { motion, AnimatePresence } from 'framer-motion';
  * @param {Object} props
  * @param {Array} props.tabs - Array of tabs { id, label, content, icon }
  * @param {string} props.defaultTab - Default active tab ID
+ * @param {string} [props.activeTab] - Controlled active tab ID (with onTabChange)
+ * @param {Function} [props.onTabChange] - Called with the tab ID the user picks
  */
 export default function Tabs({
   tabs = [],
   defaultTab,
+  activeTab: controlledTab,
+  onTabChange,
   className = '',
   ...props
 }) {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.id);
+  const [ownTab, setOwnTab] = useState(defaultTab || tabs[0]?.id);
+  const activeTab = controlledTab ?? ownTab;
+  const setActiveTab = (id) => { setOwnTab(id); onTabChange?.(id); };
 
   const activeTabData = tabs.find(tab => tab.id === activeTab);
 
@@ -38,7 +44,7 @@ export default function Tabs({
             
             {/* Content */}
             <span className={`relative z-10 ${activeTab === tab.id ? 'text-white' : 'text-white/60'}`}>
-              {tab.icon && <span className="inline-block mr-1">{tab.icon}</span>}
+              {tab.icon && <span className="inline-block mr-1">{isValidElement(tab.icon) ? tab.icon : <tab.icon className="inline h-4 w-4" aria-hidden="true" />}</span>}
               {tab.label}
             </span>
           </button>

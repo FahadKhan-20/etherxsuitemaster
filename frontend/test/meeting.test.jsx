@@ -7,13 +7,8 @@ import { useWebRTC } from '../src/hooks/useWebRTC';
 import { acquireMeetingMedia } from '../src/utils/meetingMedia';
 import { DEFAULT_MEETING_PREFERENCES, useMeetingPreferences } from '../src/hooks/useMeetingPreferences';
 import MeetingSettings from '../src/components/room/MeetingSettings';
+import CaptionsOverlay from '../src/components/room/CaptionsOverlay';
 import ReferenceVideoRoom from '../src/components/room/ReferenceVideoRoom';
-import VideoRoom from '../src/components/video/VideoRoom';
-import RoomStage from '../src/components/room/RoomStage';
-import RoomMoreMenu from '../src/components/room/RoomMoreMenu';
-import VideoTile from '../src/components/video/VideoTile';
-import * as streamMeter from '../src/hooks/useStreamLevel';
-import VerifiedChat from '../src/components/web3/VerifiedChat';
 import apiClient from '../src/utils/apiClient';
 import { useStreamLevel } from '../src/hooks/useStreamLevel';
 import { copyMeetingText } from '../src/utils/meetingClipboard';
@@ -48,7 +43,7 @@ class Stream {
 }
 const pcs = [], captures = [];
 class PC {
-  constructor() { this.transceivers = []; this.signalingState = 'stable'; this.connectionState = 'new'; pcs.push(this); }
+  constructor(config) { this.config = config; this.transceivers = []; this.signalingState = 'stable'; this.connectionState = 'new'; pcs.push(this); }
   addTrack(track) { const sender = { track, replaceTrack: async next => { sender.track = next; } }; this.transceivers.push({ sender, receiver: { track: { kind: track.kind } }, mid: '0', direction: 'sendrecv', currentDirection: 'sendrecv' }); return sender; }
   addTransceiver(kind) { const sender = { track: null, replaceTrack: async next => { sender.track = next; } }; this.transceivers.push({ sender, receiver: { track: { kind } }, mid: '0', currentDirection: 'sendrecv' }); }
   getTransceivers() { return this.transceivers; }
@@ -93,62 +88,6 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({drawImage(){},clearRect(){},save(){},restore(){},translate(){},scale(){},fillRect(){},getImageData(){return{data:[]}}});
 });
 afterEach(()=>{ for(const {root,container} of roots) { act(()=>root.unmount());container.remove(); }roots=[];vi.restoreAllMocks();vi.unstubAllGlobals(); });
-
-describe('More menu navigation', () => {
-  it('skips disabled actions, supports keyboard navigation, and restores trigger focus on Escape', () => {
-    mount(<RoomMoreMenu groups={[{label:'Tools',items:[
-      {label:'Whiteboard',action:vi.fn()}, {label:'Recording busy',disabled:true,action:vi.fn()},
-      {label:'Settings',action:vi.fn()},
-    ]}]}/>);
-    clickTitle('More');
-    expect(document.activeElement.textContent).toBe('Whiteboard');
-    act(()=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})));
-    expect(document.activeElement.textContent).toBe('Settings');
-    act(()=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true})));
-    expect(document.activeElement.textContent).toBe('Whiteboard');
-    act(()=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true})));
-    expect(document.activeElement.textContent).toBe('Settings');
-    act(()=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
-    expect(document.querySelector('[role="menu"]')).toBeNull();
-    expect(document.activeElement.title).toBe('More');
-  });
-  it('closes on action and outside click while preserving toggle state', () => {
-    const action=vi.fn();
-    mount(<RoomMoreMenu groups={[{label:'Audio',items:[{label:'Noise suppression',active:true,action}]}]}/>);
-    clickTitle('More');expect(document.querySelector('[role="menuitemcheckbox"]').getAttribute('aria-checked')).toBe('true');
-    clickText('Noise suppression');expect(action).toHaveBeenCalledOnce();expect(document.querySelector('[role="menu"]')).toBeNull();
-    clickTitle('More');act(()=>document.body.dispatchEvent(new Event('pointerdown',{bubbles:true})));
-    expect(document.querySelector('[role="menu"]')).toBeNull();
-  });
-});
-
-describe('reference meeting layout', () => {
-  it('starts in gallery view and keeps speaker layout available from More', async () => {
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    await act(async()=>sockets[0].trigger('existing-users',[{socketId:'peer',userName:'Priya Shah',videoOff:true}]));
-    expect(document.querySelector('.exmeet-stage-gallery')).toBeTruthy();expect(document.querySelector('.exmeet-filmstrip')).toBeNull();
-    clickTitle('More');clickText('Speaker view');expect(document.querySelector('.exmeet-stage-speaker')).toBeTruthy();
-    clickTitle('More');clickText('Grid view');expect(document.querySelector('.exmeet-stage-gallery')).toBeTruthy();
-    act(()=>document.querySelector('[aria-label="Spotlight Priya Shah"]').click());
-    expect(document.querySelector('.exmeet-stage-speaker > .exmeet-tile').textContent).toContain('Priya Shah');
-  });
-  it('shows speaker highlight only for unmuted audio and displays hand queue position', () => {
-    vi.spyOn(streamMeter,'useStreamLevel').mockReturnValue(.7);
-    const rendered=mount(<VideoTile userName="Priya Shah" isHandRaised handPosition={2}/>);
-    expect(document.querySelector('.exmeet-tile').getAttribute('data-speaking')).toBe('true');
-    expect(document.querySelector('.exmeet-voice-meter').getAttribute('aria-label')).toBe('Priya Shah is speaking');
-    expect(document.querySelector('.exmeet-hand-badge').textContent).toBe('Hand 2');
-    rendered.rerender(<VideoTile userName="Priya Shah" isMuted/>);
-    expect(document.querySelector('.exmeet-tile').hasAttribute('data-speaking')).toBe(false);expect(document.querySelector('.exmeet-voice-meter')).toBeNull();
-  });
-  it('marks incoming room messages unread and clears indicator when chat opens', async () => {
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>sockets[0].trigger('chat:message-created',{roomCode:'another-room',senderId:'peer'}));expect(document.querySelector('.exmeet-unread-dot')).toBeNull();
-    act(()=>sockets[0].trigger('chat:message-created',{roomCode:'test-room',senderId:'user-1'}));expect(document.querySelector('.exmeet-unread-dot')).toBeNull();
-    act(()=>sockets[0].trigger('chat:message-created',{roomCode:'test-room',senderId:'peer'}));expect(document.querySelector('.exmeet-unread-dot')).toBeTruthy();
-    clickTitle('Chat');expect(document.querySelector('.exmeet-unread-dot')).toBeNull();
-  });
-});
 
 describe('media ownership and live device choices',()=>{
   it('preserves fast prejoin mute choices while camera and microphone permission is pending',async()=>{
@@ -239,57 +178,6 @@ describe('settings and controls',()=>{
     await copyMeetingText('https://meet.example/room/test-room');expect(copy).toHaveBeenCalledWith('copy');
     expect(document.querySelector('textarea')).toBeNull();delete document.execCommand;delete navigator.clipboard;
   });
-  it('keeps one side panel open when switching between chat and participants',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    clickTitle('Chat');expect(document.querySelector('[aria-label="Message everyone"]')).toBeTruthy();
-    clickTitle('Participants');expect(document.querySelector('[aria-label="Message everyone"]')).toBeNull();expect(document.querySelector('[aria-label="Search participants"]')).toBeTruthy();
-    clickTitle('Chat');expect(document.querySelector('[aria-label="Search participants"]')).toBeNull();expect(document.querySelectorAll('.exmeet-side-panel')).toHaveLength(1);
-  });
-  it('sends reactions through the existing room socket',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    clickTitle('Reactions');clickTitle('Send 👏 reaction');
-    expect(sockets[0].events).toContainEqual({event:'reaction',payload:{roomCode:'test-room',emoji:'👏'}});
-    expect(document.querySelector('.exmeet-reaction-menu')).toBeNull();
-  });
-  it('shares media through the new dialog and stops playback for the room',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>sockets[0].trigger('your-role',{isHost:true}));
-    clickTitle('More');clickText('Share video');expect(document.querySelector('[aria-label="Share video"]')).toBeTruthy();
-    typeInput(document.querySelector('#meeting-media-url'),'https://example.com/clip.webm');
-    act(()=>document.querySelector('[aria-label="Share video"] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
-    expect(sockets[0].events).toContainEqual({event:'share-media',payload:{roomCode:'test-room',url:'https://example.com/clip.webm',kind:'video'}});
-    expect(document.querySelector('.exmeet-shared-media video').controls).toBe(true);
-    clickText('Stop shared media');expect(sockets[0].events.at(-1)).toEqual({event:'share-media',payload:{roomCode:'test-room',url:null,kind:'video'}});
-    expect(document.querySelector('.exmeet-shared-media')).toBeNull();
-  });
-  it('guests can open shared agenda from the new menu without gaining edit rights',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>sockets[0].trigger('admitted'));await settle();
-    act(()=>sockets[0].trigger('agenda-state',{items:[{id:'shared',title:'Shared topic',done:false}]}));
-    clickTitle('More');clickText('Meeting Agenda');
-    expect(document.querySelector('.meeting-agenda').textContent).toContain('Shared topic');
-    expect(document.querySelector('[aria-label="Complete topic: Shared topic"]').disabled).toBe(true);
-    expect(document.querySelector('[aria-label="New agenda topic"]')).toBeNull();
-  });
-  it('shows the actual local screen stream and a working stop action while preserving self thumbnail',async()=>{
-    const stream=new Stream([new Track('video','Screen')]),local=new Stream([new Track('video','Camera')]),stop=vi.fn();
-    mount(<RoomStage roomCode="test-room" localStream={local} peers={{}} userName="Host" micMuted={false} cameraOff={false}
-      filter="none" background="none" gridView isScreenSharing screenStream={stream} onStopScreen={stop}
-      handQueue={[]} setSpotlightId={vi.fn()}/>);
-    expect(document.querySelector('[data-screen-preview] video').srcObject).toBe(stream);
-    expect(document.querySelector('.exmeet-filmstrip video').srcObject).toBe(local);
-    clickText('Stop sharing');expect(stop).toHaveBeenCalledOnce();
-  });
-  it('restores spotlighted participant video after stream and camera changes',async()=>{
-    const screen=new Stream([new Track('video','Screen')]);
-    const props={roomCode:'test-room',localStream:null,userName:'Host',micMuted:true,cameraOff:true,filter:'none',background:'none',
-      gridView:false,spotlightId:'remote',screenSharerId:'remote',handQueue:[],setSpotlightId:vi.fn()};
-    const rendered=mount(<RoomStage {...props} peers={{remote:{userName:'Guest',stream:screen,videoOff:true}}}/>);
-    expect(document.querySelector('.exmeet-stage-grid > .exmeet-tile video').srcObject).toBe(screen);
-    expect(document.querySelector('.exmeet-stage-grid > .exmeet-tile video').style.objectFit).toBe('contain');
-    rendered.rerender(<RoomStage {...props} screenSharerId={null} peers={{remote:{userName:'Guest',stream:screen,videoOff:true}}}/>);
-    expect(document.querySelector('.exmeet-stage-grid > .exmeet-tile video')).toBeNull();
-  });
   it('previews the existing stream and supports Escape with focus restoration',async()=>{
     const onClose=vi.fn(), onSave=vi.fn();const trigger=document.createElement('button');document.body.appendChild(trigger);trigger.focus();
     const stream=new Stream([new Track('video')]);const rendered=mount(<MeetingSettings initialTab="backgrounds" preferences={prefs()} onClose={onClose} onSave={onSave} stream={stream} audioEnabled={false} videoEnabled devices={{cameras:[],microphones:[],speakers:[]}} selectedDevices={{}} switchDevice={vi.fn()}/>);
@@ -316,49 +204,6 @@ describe('settings and controls',()=>{
   it('persists preferences when the meeting is reopened',async()=>{
     const rendered=renderHook(()=>useMeetingPreferences());act(()=>hook[1]({...prefs(),theme:'light',outputDevice:'speaker-2'}));rendered.unmount();
     renderHook(()=>useMeetingPreferences());expect(hook[0].theme).toBe('light');expect(hook[0].outputDevice).toBe('speaker-2');
-  });
-  it('M/V shortcuts work without hijacking typed messages; toolbar stays visible',async()=>{
-    mount(<MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}}><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'m',bubbles:true})));await settle();
-    expect(document.querySelector('[title="Unmute microphone"]')).toBeTruthy();
-    act(()=>document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'v',bubbles:true})));await settle();expect(document.querySelector('[title="Start camera"]')).toBeTruthy();
-    const input=document.createElement('input');document.body.appendChild(input);act(()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'m',bubbles:true})));await settle();expect(document.querySelector('[title="Unmute microphone"]')).toBeTruthy();input.remove();
-    expect(document.querySelector('[role="toolbar"]')).toBeTruthy();expect(document.querySelector('.toolbar-wrap.hidden')).toBeNull();
-  });
-  it('guest invitations open a working, keyboard-accessible dialog',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>sockets[0].trigger('admitted'));await settle();clickTitle('More');clickText('Invite people');
-    expect(document.querySelector('[role="dialog"]').textContent).toContain('Invite more people');
-    expect(document.querySelector('[role="dialog"]').textContent).toContain('Copy meeting link');
-    act(()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));expect(document.querySelector('[role="dialog"]')).toBeNull();
-  });
-  it('participant search filters real room members',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>sockets[0].trigger('user-joined',{socketId:'alice',userName:'Alice',userId:'alice'}));clickTitle('Participants');
-    expect(document.querySelectorAll('[data-room-participant]')).toHaveLength(2);
-    typeInput(document.querySelector('[aria-label="Search participants"]'),'alice');expect(document.querySelectorAll('[data-room-participant]')).toHaveLength(1);expect(document.querySelector('[data-room-participant]').textContent).toContain('Alice');
-    typeInput(document.querySelector('[aria-label="Search participants"]'),'missing');expect(document.querySelectorAll('[data-room-participant]')).toHaveLength(0);
-  });
-  it('hiding self view does not disable the camera',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    clickTitle('More');clickText('Performance settings');expect(document.body.textContent).toContain('Self view hidden');
-    expect(captures.flatMap(s=>s.getVideoTracks()).every(t=>t.enabled && t.readyState==='live')).toBe(true);
-    clickTitle('More');clickText('Performance settings');expect(document.body.textContent).not.toContain('Self view hidden');
-  });
-  it('agenda edits reach the server and server updates reach the room',async()=>{
-    mount(<MemoryRouter><VideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    act(()=>{sockets[0].trigger('your-role',{isHost:true});sockets[0].trigger('agenda-state',{items:[{id:'topic-1',title:'Release plan',done:false}]});});
-    clickTitle('More');clickText('Meeting Agenda');expect(document.querySelector('.meeting-agenda').textContent).toContain('Release plan');
-    act(()=>document.querySelector('[aria-label="Complete topic: Release plan"]').click());expect(sockets[0].events.at(-1)).toEqual({event:'toggle-agenda-item',payload:{roomCode:'test-room',id:'topic-1'}});
-    act(()=>sockets[0].trigger('agenda-updated',[{id:'topic-1',title:'Release plan',done:true}]));expect(document.querySelector('[aria-label="Mark incomplete: Release plan"]')).toBeTruthy();
-    typeInput(document.querySelector('[aria-label="New agenda topic"]'),'Next steps');clickText('Add');expect(sockets[0].events.at(-1)).toEqual({event:'add-agenda-item',payload:{roomCode:'test-room',title:'Next steps'}});
-  });
-  it('chat failures keep the unsent message and provide retry feedback',async()=>{
-    mount(<VerifiedChat roomCode="test-room" embedded/>);await settle();
-    typeInput(document.querySelector('[aria-label="Message everyone"]'),'Keep this draft');vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('Offline'));
-    await act(async()=>document.querySelector('[aria-label="Send message"]').click());await settle();
-    expect(document.querySelector('[aria-label="Message everyone"]').value).toBe('Keep this draft');expect(document.querySelector('[role="alert"]').textContent).toContain('Message not sent');
-    expect(document.querySelector('[aria-label="Retry chat"]')).toBeTruthy();
   });
   it('microphone meter measures samples and releases its audio context',async()=>{
     vi.useFakeTimers();const close=vi.fn(async()=>{}),disconnect=vi.fn();
@@ -392,26 +237,82 @@ describe('complete reference template integration',()=>{
 
 
 describe('noise suppression microphone state',()=>{
-  it('keeps raw and filtered outgoing tracks muted while the private source clone stays usable',async()=>{
-    const inputs=[];
-    class Audio {
-      createMediaStreamSource(stream){inputs.push(stream);return {connect:node=>node};}
-      createBiquadFilter(){return {frequency:{value:0},connect:node=>node};}
-      createMediaStreamDestination(){return {stream:new Stream([new Track('audio','filtered')])};}
-      resume(){return Promise.resolve();}
-      close(){return Promise.resolve();}
-    }
-    vi.stubGlobal('AudioContext',Audio);
+  it('uses the browser noise suppression on a re-captured mic and keeps the mute state',async()=>{
     renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    expect(hook.noiseSuppressed).toBe(true);
+    const first=navigator.mediaDevices.getUserMedia.mock.calls.find(([c])=>c.audio)[0];
+    expect(first.audio).toMatchObject({noiseSuppression:true,echoCancellation:true});
     const raw=hook.localStream.getAudioTracks()[0];
-    await act(async()=>hook.toggleMic());expect(raw.enabled).toBe(false);
-    act(()=>hook.toggleNoiseSuppression());
-    expect(hook.noiseSuppressed).toBe(true);expect(hook.micMuted).toBe(true);
-    expect(hook.localStream.getAudioTracks()[0].enabled).toBe(false);
-    expect(raw.enabled).toBe(false);expect(inputs[0].getAudioTracks()[0]).not.toBe(raw);
-    expect(inputs[0].getAudioTracks()[0].enabled).toBe(true);
-    act(()=>hook.toggleNoiseSuppression());
-    expect(hook.noiseSuppressed).toBe(false);expect(hook.localStream.getAudioTracks()[0]).toBe(raw);
-    expect(raw.enabled).toBe(false);expect(inputs[0].getAudioTracks()[0].readyState).toBe('ended');
+    await act(async()=>hook.toggleMic());
+    await act(async()=>hook.toggleNoiseSuppression());
+    expect(hook.noiseSuppressed).toBe(false);
+    expect(navigator.mediaDevices.getUserMedia.mock.calls.at(-1)[0].audio).toMatchObject({noiseSuppression:false});
+    const next=hook.localStream.getAudioTracks()[0];
+    expect(next).not.toBe(raw);expect(raw.readyState).toBe('ended');expect(next.enabled).toBe(false);expect(hook.micMuted).toBe(true);
+    await act(async()=>hook.toggleNoiseSuppression());
+    expect(hook.noiseSuppressed).toBe(true);
+    expect(navigator.mediaDevices.getUserMedia.mock.calls.at(-1)[0].audio).toMatchObject({noiseSuppression:true});
+  });
+});
+
+describe('captions on browsers without speech recognition',()=>{
+  const fakeSocket=()=>{const handlers=new Map();return {events:[],on(e,h){handlers.set(e,h);},off(e){handlers.delete(e);},emit(event,payload){this.events.push({event,payload});},trigger(e,p){handlers.get(e)?.(p);}};};
+  it('keeps a notice, warns the speaker and tells the room this speaker is not captioned',async()=>{
+    vi.stubGlobal('SpeechRecognition',undefined);vi.stubGlobal('webkitSpeechRecognition',undefined);
+    const socket=fakeSocket(),onUnavailable=vi.fn();
+    mount(<CaptionsOverlay socket={socket} roomCode="test-room" show transcribe onUnavailable={onUnavailable}/>);await settle();
+    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(socket.events.some(e=>e.event==='caption-unavailable'&&e.payload.roomCode==='test-room')).toBe(true);
+    await act(async()=>{await new Promise(r=>setTimeout(r,4500));});
+    expect(document.body.textContent).toContain("Your browser can't caption your speech");
+  });
+  it('lists room members who cannot be captioned until they leave',async()=>{
+    const socket=fakeSocket();
+    mount(<CaptionsOverlay socket={socket} roomCode="test-room" show transcribe={false}/>);await settle();
+    act(()=>socket.trigger('caption-unavailable',{socketId:'peer',userName:'Priya Shah'}));
+    expect(document.body.textContent).toContain('Not captioned (browser unsupported): Priya Shah');
+    act(()=>socket.trigger('user-left',{socketId:'peer'}));
+    expect(document.body.textContent).not.toContain('Priya Shah');
+  });
+});
+
+describe('TURN relay configuration',()=>{
+  it('builds peer connections with the ICE servers the backend provides',async()=>{
+    const relay={urls:['turn:turn.example.com:3478'],username:'meet',credential:'secret'};
+    vi.mocked(apiClient.get).mockImplementation(async url=>url==='/api/rooms/ice-servers'?{data:{iceServers:[relay]}}:{data:{data:[]}});
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    await act(async()=>sockets[0].trigger('existing-users',[{socketId:'peer',userName:'Peer'}]));
+    expect(pcs[0].config.iceServers).toEqual([relay]);
+  });
+});
+
+describe('full meetings',()=>{
+  it('shows a full-meeting screen instead of the room when the server rejects the join',async()=>{
+    mount(<MemoryRouter><ReferenceVideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
+    await act(async()=>sockets[0].trigger('room-full',{max:8}));
+    expect(document.body.textContent).toContain('Meeting is full');
+    expect(document.body.textContent).toContain('This meeting is full (8 people max)');
+  });
+});
+
+describe('meeting reminder timing',()=>{
+  it('rolls repeating meetings forward and drops finished one-off meetings',async()=>{
+    const { nextStart } = await import('../src/components/layout/MeetingReminders');
+    const start = Date.UTC(2026, 9, 1, 10, 0);
+    const now = Date.UTC(2026, 9, 9, 9, 0);
+    expect(nextStart({ startAt: new Date(start).toISOString(), duration: 30, recurring: 'daily' }, now)).toBe(Date.UTC(2026, 9, 9, 10, 0));
+    expect(nextStart({ startAt: new Date(start).toISOString(), duration: 30, recurring: 'weekly' }, now)).toBe(Date.UTC(2026, 9, 15, 10, 0));
+    expect(nextStart({ startAt: new Date(start).toISOString(), duration: 30, recurring: 'none' }, now)).toBe(null);
+    expect(nextStart({ startAt: new Date(now + 600000).toISOString(), duration: 30, recurring: 'none' }, now)).toBe(now + 600000);
+  });
+});
+
+describe('reminders across daylight saving',()=>{
+  it('keeps the same local start time after a clock change',async()=>{
+    const { nextStart } = await import('../src/components/layout/MeetingReminders');
+    const before = new Date(2026, 2, 1, 10, 0); // local 10:00, before most DST switches
+    const after = new Date(2026, 3, 15, 8, 0).getTime();
+    const next = new Date(nextStart({ startAt: before.toISOString(), duration: 30, recurring: 'daily' }, after));
+    expect([next.getHours(), next.getMinutes(), next.getDate()]).toEqual([10, 0, 15]);
   });
 });

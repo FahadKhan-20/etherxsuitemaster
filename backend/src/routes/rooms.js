@@ -8,9 +8,20 @@ const router = express.Router();
 
 const normalizeRoomCode = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 const {getMeetingPolicy} = require('../meetingExtensions');
+const { meetingMetrics } = require('../meetingMetrics');
 const findRoomMember = (roomCode, userId) => [...(rooms.get(roomCode)?.values() || [])].find(member => String(member.userId) === String(userId));
 
-router.get('/:code/participants', (req, res) => {
+// STUN plus a TURN relay for peers behind strict NATs. Configure your own relay in backend/.env;
+// without one, a free public relay is used (shared and rate-limited, fine only for testing).
+const PUBLIC_RELAY = ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'].map(urls => ({ urls, username: 'openrelayproject', credential: 'openrelayproject' }));
+router.get('/ice-servers', auth, (req, res) => {
+  const urls = String(process.env.TURN_URLS || '').split(',').map(url => url.trim()).filter(Boolean);
+  const relay = urls.length ? [{ urls, username: process.env.TURN_USERNAME || '', credential: process.env.TURN_CREDENTIAL || '' }] : PUBLIC_RELAY;
+  res.json({ success: true, iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, ...relay] });
+});
+
+// Signed-in users only: the lobby shows who is already in the call, but anonymous callers must not enumerate rooms.
+router.get('/:code/participants', auth, (req, res) => {
   const code = normalizeRoomCode(req.params.code);
   const roomMap = rooms.get(code);
 
@@ -81,6 +92,7 @@ router.post('/chat/:roomCode', auth, async (req, res, next) => {
     const io = req.app.get('io');
     if (io) {
       io.to(roomCode).emit('chat:message-created', chatMessage);
+      meetingMetrics.count(roomCode, 'chat');
     }
 
     return res.status(201).json({ success: true, data: chatMessage });
@@ -98,11 +110,16 @@ router.post('/:code/invitations', auth, async (req,res,next)=>{
     if(email.length>254||!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({success:false,message:'Enter a valid email address.'});
     const origin=String(process.env.FRONTEND_URL||'http://localhost:3000').split(',')[0].replace(/\/$/,'');
     const link=origin+'/room/'+encodeURIComponent(code),subject='Join '+member.userName+' on EtherX Meet';
-    if(!process.env.EMAILJS_INVITE_TEMPLATE_ID||!process.env.EMAILJS_SERVICE_ID||!process.env.EMAILJS_PUBLIC_KEY){
-      return res.json({success:true,mode:'draft',mailto:'mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent('Join the meeting: '+link+'\nRoom code: '+code)});
-    }
+    const draft=()=>res.json({success:true,mode:'draft',mailto:'mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent('Join the meeting: '+link+'\nRoom code: '+code)});
+    if(!process.env.EMAILJS_INVITE_TEMPLATE_ID||!process.env.EMAILJS_SERVICE_ID||!process.env.EMAILJS_PUBLIC_KEY)return draft();
     const emailjs=require('@emailjs/nodejs');
-    await emailjs.send(process.env.EMAILJS_SERVICE_ID,process.env.EMAILJS_INVITE_TEMPLATE_ID,{to_email:email,host_name:member.userName,meeting_link:link,room_code:code},{publicKey:process.env.EMAILJS_PUBLIC_KEY,privateKey:process.env.EMAILJS_PRIVATE_KEY});
+    try{
+      await emailjs.send(process.env.EMAILJS_SERVICE_ID,process.env.EMAILJS_INVITE_TEMPLATE_ID,{to_email:email,host_name:member.userName,meeting_link:link,room_code:code},{publicKey:process.env.EMAILJS_PUBLIC_KEY,privateKey:process.env.EMAILJS_PRIVATE_KEY});
+    }catch(error){
+      // Misconfigured or unreachable email service: the inviter can still send the invite from their own mail app.
+      console.error('Invitation email failed:',error?.text||error?.message||error);
+      return draft();
+    }
     return res.json({success:true,mode:'sent'});
   }catch(error){return next(error);}
 });

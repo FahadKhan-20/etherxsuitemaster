@@ -16,7 +16,6 @@ import {
   ZoomOut,
   X,
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { useWhiteboardSync } from '../../../hooks/useWhiteboardSync';
 import { useDialogFocus } from '../../../hooks/useDialogFocus';
 
@@ -203,11 +202,12 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
     anchor.click();
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     const dataUrl = canvasRef.current?.toDataURL('image/png');
     if (!dataUrl) {
       return;
     }
+    const { jsPDF } = await import('jspdf'); // loaded only when someone exports
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
     pdf.addImage(dataUrl, 'PNG', 0, 0, 1280, 720);
     pdf.save('etherxmeet-whiteboard.pdf');

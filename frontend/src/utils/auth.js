@@ -92,6 +92,10 @@ export function clearAuthSession() {
 
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
   window.localStorage.removeItem(AUTH_USER_KEY);
+  // Nothing personal may outlive the session on a shared browser.
+  window.localStorage.removeItem('nexmeet_user_settings');
+  Object.keys(window.localStorage).filter((key) => key.startsWith('etherx_reminded:')).forEach((key) => window.localStorage.removeItem(key));
+  try { window.sessionStorage.clear(); } catch { /* storage unavailable */ }
 }
 
 export function isAuthenticated() {

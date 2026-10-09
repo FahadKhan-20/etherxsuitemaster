@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import apiClient from '../utils/apiClient';
 import { motion } from 'framer-motion';
 import AnimatedPage from '../components/layout/AnimatedPage';
@@ -26,6 +26,8 @@ import Switch from '../components/ui/Switch';
 import Tabs from '../components/ui/Tabs';
 import { useUserContext } from '../context/UserContext';
 import { useUI } from '../context/UIContext';
+import { useMeetingPreferences } from '../hooks/useMeetingPreferences';
+import { listMeetingDevices } from '../utils/meetingMedia';
 
 const KEYBOARD_SHORTCUTS = [
   { keys: 'M', description: 'Mute/Unmute microphone' },
@@ -49,20 +51,47 @@ export default function Settings() {
     timezone: user.timezone || 'UTC',
   });
 
-  const [audioDevice, setAudioDevice] = useState('default');
-  const [videoDevice, setVideoDevice] = useState('default');
-  const [notificationSettings, setNotificationSettings] = useState({
-    browserNotifications: true,
-    emailNotifications: false,
-    meetingReminders: true,
-    chatNotifications: true,
-  });
+  // Device and in-meeting alert choices are per browser and shared with the meeting room's own settings.
+  const [meetingPrefs, saveMeetingPrefs] = useMeetingPreferences();
+  const roomPref = (key, fallback) => meetingPrefs.reference?.[key] ?? fallback;
+  const setRoomPref = (key, value) => saveMeetingPrefs({ ...meetingPrefs, reference: { ...meetingPrefs.reference, [key]: value } });
+  const [devices, setDevices] = useState({ microphones: [], cameras: [], speakers: [] });
+  const loadDevices = async () => { try { setDevices(await listMeetingDevices()); } catch { /* device list optional */ } };
+  useEffect(() => { loadDevices(); }, []);
+  const askDeviceAccess = async () => {
+    try { (await navigator.mediaDevices.getUserMedia({ audio: true, video: true })).getTracks().forEach((t) => t.stop()); } catch { /* user declined */ }
+    loadDevices();
+  };
+  const namedDevices = [...devices.microphones, ...devices.cameras].some((d) => d.label);
 
-  const [privacySettings, setPrivacySettings] = useState({
-    dataRetention: 90,
-    recordingConsent: true,
-    analyticsTracking: false,
-  });
+  // Account settings live on the server so they follow the user and change real behaviour.
+  const [account, setAccount] = useState(null);
+  const [accountStatus, setAccountStatus] = useState('');
+  useEffect(() => {
+    apiClient.get('/api/auth/me')
+      .then((res) => setAccount(res.data?.data?.user?.preferences || {}))
+      .catch(() => { setAccount({}); setAccountStatus('Could not load your account settings.'); });
+  }, []);
+  const accountValue = (group, key, fallback) => account?.[group]?.[key] ?? fallback;
+  const saveAccount = async (group, key, value) => {
+    const previous = account;
+    setAccount((a) => ({ ...a, [group]: { ...a?.[group], [key]: value } }));
+    setAccountStatus('');
+    try {
+      const res = await apiClient.put('/api/auth/me/preferences', { [group]: { [key]: value } });
+      setAccount(res.data.data.preferences);
+      setAccountStatus('Saved.');
+      setTimeout(() => setAccountStatus(''), 2000);
+    } catch {
+      setAccount(previous);
+      setAccountStatus('Could not save. Try again.');
+    }
+  };
+  const toggleReminders = async (on) => {
+    if (on && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
+    saveAccount('reminders', 'enabled', on);
+  };
+
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
 
@@ -209,57 +238,32 @@ export default function Settings() {
           {/* Audio Tab */}
           {activeTab === 'audio' && (
             <motion.div variants={staggerChild} className="space-y-6">
-              <SettingCard title="Audio Input" description="Select your microphone">
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Microphone
-                  </label>
-                  <select
-                    value={audioDevice}
-                    onChange={(e) => setAudioDevice(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl"
-                  >
-                    <option value="default">Default Device</option>
-                    <option value="usb">USB Audio Interface</option>
-                    <option value="headset">Wireless Headset</option>
-                  </select>
+              {!namedDevices && (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                  Your browser hides device names until you allow camera and microphone access.{' '}
+                  <button type="button" onClick={askDeviceAccess} className="font-semibold text-[#d4af37] underline">Allow access</button>
                 </div>
+              )}
+              <SettingCard title="Audio Input" description="Microphone used when you join a meeting">
+                <label className="block text-sm font-medium text-white/80 mb-2" htmlFor="settings-mic">Microphone</label>
+                <select id="settings-mic" value={meetingPrefs.devices.audio || 'default'} onChange={(e) => saveMeetingPrefs({ ...meetingPrefs, devices: { ...meetingPrefs.devices, audio: e.target.value } })} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
+                  <option value="default">System default</option>
+                  {devices.microphones.filter((d) => d.deviceId && d.deviceId !== 'default').map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
+                </select>
               </SettingCard>
 
-              <SettingCard title="Audio Output" description="Select your speakers">
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Speaker
-                  </label>
-                  <select
-                    defaultValue="default"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl"
-                  >
-                    <option value="default">Default Device</option>
-                    <option value="speakers">Built-in Speakers</option>
-                    <option value="headphone">Headphones</option>
-                  </select>
-                </div>
+              <SettingCard title="Audio Output" description="Speaker used for meeting audio">
+                <label className="block text-sm font-medium text-white/80 mb-2" htmlFor="settings-speaker">Speaker</label>
+                <select id="settings-speaker" value={meetingPrefs.outputDevice || 'default'} onChange={(e) => saveMeetingPrefs({ ...meetingPrefs, outputDevice: e.target.value })} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
+                  <option value="default">System default</option>
+                  {devices.speakers.filter((d) => d.deviceId && d.deviceId !== 'default').map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
+                </select>
               </SettingCard>
 
-              <SettingCard title="Audio Effects" description="Enhance your audio">
-                <div className="space-y-4">
-                  <SettingToggle
-                    label="Noise Suppression"
-                    description="Reduce background noise during calls"
-                    enabled={true}
-                  />
-                  <SettingToggle
-                    label="Echo Cancellation"
-                    description="Remove echo from your audio"
-                    enabled={true}
-                  />
-                  <SettingToggle
-                    label="Auto Gain Control"
-                    description="Automatically adjust microphone level"
-                    enabled={true}
-                  />
-                </div>
+              <SettingCard title="Audio Processing" description="Applied by your browser">
+                <p className="text-sm text-white/70">
+                  Echo cancellation and automatic gain are always on. Noise suppression is on when you join; turn it off during a meeting from More → Noise suppression.
+                </p>
               </SettingCard>
             </motion.div>
           )}
@@ -267,51 +271,20 @@ export default function Settings() {
           {/* Video Tab */}
           {activeTab === 'video' && (
             <motion.div variants={staggerChild} className="space-y-6">
-              <SettingCard title="Video Input" description="Select your camera">
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Camera
-                  </label>
-                  <select
-                    value={videoDevice}
-                    onChange={(e) => setVideoDevice(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl"
-                  >
-                    <option value="default">Default Device</option>
-                    <option value="external">External USB Camera</option>
-                    <option value="builtin">Built-in Camera</option>
-                  </select>
-                </div>
+              <SettingCard title="Video Input" description="Camera used when you join a meeting">
+                <label className="block text-sm font-medium text-white/80 mb-2" htmlFor="settings-camera">Camera</label>
+                <select id="settings-camera" value={meetingPrefs.devices.video || ''} onChange={(e) => saveMeetingPrefs({ ...meetingPrefs, devices: { ...meetingPrefs.devices, video: e.target.value } })} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
+                  <option value="">System default</option>
+                  {devices.cameras.filter((d) => d.deviceId).map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}
+                </select>
               </SettingCard>
 
-              <SettingCard title="Resolution" description="Choose video quality">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { label: '720p', desc: 'Standard' },
-                    { label: '1080p', desc: 'High (Recommended)', selected: true },
-                    { label: '4K', desc: 'Ultra High' },
-                  ].map((res) => (
-                    <div
-                      key={res.label}
-                      className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        res.selected
-                          ? 'border-indigo-400 bg-indigo-400/10'
-                          : 'border-white/10 bg-white/5 hover:border-white/20'
-                      }`}
-                    >
-                      <div className="font-semibold text-white">{res.label}</div>
-                      <div className="text-sm text-white/60">{res.desc}</div>
-                    </div>
-                  ))}
+              <SettingCard title="Video Quality" description="What you send to others">
+                <div className="space-y-4">
+                  <SettingToggle label="Send HD video" description="720p; turn off on slow connections to send 360p" enabled={roomPref('hd', true)} onChange={(v) => setRoomPref('hd', v)} />
+                  <SettingToggle label="Blur my background" description="Start every meeting with a blurred background" enabled={roomPref('bg', 'none') === 'blur'} onChange={(v) => setRoomPref('bg', v ? 'blur' : 'none')} />
+                  <SettingToggle label="Mirror my video" description="Only changes how you see yourself" enabled={roomPref('mirror', true)} onChange={(v) => setRoomPref('mirror', v)} />
                 </div>
-              </SettingCard>
-
-              <SettingCard title="Virtual Background" description="Always enabled in settings">
-                <SettingToggle
-                  label="Auto-blur Background"
-                  description="Apply default blur when camera starts"
-                  enabled={false}
-                />
               </SettingCard>
             </motion.div>
           )}
@@ -386,43 +359,27 @@ export default function Settings() {
           {/* Notifications Tab */}
           {activeTab === 'notifications' && (
             <motion.div variants={staggerChild} className="space-y-6">
-              <SettingCard title="Desktop Notifications" description="Manage browser alerts">
+              <SettingCard title="During meetings" description="Saved on this browser; the same switches are in the meeting's Settings">
                 <div className="space-y-4">
-                  {Object.entries(notificationSettings).map(([key, value]) => (
-                    <SettingToggle
-                      key={key}
-                      label={key === 'browserNotifications' ? 'Browser Notifications'
-                            : key === 'emailNotifications' ? 'Email Notifications'
-                            : key === 'meetingReminders' ? 'Meeting Reminders'
-                            : 'Chat Notifications'}
-                      description={
-                        key === 'browserNotifications' ? 'Get desktop alerts for meeting events'
-                        : key === 'emailNotifications' ? 'Receive email summaries and updates'
-                        : key === 'meetingReminders' ? 'Remind me before scheduled meetings'
-                        : 'Alert me when messages arrive'
-                      }
-                      enabled={value}
-                      onChange={(newValue) =>
-                        setNotificationSettings({ ...notificationSettings, [key]: newValue })
-                      }
-                    />
-                  ))}
+                  <SettingToggle label="Join and leave alerts" description="Show a notice when people enter or leave" enabled={roomPref('sounds', true)} onChange={(v) => setRoomPref('sounds', v)} />
+                  <SettingToggle label="Chat alerts" description="Show a preview when a message arrives" enabled={roomPref('chatNotif', true)} onChange={(v) => setRoomPref('chatNotif', v)} />
+                  <SettingToggle label="Raised hand alerts" description="Show a notice when someone raises their hand" enabled={roomPref('handNotif', true)} onChange={(v) => setRoomPref('handNotif', v)} />
                 </div>
               </SettingCard>
 
-              <SettingCard title="Notification Timing" description="When to notify me">
+              <SettingCard title="Meeting reminders" description="For meetings you schedule; shown while EtherX Meet is open">
                 <div className="space-y-4">
+                  <SettingToggle label="Remind me before scheduled meetings" description="In-app notice, plus a desktop notification if you allow them" enabled={accountValue('reminders', 'enabled', true)} onChange={toggleReminders} />
                   <div>
-                    <label className="text-sm font-medium text-white/80 mb-2 block">
-                      Meeting Reminder Time
-                    </label>
-                    <select className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
-                      <option>5 minutes before</option>
-                      <option selected>15 minutes before</option>
-                      <option>30 minutes before</option>
-                      <option>1 hour before</option>
+                    <label className="text-sm font-medium text-white/80 mb-2 block" htmlFor="settings-reminder">Remind me</label>
+                    <select id="settings-reminder" value={accountValue('reminders', 'minutes', 15)} disabled={!accountValue('reminders', 'enabled', true)} onChange={(e) => saveAccount('reminders', 'minutes', Number(e.target.value))} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
+                      <option value={5}>5 minutes before</option>
+                      <option value={15}>15 minutes before</option>
+                      <option value={30}>30 minutes before</option>
+                      <option value={60}>1 hour before</option>
                     </select>
                   </div>
+                  {accountStatus && <p role="status" className="text-sm text-white/70">{accountStatus}</p>}
                 </div>
               </SettingCard>
             </motion.div>
@@ -431,63 +388,29 @@ export default function Settings() {
           {/* Privacy Tab */}
           {activeTab === 'privacy' && (
             <motion.div variants={staggerChild} className="space-y-6">
-              <SettingCard title="Data & Privacy" description="Control your data">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-white/80 mb-2 block">
-                      Data Retention Period (days)
-                    </label>
-                    <input
-                      type="number"
-                      value={privacySettings.dataRetention}
-                      onChange={(e) =>
-                        setPrivacySettings({
-                          ...privacySettings,
-                          dataRetention: parseInt(e.target.value),
-                        })
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl"
-                      min="7"
-                      max="365"
-                    />
-                    <p className="text-xs text-white/50 mt-2">
-                      How long to keep your meeting data
+              <SettingCard title="Data retention" description="Applies to your recordings and the history of meetings you host">
+                <label className="text-sm font-medium text-white/80 mb-2 block" htmlFor="settings-retention">Delete automatically after</label>
+                <select id="settings-retention" value={String(accountValue('privacy', 'retentionDays', null))} onChange={(e) => saveAccount('privacy', 'retentionDays', e.target.value === 'null' ? null : Number(e.target.value))} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white backdrop-blur-xl">
+                  <option value="null">Never — keep until I delete them</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                  <option value="365">1 year</option>
+                </select>
+                <p className="text-xs text-white/65 mt-2">Older items are deleted permanently within a few hours of passing the limit.</p>
+              </SettingCard>
+
+              <SettingCard title="Recordings" description="Meetings you host">
+                <SettingToggle label="Allow recording" description="When off, nobody can start or upload a recording in your meetings" enabled={accountValue('privacy', 'allowRecording', true)} onChange={(v) => saveAccount('privacy', 'allowRecording', v)} />
+                {accountStatus && <p role="status" className="text-sm text-white/70 mt-3">{accountStatus}</p>}
+              </SettingCard>
+
+              <SettingCard title="Security" description="How your meetings are protected">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <Lock className="h-5 w-5 text-[#d4af37] shrink-0 mt-0.5" />
+                    <p className="text-sm text-white/70">
+                      Audio and video travel directly between participants, encrypted in transit (WebRTC). Chat, shared files and recordings pass through and are stored on the EtherX Meet server.
                     </p>
-                  </div>
-                </div>
-              </SettingCard>
-
-              <SettingCard title="Recordings" description="Recording consent and storage">
-                <div className="space-y-4">
-                  <SettingToggle
-                    label="Allow Recording"
-                    description="Participants may record this meeting"
-                    enabled={privacySettings.recordingConsent}
-                    onChange={(value) =>
-                      setPrivacySettings({ ...privacySettings, recordingConsent: value })
-                    }
-                  />
-                  <SettingToggle
-                    label="Analytics & Tracking"
-                    description="Help improve EtherXMeet with usage data"
-                    enabled={privacySettings.analyticsTracking}
-                    onChange={(value) =>
-                      setPrivacySettings({ ...privacySettings, analyticsTracking: value })
-                    }
-                  />
-                </div>
-              </SettingCard>
-
-              <SettingCard title="Security" description="Manage permissions">
-                <div className="rounded-lg border border-indigo-400/30 bg-indigo-400/10 p-4">
-                  <div className="flex items-center gap-3">
-                    <Lock className="h-5 w-5 text-indigo-400" />
-                    <div>
-                      <p className="font-medium text-white">End-to-End Encryption</p>
-                      <p className="text-xs text-white/60 mt-1">
-                        Your meetings are encrypted end-to-end
-                      </p>
-                    </div>
                   </div>
                 </div>
               </SettingCard>
@@ -545,7 +468,7 @@ function SettingCard({ title, description, children }) {
     <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
       <div className="mb-6">
         <h3 className="text-xl font-semibold text-white">{title}</h3>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-white/65 mt-1">{description}</p>
       </div>
       {children}
     </div>
@@ -560,7 +483,7 @@ function SettingToggle({ label, description, enabled = false, onChange }) {
     <div className="flex items-center justify-between">
       <div>
         <p className="text-white font-medium">{label}</p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-white/65 mt-1">{description}</p>
       </div>
       <Switch checked={enabled} onChange={onChange} />
     </div>

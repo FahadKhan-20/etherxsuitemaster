@@ -2,14 +2,19 @@ export function deviceConstraint(id) {
   return id && id !== 'default' ? { deviceId: { exact: id } } : true;
 }
 
+// Microphone capture with the browser's own echo cancellation and (switchable) noise suppression.
+export function audioConstraint(id, noiseSuppression = true) {
+  return { ...(id && id !== 'default' ? { deviceId: { exact: id } } : {}), echoCancellation: true, autoGainControl: true, noiseSuppression };
+}
+
 // Capture each kind independently: a missing camera must not disable a usable microphone.
-export async function acquireMeetingMedia({ devices = {}, audio = true, video = true } = {}) {
+export async function acquireMeetingMedia({ devices = {}, audio = true, video = true, noiseSuppression = true } = {}) {
   const tracks = [], failures = [];
   if (!navigator.mediaDevices?.getUserMedia) return { stream: new MediaStream(), error: 'Camera and microphone require HTTPS or localhost.' };
   await Promise.all(['audio', 'video'].map(async kind => {
     if (!(kind === 'audio' ? audio : video)) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(devices[kind]) });
+      const stream = await navigator.mediaDevices.getUserMedia({ [kind]: kind === 'audio' ? audioConstraint(devices.audio, noiseSuppression) : deviceConstraint(devices.video) });
       tracks.push(...stream.getTracks());
     } catch (error) {
       const label = kind === 'audio' ? 'Microphone' : 'Camera';

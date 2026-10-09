@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { meetingMetrics } = require('./meetingMetrics');
 const {registerMeetingExtensions,getMeetingPolicy,getGroup,meetingEnded,clearMeetingExtensions} = require('./meetingExtensions');
 
 // roomCode -> Map<socketId, { socketId, userName, userId, isHost }>
@@ -32,6 +33,23 @@ const roomHands = new Map();
 // A returning member (closed tab, refresh, dropped connection) is let straight back in
 // instead of waiting for a host who may not be there to admit them.
 const roomMembers = new Map();
+// roomCode -> Set<userId> removed by a host. Their admission tickets stop working until a host admits them again.
+const roomRemoved = new Map();
+const ADMISSION_TICKET_TTL = '12h';
+
+// An admission ticket lets an admitted participant rejoin without approval even after a server restart,
+// when roomMembers and socket state are gone. It is not a sign-in token (auth middleware rejects `purpose`).
+const issueAdmissionTicket = (roomCode, userId) =>
+  jwt.sign({ purpose: 'admission', room: roomCode, uid: String(userId) }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: ADMISSION_TICKET_TTL });
+function ticketAdmits(ticket, roomCode, userId) {
+  if (typeof ticket !== 'string' || !userId || roomRemoved.get(roomCode)?.has(String(userId))) return false;
+  try {
+    const claims = jwt.verify(ticket, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    return claims.purpose === 'admission' && claims.room === roomCode && claims.uid === String(userId);
+  } catch {
+    return false;
+  }
+}
 
 // Shared files travel through the socket as base64 data URLs (files up to 10 MB, ~13.4 MB
 // once encoded). socket.io's default 1 MB message limit silently drops the sharer's connection.
@@ -46,6 +64,8 @@ const roomCoHosts = new Map();
 // roomCode -> Set<socketId> — participants who currently have live captions switched on.
 // While this is non-empty, everyone's browser transcribes its own mic (unless muted) for the captions.
 const roomCaptionViewers = new Map();
+// Every participant sends media to every other one (full mesh); past this size calls degrade badly.
+const MAX_PARTICIPANTS = 8;
 const CAPTION_MAX_CHARS = 300;        // longest caption line relayed
 const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) caption updates
 
@@ -151,14 +171,12 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     const room = await MeetingRoom.findOne({ roomCode: code }).lean();
     return room?.hostUserId ? String(room.hostUserId) : null;
   },
+  resolveRecordingAllowed = require('./recordingPolicy').hostAllowsRecording,
 } = {}) {
   const io = new SocketServer(httpServer, {
     maxHttpBufferSize: MAX_SOCKET_MESSAGE_BYTES,
     cors: {
-      origin: (origin, callback) => {
-        // Dynamically allow requesting origin to support LAN devices & localhost
-        callback(null, true);
-      },
+      origin: typeof allowedOrigin === 'function' ? allowedOrigin : allowedOrigin || '*',
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -237,13 +255,15 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       if(meetingEnded(roomCode)){socket.emit('meeting-ended',{roomCode});return;}
       if (roomCode !== socket.data.authorizedRoom || (currentRoom && currentRoom !== roomCode)) return;
       if (!roomHosts.has(roomCode)) roomHosts.set(roomCode, socket.data.roomOwnerId);
-      if (!isPrivileged(roomCode, userId) && socket.data.admittedRoom !== roomCode && !roomMembers.get(roomCode)?.has(userId)) {
+      const ticketed = ticketAdmits(payload.ticket, roomCode, userId);
+      if (!isPrivileged(roomCode, userId) && socket.data.admittedRoom !== roomCode && !roomMembers.get(roomCode)?.has(userId) && !ticketed) {
         socket.emit('room-error', { message: 'Host approval is required before joining.' });
         return;
       }
       if (rooms.get(roomCode)?.has(socket.id)) return;
+      if ((rooms.get(roomCode)?.size || 0) >= MAX_PARTICIPANTS) { socket.emit('room-full', { max: MAX_PARTICIPANTS }); return; }
       const existingRoom = rooms.get(roomCode);
-      if (roomLocks[roomCode] && !isPrivileged(roomCode, userId) && !roomMembers.get(roomCode)?.has(userId)) {
+      if (roomLocks[roomCode] && !isPrivileged(roomCode, userId) && !roomMembers.get(roomCode)?.has(userId) && !ticketed) {
         socket.emit('room-locked-error');
         return;
       }
@@ -261,6 +281,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         if (!sess || (room.size === 0 && sess.emptySince && now - sess.emptySince > SESSION_GRACE_MS)) {
           roomSessions.set(roomCode, { startedAt: new Date(now), emptySince: null });
           roomMembers.delete(roomCode);
+          meetingMetrics.finish(roomCode);
+          meetingMetrics.start(roomCode, roomHosts.get(roomCode));
         } else {
           sess.emptySince = null;
         }
@@ -296,6 +318,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         videoOff: !!videoOff,
       });
       socket.data.requestedRoom = null;
+      socket.emit('admission-ticket', { ticket: issueAdmissionTicket(roomCode, userId) });
+      meetingMetrics.joined(roomCode, userId, userName);
       extension.snapshot();
       // Guests may request entry before the host arrives or while the host reconnects.
       if (isPrivileged(roomCode, userId)) {
@@ -407,7 +431,11 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       if (!me || !isPrivileged(currentRoom, me.userId)) return;
       // A removed participant must be admitted again to come back.
       const target = rooms.get(currentRoom)?.get(to);
-      if (target) roomMembers.get(currentRoom)?.delete(String(target.userId));
+      if (target) {
+        roomMembers.get(currentRoom)?.delete(String(target.userId));
+        if (!roomRemoved.has(currentRoom)) roomRemoved.set(currentRoom, new Set());
+        roomRemoved.get(currentRoom).add(String(target.userId));
+      }
       const targetSocket = io.sockets.sockets.get(to);
       if (targetSocket) targetSocket.data.admittedRoom = null;
       io.to(to).emit('removed-from-room');
@@ -459,10 +487,12 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       const roomCode = String(rawCode || '').trim().toLowerCase();
       if (roomCode !== socket.data.authorizedRoom) return;
       if(meetingEnded(roomCode)){socket.emit('meeting-ended',{roomCode});return;}
+      if ((rooms.get(roomCode)?.size || 0) >= MAX_PARTICIPANTS) { socket.emit('room-full', { max: MAX_PARTICIPANTS }); return; }
       if (!roomHosts.has(roomCode)) roomHosts.set(roomCode, socket.data.roomOwnerId);
       if (isPrivileged(roomCode, userId)) { socket.data.admittedRoom = roomCode; socket.emit('admitted', { roomCode }); return; }
       // Someone already admitted this session is rejoining — no second approval (locked or not).
-      if (userId && roomMembers.get(roomCode)?.has(String(userId))) {
+      if (userId && (roomMembers.get(roomCode)?.has(String(userId)) || ticketAdmits(payload.ticket, roomCode, userId))) {
+        socket.data.admittedRoom = roomCode;
         socket.emit('admitted', { roomCode });
         return;
       }
@@ -494,6 +524,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       const requester = io.sockets.sockets.get(toSocketId);
       if (!requester || requester.data.requestedRoom !== roomKey || requester.data.authorizedRoom !== roomKey) return;
       requester.data.admittedRoom = roomKey;
+      roomRemoved.get(roomKey)?.delete(String(requester.data.user.id));
       io.to(toSocketId).emit('admitted', { roomCode: roomKey });
       socket.to(roomKey).emit('join-request-cancelled', { socketId: toSocketId }); // clear the popup for other admins
       console.log(`[Signaling] 'admitted' emitted to socket ${toSocketId}`);
@@ -519,6 +550,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
      */
     onMember('reaction', ({ roomCode, emoji }) => {
       const user = rooms.get(roomCode)?.get(socket.id);
+      meetingMetrics.count(roomCode, 'reactions');
       socket.to(roomCode).emit('reaction', {
         emoji,
         socketId: socket.id,
@@ -533,6 +565,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       const user = currentRoom && rooms.get(currentRoom)?.get(socket.id);
       if (!user) return;
       setHand(currentRoom, socket.id, user.userName, true);
+      meetingMetrics.count(currentRoom, 'hands');
     });
 
     /**
@@ -758,12 +791,20 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
 
     // Recording commands use server-side membership and host state. Client
     // role flags are intentionally ignored.
-    onMember('recording-start', ({ roomCode }, acknowledge = () => {}) => {
+    onMember('recording-start', async ({ roomCode }, acknowledge = () => {}) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
       if (!room || !member) return acknowledge({ ok: false, error: 'You are not a member of this room.' });
       if (!isPrivileged(roomCode, member.userId)) return acknowledge({ ok: false, error: 'Only the host can start recording.' });
       if (roomRecordings.has(roomCode)) return acknowledge({ ok: false, error: 'Recording is already active.' });
+      try {
+        if (!(await resolveRecordingAllowed(roomHosts.get(roomCode) || socket.data.roomOwnerId))) {
+          return acknowledge({ ok: false, error: 'The host has turned recording off for their meetings.' });
+        }
+      } catch {
+        return acknowledge({ ok: false, error: 'Could not check the recording setting. Try again.' });
+      }
+      if (roomRecordings.has(roomCode) || !rooms.get(roomCode)?.has(socket.id)) return acknowledge({ ok: false, error: 'Recording is already active.' });
       const recording = { startedAt: Date.now(), startedBy: member.userId };
       roomRecordings.set(roomCode, recording);
       io.to(roomCode).emit('recording-state', { state: 'recording', startedAt: recording.startedAt });
@@ -853,6 +894,19 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       if (!room || !room.has(socket.id)) return;
       setCaptionViewer(roomCode, socket.id, !!on);
       socket.emit('captions-demand', { active: roomCaptionViewers.has(roomCode) });
+      if (on) {
+        for (const [socketId, m] of room) {
+          if (m.captionUnavailable && socketId !== socket.id) socket.emit('caption-unavailable', { socketId, userName: m.userName });
+        }
+      }
+    });
+
+    // A speaker whose browser has no working speech recognition; viewers show they are not captioned.
+    onMember('caption-unavailable', ({ roomCode }) => {
+      const member = rooms.get(roomCode)?.get(socket.id);
+      if (!member || member.captionUnavailable) return;
+      member.captionUnavailable = true;
+      socket.to(roomCode).emit('caption-unavailable', { socketId: socket.id, userName: member.userName });
     });
 
     onMember('caption', (payload) => {
@@ -883,6 +937,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       if (currentRoom && rooms.has(currentRoom)) {
         const leavingMember = departing;
         room.delete(socket.id);
+        if (leavingMember) meetingMetrics.left(currentRoom, leavingMember.userId);
         console.info(`[participants] ${currentRoom}: ${room.size} participant(s) in room`);
         extension.roster();
 
@@ -923,6 +978,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
               if (s && s.emptySince && Date.now() - s.emptySince >= SESSION_GRACE_MS) {
                 roomSessions.delete(sessKey);
                 roomMembers.delete(sessKey);
+                meetingMetrics.finish(sessKey);
               }
             }, SESSION_GRACE_MS + 1000);
             if (timer.unref) timer.unref();

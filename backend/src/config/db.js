@@ -9,7 +9,11 @@ const connectDB = async () => {
       await mongoose.connect(uri, { serverSelectionTimeoutMS: 2000 });
       console.log(`MongoDB connected: ${mongoose.connection.host}`);
     } catch (err) {
-      console.warn(`Could not connect to external MongoDB at ${uri}. Starting embedded in-memory MongoDB...`);
+      // Production must never silently run on a throwaway database: every account and recording would vanish on restart.
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(`Cannot reach MongoDB at MONGO_URI (${err.message}). Set MONGO_URI to a running MongoDB.`);
+      }
+      console.warn(`Could not connect to external MongoDB at ${uri}. Starting embedded in-memory MongoDB: all data is lost when the server restarts.`);
       const { MongoMemoryServer } = require('mongodb-memory-server');
       mongodInstance = await MongoMemoryServer.create();
       uri = mongodInstance.getUri();

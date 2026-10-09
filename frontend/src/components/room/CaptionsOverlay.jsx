@@ -27,10 +27,13 @@ function tail(text) {
   return '…' + (space > -1 && space < 30 ? cut.slice(space + 1) : cut);
 }
 
-export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bottom = 112, language = 'en-US', render, onUpdate }) {
+export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bottom = 112, language = 'en-US', render, onUpdate, onUnavailable }) {
   const [lines, setLines] = useState([]);   // [{ key, name, text }]
   const [notice, setNotice] = useState('');
-  useEffect(()=>{onUpdate?.({lines,notice});},[lines,notice,onUpdate]);
+  const [uncaptioned, setUncaptioned] = useState({}); // socketId -> name of speakers whose browser cannot caption
+  const missing = Object.values(uncaptioned);
+  useEffect(()=>{onUpdate?.({lines,notice,missing:Object.values(uncaptioned)});},[lines,notice,uncaptioned,onUpdate]);
+  const onUnavailableRef = useRef(onUnavailable); onUnavailableRef.current = onUnavailable;
   const timersRef = useRef({});
   const noticeTimerRef = useRef(null);
   const showRef = useRef(show);   showRef.current = show;
@@ -76,8 +79,12 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
       if (!c || typeof c.text !== 'string' || !c.text) return;
       upsert(String(c.socketId), c.userName || 'Guest', c.text);
     };
+    const onUnavailable = (c) => { if (c?.socketId) setUncaptioned((prev) => ({ ...prev, [c.socketId]: c.userName || 'Guest' })); };
+    const onLeft = (c) => setUncaptioned((prev) => { if (!(c?.socketId in prev)) return prev; const next = { ...prev }; delete next[c.socketId]; return next; });
     socket.on('caption', onCaption);
-    return () => socket.off('caption', onCaption);
+    socket.on('caption-unavailable', onUnavailable);
+    socket.on('user-left', onLeft);
+    return () => { socket.off('caption', onCaption); socket.off('caption-unavailable', onUnavailable); socket.off('user-left', onLeft); };
   }, [socket, show, upsert]);
 
   useEffect(() => { if (!show) clearAll(); }, [show, clearAll]);
@@ -94,10 +101,20 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
       noticeTimerRef.current = setTimeout(() => setNotice(''), NOTICE_MS);
     };
 
+    // Speech recognition cannot run in this browser: keep the notice up and tell the room this speaker is not captioned.
+    const unavailable = (msg) => {
+      wanted = false;
+      clearTimeout(noticeTimerRef.current);
+      setNotice(msg);
+      onUnavailableRef.current?.(msg);
+      socketRef.current?.emit('caption-unavailable', { roomCode: roomRef.current });
+    };
+    const UNSUPPORTED = "Your browser can't caption your speech (use Chrome or Edge). You'll still see everyone else's captions.";
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
-      flash("Your browser can't caption your own speech (use Chrome or Edge). You'll still see everyone else's captions.");
-      return undefined;
+      unavailable(UNSUPPORTED);
+      return () => setNotice('');
     }
 
     const r = new SR();
@@ -122,8 +139,11 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
     r.onerror = (e) => {
       if (e.error === 'no-speech' || e.error === 'aborted') return;   // routine
       wanted = false;
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        flash("Microphone permission denied — your speech can't be captioned.");
+      if (e.error === 'not-allowed') {
+        unavailable("Microphone permission denied — your speech can't be captioned.");
+      } else if (e.error === 'network' || e.error === 'service-not-allowed' || e.error === 'language-not-supported') {
+        // Brave and Chromium expose the API but have no speech service behind it.
+        unavailable(UNSUPPORTED);
       } else {
         flash('Live captions are unavailable for your microphone right now.');
       }
@@ -139,6 +159,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
 
     return () => {
       wanted = false;
+      setNotice('');
       r.onresult = null;
       r.onerror = null;
       r.onend = null;
@@ -153,7 +174,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
   }, []);
 
   if (render) return render({lines,notice});
-  if (!show || (lines.length === 0 && !notice)) return null;
+  if (!show || (lines.length === 0 && !notice && missing.length === 0)) return null;
 
   return (
     <div
@@ -174,6 +195,7 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
         }}
       >
         {notice && <div style={{ color: '#e5c76b' }}>{notice}</div>}
+        {missing.length > 0 && <div style={{ color: '#a49c8a', fontSize: '0.75em' }}>Not captioned (browser unsupported): {missing.join(', ')}</div>}
         {lines.map((l) => (
           <div key={l.key}>
             <span style={{ color: '#e5c76b', fontWeight: 700 }}>{l.name}: </span>

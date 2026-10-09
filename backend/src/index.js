@@ -1,7 +1,7 @@
-const path = require('path');
 const http = require('http');
 const express = require('express');
 const { setupSignaling, rooms } = require('./signaling');
+const { corsOrigin } = require('./config/origins');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -15,7 +15,6 @@ const configurePassport = require('./config/passport');
 const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/rooms');
 const recordingRoutes = require('./routes/recordings');
-const livekitRoutes = require('./routes/livekit');
 const feedbackRoutes = require('./routes/feedback');
 const meetingAgendaRoutes = require('./routes/meetingAgendaRoutes');
 
@@ -24,19 +23,10 @@ const errorHandler = require('./middleware/errorHandler');
 dotenv.config();
 
 const app = express();
+// Behind nginx (docker) or the Vite dev proxy, so rate limits see the real client address.
+app.set('trust proxy', 'loopback, uniquelocal');
 const PORT = process.env.PORT || 5000;
 
-// =====================================================
-// ALLOWED ORIGINS
-// =====================================================
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  process.env.CLIENT_URL_LAN,
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://10.190.103.55:3000',
-  'http://192.168.1.112:3000',
-].filter(Boolean);
 
 // =====================================================
 // PASSPORT CONFIGURATION
@@ -47,11 +37,8 @@ configurePassport();
 // CORS CONFIGURATION
 // =====================================================
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Dynamically allow the requesting origin
-    // to support local network devices
-    callback(null, true);
-  },
+  // Configured CLIENT_URL / CLIENT_URL_LAN / FRONTEND_URL; development also allows localhost and LAN addresses.
+  origin: corsOrigin,
 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -78,11 +65,7 @@ app.use(express.json());
 
 app.use(passport.initialize());
 
-// Serve uploaded files
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, '../uploads'))
-);
+// Recordings in uploads/ are private: they are served only by /api/recordings with an owner check or a signed link.
 
 // =====================================================
 // ROOT ROUTE
@@ -101,9 +84,10 @@ app.get('/', (_req, res) => {
 // =====================================================
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
+app.use('/api/schedules', require('./routes/schedules'));
+app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/recordings', recordingRoutes);
 
-app.use('/api/livekit', livekitRoutes);
 
 app.use('/api/feedback', feedbackRoutes);
 
@@ -170,20 +154,17 @@ const startServer = async () => {
   try {
     // Connect to MongoDB
     await connectDB();
+    require('./retention').scheduleRetention();
 
     // Create HTTP server
     const httpServer = http.createServer(app);
-    const io = setupSignaling(httpServer, allowedOrigins);
+    const io = setupSignaling(httpServer, corsOrigin);
     app.set('io', io);
 
     // Start server
     httpServer.listen(PORT, () => {
       console.log(
         `EtherXMeet backend running on http://localhost:${PORT}`
-      );
-
-      console.log(
-        `EtherXMeet backend LAN: http://10.190.103.55:${PORT}`
       );
 
       console.log(

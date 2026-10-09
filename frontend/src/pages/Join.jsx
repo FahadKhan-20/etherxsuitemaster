@@ -12,6 +12,7 @@ import { useWallet } from '../context/WalletContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import AudioVisualizer from '../components/meeting/AudioVisualizer';
 import etherxLogo from '../assets/etherx_transparent.png';
+import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
 
 const AVATAR_COLORS = [
   { name: 'primary', bg: 'bg-indigo-600', glow: 'shadow-indigo-500/50' },
@@ -23,36 +24,6 @@ const AVATAR_COLORS = [
   { name: 'teal', bg: 'bg-teal-600', glow: 'shadow-teal-500/50' },
   { name: 'lime', bg: 'bg-lime-600', glow: 'shadow-lime-500/50' },
 ];
-
-function extractMeetingCode(value) {
-  const input = value.trim();
-  let candidate = input;
-
-  try {
-    const url = new URL(input, window.location.origin);
-    const roomPathMatch = url.pathname.match(/\/room\/([^/]+)/i);
-    if (roomPathMatch) {
-      candidate = decodeURIComponent(roomPathMatch[1]);
-    } else if (/\/join\/?$/i.test(url.pathname)) {
-      candidate = url.searchParams.get('code') || input;
-    }
-  } catch {
-    // Treat non-URL input as a meeting code.
-  }
-
-  return candidate.trim().replace(/\s+/g, '');
-}
-
-function formatMeetingCode(value) {
-  const code = extractMeetingCode(value);
-  const etherxCode = code.match(/^etherx-([a-z0-9]{8})$/i);
-  if (etherxCode) return `etherx-${etherxCode[1].toLowerCase()}`;
-
-  const cleaned = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  if (cleaned.length <= 3) return cleaned;
-  if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-  return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 10)}`;
-}
 
 export default function Join() {
   const navigate = useNavigate();
@@ -90,7 +61,7 @@ export default function Join() {
   useEffect(() => {
     const codeParam = searchParams.get('code');
     if (codeParam) {
-      setMeetingCode(formatMeetingCode(codeParam));
+      setMeetingCode(normalizeRoomCode(codeParam));
     }
   }, [searchParams]);
 
@@ -108,8 +79,7 @@ export default function Join() {
   }, []);
 
   const handleCodeChange = (e) => {
-    const formatted = formatMeetingCode(e.target.value);
-    setMeetingCode(formatted);
+    setMeetingCode(normalizeRoomCode(e.target.value));
     setCodeError('');
   };
 
@@ -132,15 +102,12 @@ export default function Join() {
       isValid = false;
     }
 
-    const enteredCode = extractMeetingCode(meetingCode);
-    const isEtherxPattern = /^etherx-[a-z0-9_-]+$/i.test(enteredCode);
-    const codePattern = /^[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{3}$/i;
-    const isAlphanumeric = /^[A-Z0-9_-]{3,30}$/i.test(enteredCode);
+    const enteredCode = normalizeRoomCode(meetingCode);
 
     if (!enteredCode) {
       setCodeError('Meeting code is required');
       isValid = false;
-    } else if (!codePattern.test(enteredCode) && !isEtherxPattern && !isAlphanumeric) {
+    } else if (!isValidRoomCode(enteredCode)) {
       setCodeError('Enter a valid meeting code or invite link');
       isValid = false;
     }
@@ -161,11 +128,7 @@ export default function Join() {
 
     // Simulate a brief delay for better UX
     setTimeout(() => {
-      const enteredCode = extractMeetingCode(meetingCode);
-      let cleanCode = enteredCode.toLowerCase();
-      if (!cleanCode.startsWith('etherx-')) {
-        cleanCode = cleanCode.replace(/-/g, '');
-      }
+      const cleanCode = normalizeRoomCode(meetingCode);
       if (isHostFromUrl) {
         sessionStorage.setItem('etherx_host_room', cleanCode);
         sessionStorage.setItem('etherx_meet_start', String(Date.now()));

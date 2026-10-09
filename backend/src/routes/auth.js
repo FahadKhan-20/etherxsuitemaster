@@ -37,6 +37,8 @@ const sendResetEmail = async (toEmail, toName, resetUrl) => {
   return result;
 };
 
+const { signInLimiter, accountLimiter } = require('../middleware/rateLimits');
+
 const router = express.Router();
 
 const signToken = (user) =>
@@ -60,7 +62,7 @@ const sanitizeUser = (user) => {
 
 // ── Password auth ────────────────────────────────────────────────────────────
 
-router.post('/register', async (req, res, next) => {
+router.post('/register', accountLimiter, async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
@@ -103,7 +105,7 @@ router.post('/register', async (req, res, next) => {
   }
 });
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', signInLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -154,7 +156,7 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
-router.post('/forgot-password', async (req, res, next) => {
+router.post('/forgot-password', accountLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
@@ -198,7 +200,7 @@ router.post('/forgot-password', async (req, res, next) => {
   }
 });
 
-router.post('/reset-password/:token', async (req, res, next) => {
+router.post('/reset-password/:token', signInLimiter, async (req, res, next) => {
   try {
     const { password } = req.body;
     if (!password) return res.status(400).json({ success: false, message: 'New password is required.' });
@@ -247,7 +249,7 @@ router.get(
 // ── Apple Sign-In ────────────────────────────────────────────────────────────
 
 // 1. Direct ID Token verification (Apple Web JS SDK / Native / Web3Auth Apple login)
-router.post('/apple', async (req, res, next) => {
+router.post('/apple', accountLimiter, async (req, res, next) => {
   try {
     const { idToken, name, email } = req.body;
 
@@ -324,7 +326,7 @@ router.get('/apple', (req, res) => {
 });
 
 // 3. Apple OAuth form_post callback handler
-router.post('/apple/callback', async (req, res, next) => {
+router.post('/apple/callback', accountLimiter, async (req, res, next) => {
   try {
     const { id_token, user: userJson } = req.body;
     if (!id_token) {
@@ -387,7 +389,7 @@ router.post('/apple/callback', async (req, res, next) => {
 const VALID_LOGIN_METHODS = ['google', 'email_passwordless', 'discord', 'wallet'];
 
 // Step 1: client requests a one-time challenge to sign.
-router.post('/web3auth/nonce', async (req, res) => {
+router.post('/web3auth/nonce', accountLimiter, async (req, res) => {
   const { walletAddress } = req.body;
   if (!walletAddress || typeof walletAddress !== 'string') {
     return res.status(400).json({ success: false, message: 'walletAddress is required.' });
@@ -397,7 +399,7 @@ router.post('/web3auth/nonce', async (req, res) => {
 });
 
 // Step 2: client returns the signed nonce; backend verifies and issues a session.
-router.post('/web3auth', async (req, res, next) => {
+router.post('/web3auth', signInLimiter, async (req, res, next) => {
   try {
     const { walletAddress, nonce, signature, email, name, avatar, loginMethod } = req.body;
 
@@ -470,6 +472,28 @@ router.get('/me', auth, async (req, res, next) => {
         user,
       },
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Partial update of account preferences; only known keys with valid values are accepted.
+router.put('/me/preferences', auth, async (req, res, next) => {
+  try {
+    const { reminders = {}, privacy = {} } = req.body || {};
+    const updates = {};
+    if ('enabled' in reminders) updates['preferences.reminders.enabled'] = reminders.enabled;
+    if ('minutes' in reminders) updates['preferences.reminders.minutes'] = reminders.minutes;
+    if ('retentionDays' in privacy) updates['preferences.privacy.retentionDays'] = privacy.retentionDays;
+    if ('allowRecording' in privacy) updates['preferences.privacy.allowRecording'] = privacy.allowRecording;
+    const valid = Object.keys(updates).length > 0
+      && [updates['preferences.reminders.enabled'], updates['preferences.privacy.allowRecording']].every(v => v === undefined || typeof v === 'boolean')
+      && [undefined, 5, 15, 30, 60].includes(updates['preferences.reminders.minutes'])
+      && [undefined, null, 30, 90, 365].includes(updates['preferences.privacy.retentionDays']);
+    if (!valid) return res.status(400).json({ success: false, message: 'Invalid preferences.' });
+    const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true, runValidators: true });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    return res.json({ success: true, data: { preferences: user.preferences } });
   } catch (error) {
     return next(error);
   }

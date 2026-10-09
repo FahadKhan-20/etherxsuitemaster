@@ -1,13 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import useLocalStorage from '../hooks/useLocalStorage';
 import mockParticipants from '../data/participants';
-import seedRecordings from '../data/recordings';
 import { agendaTemplates } from '../data/agenda';
-import {
-  asyncMessages as seedAsyncMessages,
-  notifications as seedNotifications,
-  upcomingMeetings as seedUpcomingMeetings,
-} from '../data/meetings';
 import { useUserContext } from './UserContext';
 
 const INITIAL_CHAT = [
@@ -98,22 +91,6 @@ export function MeetingProvider({ children }) {
   );
   const [presenterId, setPresenterId] = useState(currentUser.id);
 
-  const [scheduledMeetings, setScheduledMeetings] = useLocalStorage(
-    'nexmeet_upcoming_meetings',
-    seedUpcomingMeetings,
-  );
-  const [savedRecordings, setSavedRecordings] = useLocalStorage(
-    'nexmeet_saved_recordings',
-    seedRecordings,
-  );
-  const [savedAsyncMessages, setSavedAsyncMessages] = useLocalStorage(
-    'nexmeet_async_messages',
-    seedAsyncMessages,
-  );
-  const [notifications, setNotifications] = useLocalStorage(
-    'nexmeet_notifications',
-    seedNotifications,
-  );
 
   useEffect(() => {
     const syncedCurrentUser = {
@@ -257,96 +234,8 @@ export function MeetingProvider({ children }) {
   };
 
   const stopRecording = () => {
-    const elapsedMinutes = Math.max(8, Math.round((Date.now() - startTime) / 60000));
-
-    setSavedRecordings((previousRecordings) => [
-      {
-        id: `rec-${Date.now()}`,
-        meetingId: currentMeetingId || `room-${Date.now()}`,
-        title: `${meetingTitle} Capture`,
-        date: new Date().toISOString(),
-        duration: elapsedMinutes,
-        size: Math.max(160, elapsedMinutes * 12),
-        thumbnailUrl: '/thumbnails/generated.jpg',
-        participants: participants.map((participant) => participant.name),
-        chapters: agendaTemplate.items.slice(0, 4).map((item, index) => ({
-          time: index * 600,
-          title: item.title,
-        })),
-        transcriptPreview: 'Auto-generated recap with synced transcript highlights and timeline markers.',
-        settings: recordingOptions,
-      },
-      ...previousRecordings,
-    ]);
-
-    setNotifications((previousNotifications) => [
-      {
-        id: `notif-${Date.now()}`,
-        type: 'recording_ready',
-        title: 'Meeting recording saved',
-        message: `${meetingTitle} is now available in the Recording Studio.`,
-        read: false,
-        timestamp: Date.now(),
-      },
-      ...previousNotifications,
-    ]);
-
     setRecordingOptions(null);
     setIsRecording(false);
-  };
-
-  const scheduleMeeting = (meeting) => {
-    const scheduledMeeting = {
-      id: `sched-${Date.now()}`,
-      status: 'scheduled',
-      recordingUrl: null,
-      ...meeting,
-    };
-
-    setScheduledMeetings((previousMeetings) => [scheduledMeeting, ...previousMeetings]);
-    setNotifications((previousNotifications) => [
-      {
-        id: `notif-${Date.now()}`,
-        type: 'meeting_invite',
-        title: 'Meeting scheduled',
-        message: `${meeting.title} is booked for ${new Date(meeting.date).toLocaleString()}.`,
-        read: false,
-        timestamp: Date.now(),
-      },
-      ...previousNotifications,
-    ]);
-  };
-
-  const cancelScheduledMeeting = (id) => {
-    setScheduledMeetings((previousMeetings) => previousMeetings.filter((meeting) => meeting.id !== id));
-  };
-
-  const saveAsyncMessage = (payload) => {
-    setSavedAsyncMessages((previousMessages) => [
-      {
-        id: `async-${Date.now()}`,
-        read: false,
-        timestamp: Date.now(),
-        ...payload,
-      },
-      ...previousMessages,
-    ]);
-  };
-
-  const markAsyncMessageRead = (messageId) => {
-    setSavedAsyncMessages((previousMessages) =>
-      previousMessages.map((message) =>
-        message.id === messageId ? { ...message, read: true } : message,
-      ),
-    );
-  };
-
-  const markNotificationRead = (notificationId) => {
-    setNotifications((previousNotifications) =>
-      previousNotifications.map((notification) =>
-        notification.id === notificationId ? { ...notification, read: true } : notification,
-      ),
-    );
   };
 
   const updateParticipant = (participantId, updates) => {
@@ -425,10 +314,6 @@ export function MeetingProvider({ children }) {
       presenterId,
       canEditAgenda,
       canMarkAgendaCompleted,
-      scheduledMeetings,
-      savedRecordings,
-      savedAsyncMessages,
-      notifications,
       analyticsSnapshot,
       setMeetingId: setCurrentMeetingId,
       setMeetingTitle,
@@ -448,11 +333,6 @@ export function MeetingProvider({ children }) {
       addReaction,
       startRecording,
       stopRecording,
-      scheduleMeeting,
-      cancelScheduledMeeting,
-      saveAsyncMessage,
-      markAsyncMessageRead,
-      markNotificationRead,
       updateParticipant,
     }),
     [
@@ -470,13 +350,9 @@ export function MeetingProvider({ children }) {
       isRecording,
       meetingState,
       meetingTitle,
-      notifications,
       participants,
       reactions,
       recordingOptions,
-      savedAsyncMessages,
-      savedRecordings,
-      scheduledMeetings,
       startTime,
     ],
   );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarClock, Download, Repeat, Users, X } from 'lucide-react';
-import { useMeeting } from '../../../context/MeetingContext';
+import { getApiErrorMessage } from '../../../utils/apiClient';
 
 const GOLD = '#d4af37';
 const GOLD_DIM = 'rgba(212,175,55,0.1)';
@@ -23,8 +23,37 @@ function toIcsDate(date) {
   return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 }
 
-export default function Scheduler({ isOpen, onClose }) {
-  const { scheduleMeeting } = useMeeting();
+// RFC 5545 text values: escape backslash, comma, semicolon and newlines.
+const icsText = (value) => String(value).replace(/[\\,;]/g, (c) => `\\${c}`).replace(/\r?\n/g, '\\n');
+
+/** Calendar invite pointing at the meeting's registered room. */
+function downloadInvite(meeting) {
+  const start = new Date(meeting.date);
+  const end = new Date(start.getTime() + meeting.duration * 60000);
+  const url = `${window.location.origin}/room/${meeting.roomCode}`;
+  const body = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EtherXMeet//EN',
+    'BEGIN:VEVENT',
+    `UID:${meeting.id}@etherxmeet.app`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${toIcsDate(start)}`, `DTEND:${toIcsDate(end)}`,
+    ...(meeting.recurring !== 'none' ? [`RRULE:FREQ=${meeting.recurring.toUpperCase()}`] : []),
+    `SUMMARY:${icsText(meeting.title)}`,
+    `DESCRIPTION:${icsText(`Join the EtherXMeet room: ${url}`)}`,
+    `LOCATION:${icsText(url)}`,
+    `URL:${url}`,
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  const blob = new Blob([body], { type: 'text/calendar;charset=utf-8' });
+  const slug = meeting.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meeting';
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${slug}.ics` });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+export default function Scheduler({ isOpen, onClose, onSchedule }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
   const [form, setForm] = useState({
@@ -44,40 +73,26 @@ export default function Scheduler({ isOpen, onClose }) {
     return { start, end };
   }, [form.date, form.time, form.duration]);
 
-  const downloadIcs = () => {
-    const start = toIcsDate(preview.start);
-    const end = toIcsDate(preview.end);
-    const slug = form.title.toLowerCase().replace(/\s+/g, '-') || 'meeting';
-    const body = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EtherXMeet//EN',
-      'BEGIN:VEVENT',
-      `UID:${Date.now()}@etherxmeet.app`,
-      `DTSTAMP:${toIcsDate(new Date())}`,
-      `DTSTART:${start}`, `DTEND:${end}`,
-      `SUMMARY:${form.title || 'EtherXMeet session'}`,
-      `DESCRIPTION:EtherXMeet scheduled session`,
-      `LOCATION:${window.location.origin}/room/${slug}`,
-      'END:VEVENT', 'END:VCALENDAR',
-    ].join('\r\n');
-    const blob = new Blob([body], { type: 'text/calendar;charset=utf-8' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${slug}.ics` });
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const handleSubmit = async () => {
-    if (!form.title.trim()) return;
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission().catch(() => {});
+  // Saves the schedule on the server (which registers its room); optionally downloads the calendar invite.
+  const save = async (withInvite) => {
+    if (!form.title.trim() || saving) return;
+    setSaving(true); setError('');
+    try {
+      const meeting = await onSchedule({
+        title: form.title,
+        startAt: preview.start.toISOString(),
+        duration: Number(form.duration),
+        participants: form.participants.split(',').map((p) => p.trim()).filter(Boolean),
+        recurring: form.recurring,
+      });
+      if (withInvite) downloadInvite(meeting);
+      setForm((prev) => ({ ...prev, title: '', participants: '' }));
+      onClose();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not save this meeting.'));
+    } finally {
+      setSaving(false);
     }
-    scheduleMeeting({
-      title: form.title,
-      date: preview.start.toISOString(),
-      duration: Number(form.duration),
-      participants: form.participants.split(',').map((p) => p.trim()).filter(Boolean),
-      recurring: form.recurring,
-    });
-    onClose();
   };
 
   return (
@@ -194,8 +209,8 @@ export default function Scheduler({ isOpen, onClose }) {
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                   <button
-                    onClick={handleSubmit}
-                    disabled={!form.title.trim()}
+                    onClick={() => save(false)}
+                    disabled={!form.title.trim() || saving}
                     style={{
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                       background: form.title.trim() ? `linear-gradient(135deg,${GOLD},#b8860b)` : 'rgba(255,255,255,0.06)',
@@ -210,7 +225,9 @@ export default function Scheduler({ isOpen, onClose }) {
                     Save schedule
                   </button>
                   <button
-                    onClick={downloadIcs}
+                    onClick={() => save(true)}
+                    disabled={!form.title.trim() || saving}
+                    title="Save and download a calendar invite"
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8,
                       background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`,
@@ -220,9 +237,10 @@ export default function Scheduler({ isOpen, onClose }) {
                     }}
                   >
                     <Download style={{ width: 14, height: 14 }} />
-                    .ics
+                    Save + .ics
                   </button>
                 </div>
+                {error && <p role="alert" style={{ margin: '10px 0 0', fontSize: 12, color: '#f87171' }}>{error}</p>}
               </div>
 
               {/* Right — preview */}

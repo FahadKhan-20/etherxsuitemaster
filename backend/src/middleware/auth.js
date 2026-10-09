@@ -13,7 +13,9 @@ module.exports = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    // Purpose tokens (e.g. signed recording links) are not sign-in sessions.
+    if (decoded.purpose || !decoded.id) throw new Error('Not a sign-in token.');
     req.user = decoded;
     return next();
   } catch (error) {

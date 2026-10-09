@@ -220,66 +220,6 @@
   cursor: pointer;
 }
 
-/* ── LiveKit gold theme overrides ── */
-:root {
-  --lk-color-primary: #d4af37;
-  --lk-color-primary-hover: #c4a45e;
-  --lk-control-bar-background: #0d0f0f;
-  --lk-bg1: #0a0a0a;
-  --lk-bg2: #111314;
-  --lk-bg3: #1a1c1c;
-  --lk-border-color: #b8860b;
-  --lk-foreground1: #d4af37;
-  --lk-foreground2: #c4a45e;
-  --lk-foreground3: rgba(212,175,55,0.6);
-}
-
-[data-lk-theme] {
-  --lk-color-primary: #d4af37 !important;
-  --lk-bg1: #0a0a0a !important;
-  --lk-bg2: #111314 !important;
-  --lk-bg3: #1a1c1c !important;
-  --lk-control-bar-background: #0d0f0f !important;
-  --lk-border-color: rgba(184,134,11,0.6) !important;
-  --lk-foreground1: #d4af37 !important;
-  --lk-foreground2: #c4a45e !important;
-  --lk-foreground3: rgba(212,175,55,0.55) !important;
-}
-
-/* Join button gold */
-[data-lk-theme] button[class*="lk-join"],
-[data-lk-theme] button[class*="lk-button"]:not([class*="lk-disconnect"]) {
-  background: #d4af37 !important;
-  color: #0a0a0a !important;
-  border-color: #d4af37 !important;
-}
-
-[data-lk-theme] button[class*="lk-join"]:hover,
-[data-lk-theme] button[class*="lk-button"]:not([class*="lk-disconnect"]):hover {
-  background: #c4a45e !important;
-}
-
-/* Control bar */
-[data-lk-theme] .lk-control-bar {
-  background: #0d0f0f !important;
-  border-top: 1px solid rgba(184,134,11,0.5) !important;
-}
-
-/* PreJoin panel */
-[data-lk-theme] .lk-prejoin {
-  background: #0a0a0a !important;
-}
-
-[data-lk-theme] .lk-prejoin h2,
-[data-lk-theme] .lk-prejoin label,
-[data-lk-theme] .lk-prejoin p {
-  color: #d4af37 !important;
-}
-
-/* Video tiles */
-[data-lk-theme] .lk-participant-tile {
-  background: #111314 !important;
-}
 
 .etherx-room-wrap {
   position: relative;

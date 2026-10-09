@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
-import { useMeeting } from '../context/MeetingContext';
+import { useSchedules } from '../hooks/useSchedules';
+import { nextStart } from '../components/layout/MeetingReminders';
 import { useUser } from '../context/UserContext';
 import '../styles/dashboard.css';
 
@@ -54,13 +55,18 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { user } = useUser();
-  const { scheduledMeetings, cancelScheduledMeeting } = useMeeting();
+  const { meetings: scheduledMeetings, create: createSchedule, remove: cancelScheduledMeeting, error: scheduleError } = useSchedules();
   const [showScheduler, setShowScheduler] = useState(false);
 
 
 
   const upcoming = useMemo(
-    () => [...scheduledMeetings].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 4),
+    // Upcoming occurrences: repeating meetings show their next date, finished one-off meetings drop out.
+    () => scheduledMeetings
+      .map((m) => ({ ...m, next: nextStart({ startAt: m.date, duration: m.duration, recurring: m.recurring }) }))
+      .filter((m) => m.next !== null)
+      .map((m) => ({ ...m, date: new Date(m.next).toISOString() }))
+      .sort((a, b) => a.next - b.next).slice(0, 4),
     [scheduledMeetings],
   );
 
@@ -118,13 +124,13 @@ export default function Dashboard() {
                     sessionStorage.setItem('etherx_meet_start', String(Date.now()));
                     navigate(`/room/${user.roomSlug}`);
                   }}
-                  style={{ background: GRADIENT_CTA, border: 'none', color: '#111', fontWeight: 700, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140 }}
+                  style={{ background: GRADIENT_CTA, border: 'none', color: '#111', fontWeight: 700, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140, whiteSpace: 'nowrap' }}
                 >
                   <Plus size={15} /> Open My Room
                 </button>
                 <button
                   onClick={() => setShowScheduler(true)}
-                  style={{ background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, color: GOLD, fontWeight: 600, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140 }}
+                  style={{ background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, color: GOLD, fontWeight: 600, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140, whiteSpace: 'nowrap' }}
                 >
                   <CalendarClock size={15} /> Schedule
                 </button>
@@ -144,15 +150,18 @@ export default function Dashboard() {
                 style={{
                   ...card,
                   borderColor: GOLD_BORDER,
-                  padding: '20px 18px',
+                  padding: '14px 18px',
                   cursor: 'default',
+                  display: 'flex', alignItems: 'center', gap: 14,
                 }}
               >
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: GOLD_DIM, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 10, background: GOLD_DIM, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon size={18} color={GOLD} />
                 </div>
-                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>{label}</p>
-                <p style={{ fontSize: 26, fontWeight: 600, color: '#E8D5A3', letterSpacing: '-0.03em', marginTop: 4 }}>{value}</p>
+                <div>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>{label}</p>
+                  <p style={{ fontSize: 24, fontWeight: 600, color: '#E8D5A3', letterSpacing: '-0.03em', marginTop: 2 }}>{value}</p>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -177,6 +186,7 @@ export default function Dashboard() {
                     {upcoming.length} scheduled
                   </span>
                 </div>
+                {scheduleError && <p role="alert" style={{ fontSize: 12, color: '#f87171', marginBottom: 10 }}>{scheduleError}</p>}
                 {upcoming.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', padding: '20px 0' }}>
                     No sessions scheduled yet. Use the Schedule button to add one.
@@ -199,7 +209,7 @@ export default function Dashboard() {
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 15, fontWeight: 500, color: '#E8D5A3', marginBottom: 3 }}>{meeting.title}</p>
                           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                            {new Date(meeting.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {meeting.duration} min · {meeting.participants.length} people
+                            {new Date(meeting.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {meeting.duration} min{meeting.recurring !== 'none' ? ` · repeats ${meeting.recurring}` : ''} · {meeting.participants.length} people
                           </p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, position: 'relative', zIndex: 5 }}>
@@ -241,7 +251,12 @@ export default function Dashboard() {
                           )}
                           <button
                             type="button"
-                            onClick={() => navigate(`/join?code=${meeting.id}`)}
+                            onClick={() => {
+                              // The scheduler owns the meeting's registered room, so they join as its host.
+                              sessionStorage.setItem('etherx_host_room', meeting.roomCode);
+                              sessionStorage.setItem('etherx_meet_start', String(Date.now()));
+                              navigate(`/room/${meeting.roomCode}`);
+                            }}
                             style={{ background: 'none', border: 'none', padding: '6px 4px', fontSize: 13, color: GOLD, fontWeight: 600, cursor: 'pointer' }}
                           >
                             Join →
@@ -260,7 +275,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <Scheduler isOpen={showScheduler} onClose={() => setShowScheduler(false)} />
+        <Scheduler isOpen={showScheduler} onClose={() => setShowScheduler(false)} onSchedule={createSchedule} />
       </div>
     </AnimatedPage>
   );

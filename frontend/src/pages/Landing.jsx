@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
 import { LayoutDashboard, QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,7 +11,6 @@ import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
 import '../styles/landing.css';
 import * as QRCode from 'qrcode';
-import { Html5Qrcode } from 'html5-qrcode';
 import Modal from '../components/ui/Modal';
 import apiClient from '../utils/apiClient';
 
@@ -22,15 +22,13 @@ const formatTime = (date) =>
   });
 
 const normalizeMeetingCode = (value) => {
-  const cleaned = value.toLowerCase().replace(/\s+/g, '').trim();
-  const jitsiMatch = cleaned.match(/(?:https?:\/\/)?meet\.jit\.si\/([^/?#]+)/i);
-
-  if (jitsiMatch?.[1]) {
-    return jitsiMatch[1].toLowerCase();
-  }
-
-  return cleaned;
+  const jitsiMatch = value.replace(/\s+/g, '').match(/(?:https?:\/\/)?meet\.jit\.si\/([^/?#]+)/i);
+  return jitsiMatch?.[1] ? jitsiMatch[1].toLowerCase() : normalizeRoomCode(value);
 };
+
+// Published legal pages. The consent line is hidden until both exist, so it never links to nothing.
+const TERMS_URL = import.meta.env.VITE_TERMS_URL;
+const PRIVACY_URL = import.meta.env.VITE_PRIVACY_URL;
 
 function generateRoomCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -148,13 +146,18 @@ export default function Landing() {
   // QR Scanner initialization
   useEffect(() => {
     let scannerInstance = null;
+    let cancelled = false;
 
     if (scannerOpen) {
       setScanError('');
-      // Give DOM time to render div
-      setTimeout(() => {
+      // Give DOM time to render div; the scanner library (large) loads only when the scanner opens.
+      setTimeout(async () => {
         const el = document.getElementById('qr-reader-target');
         if (!el) return;
+        let Html5Qrcode;
+        try { ({ Html5Qrcode } = await import('html5-qrcode')); }
+        catch { setScanError('Could not load the QR scanner. Check your connection and retry.'); return; }
+        if (cancelled) return;
 
         scannerInstance = new Html5Qrcode('qr-reader-target');
         html5QrCodeRef.current = scannerInstance;
@@ -190,6 +193,7 @@ export default function Landing() {
     }
 
     return () => {
+      cancelled = true;
       if (scannerInstance && scannerInstance.isScanning) {
         scannerInstance.stop().catch((e) => console.error('Stop scanner error:', e));
       }
@@ -263,6 +267,7 @@ export default function Landing() {
   const handleJoin = () => {
     const code = normalizeMeetingCode(meetingCode);
     if (!code) { window.alert('Please enter a meeting code.'); return; }
+    if (!isValidRoomCode(code)) { window.alert('Enter a valid meeting code or invite link.'); return; }
     navigate(`/room/${encodeURIComponent(code)}`);
   };
 
@@ -487,9 +492,11 @@ export default function Landing() {
                 </motion.button>
               </div>
 
-              <motion.p variants={staggerChild} className="meet-privacy-note">
-                By continuing, you agree to our <a href="#">Terms</a> and <a href="#">Privacy</a>.
-              </motion.p>
+              {TERMS_URL && PRIVACY_URL && (
+                <motion.p variants={staggerChild} className="meet-privacy-note">
+                  By continuing, you agree to our <a href={TERMS_URL} target="_blank" rel="noopener noreferrer">Terms</a> and <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+                </motion.p>
+              )}
             </motion.section>
           </div>
         </main>

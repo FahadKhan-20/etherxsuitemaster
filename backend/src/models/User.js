@@ -58,6 +58,18 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Account-level settings; device and in-meeting alert choices stay per browser.
+    preferences: {
+      reminders: {
+        enabled: { type: Boolean, default: true },
+        minutes: { type: Number, enum: [5, 15, 30, 60], default: 15 },
+      },
+      privacy: {
+        // null = keep until the user deletes them.
+        retentionDays: { type: Number, enum: [30, 90, 365, null], default: null },
+        allowRecording: { type: Boolean, default: true }, // in meetings this user hosts
+      },
+    },
     createdAt: {
       type: Date,
       default: Date.now,

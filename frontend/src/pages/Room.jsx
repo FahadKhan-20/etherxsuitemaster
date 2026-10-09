@@ -1,5 +1,6 @@
 // frontend/src/pages/Room.jsx
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { normalizeRoomCode } from '../utils/roomCode';
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '../context/UserContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
@@ -17,18 +18,6 @@ import {
   Mic, MicOff, Video, VideoOff, UserPlus, Image as ImageIcon, Settings, PhoneOff, ChevronDown, Sparkles, Check,
   Volume2, Bell, User, Keyboard, X, Plus
 } from 'lucide-react';
-
-function normalizeRoomCode(value) {
-  const input = typeof value === 'string' ? value.trim() : '';
-  try {
-    const url = new URL(input, window.location.origin);
-    const roomPathMatch = url.pathname.match(/\/room\/([^/]+)/i);
-    if (roomPathMatch) return decodeURIComponent(roomPathMatch[1]);
-  } catch {
-    // Keep non-URL room codes unchanged.
-  }
-  return input;
-}
 
 // Formatter for room code: e.g. "etherx-pi9gce9w" -> "Etherx Pi 9 Gce 9 W"
 function formatLobbyCode(code) {
@@ -105,15 +94,9 @@ export default function Room() {
     const fetchParticipants = async () => {
       try {
         const cleanCode = encodeURIComponent(code.trim().toLowerCase());
-        const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-        const url = `${apiBase}/api/rooms/${cleanCode}/participants`;
-        const res = await fetch(url);
-        const contentType = res.headers.get('content-type') || '';
-        if (res.ok && contentType.includes('application/json')) {
-          const data = await res.json();
-          if (!isCancelled && data?.success) {
-            setActiveParticipants(data.participants || []);
-          }
+        const { data } = await apiClient.get(`/api/rooms/${cleanCode}/participants`);
+        if (!isCancelled && data?.success) {
+          setActiveParticipants(data.participants || []);
         }
       } catch {
         // Silently catch to avoid crashing or flooding console with SyntaxError on network hiccups/SPA fallback

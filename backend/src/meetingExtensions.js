@@ -1,3 +1,4 @@
+const { meetingMetrics } = require('./meetingMetrics');
 // Server-authoritative policies and subgroup membership for the reference meeting UI.
 const policies = new Map(), breakouts = new Map(), ended = new Set();
 const defaults = { waitingRoom: true, allowChat: true, allowShare: true };
@@ -58,7 +59,7 @@ function registerMeetingExtensions(io, socket, context) {
     if(groupId!=='main'&&!session.rooms.some(g=>g.id===groupId))return ack({ok:false,error:'Room unavailable.'});session.assignments[socket.id]=groupId;io.to(code).emit('breakout-state',publicBreakout(code));resetMedia(code);ack({ok:true});
   });
   on('breakout-close',(_payload,ack)=>{closeBreakouts();ack({ok:true});},true);
-  on('end-meeting',({notes},ack,_member,room,code)=>{ended.add(code);if(typeof notes==='string')setNotes(code,notes.slice(0,20000));if(breakouts.has(code))closeBreakouts();recordings.delete(code);io.to(code).emit('meeting-ended',{roomCode:code});ack({ok:true});for(const member of room.values()){const target=io.sockets.sockets.get(member.socketId);target?.disconnect(true);}},true);
+  on('end-meeting',({notes},ack,_member,room,code)=>{ended.add(code);if(typeof notes==='string')setNotes(code,notes.slice(0,20000));if(breakouts.has(code))closeBreakouts();recordings.delete(code);io.to(code).emit('meeting-ended',{roomCode:code});ack({ok:true});for(const member of room.values()){const target=io.sockets.sockets.get(member.socketId);target?.disconnect(true);}meetingMetrics.finish(code);},true);
   return {snapshot,roster};
 }
 function publicBreakout(code){const session=breakouts.get(code);return session?{rooms:session.rooms,assignments:session.assignments,endsAt:session.endsAt}:null;}

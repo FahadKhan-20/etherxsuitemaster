@@ -219,3 +219,81 @@ test('host departure promotes co-host and publishes updated roster authority',as
   assert.equal(f.io.emittedEvents.filter(e=>e.event==='host-transferred').at(-1).payload.newHostSocketId,guest.id);
   let reply;guest.trigger('meeting-policy-set',{roomCode:f.code,waitingRoom:false},r=>reply=r);assert.equal(reply.ok,true);
 });
+
+test('speakers whose browser cannot caption are announced to current and later caption viewers', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket');
+  h.trigger('captions-set', { roomCode: f.code, on: true });
+  g.trigger('caption-unavailable', { roomCode: f.code });
+  g.trigger('caption-unavailable', { roomCode: f.code });
+  const relayed = g.roomEvents.filter(e => e.event === 'caption-unavailable');
+  assert.deepEqual(relayed.map(e => e.payload), [{ socketId: 'guest-socket', userName: 'guest-socket' }]);
+  const late = await f.guest(h, 'late-socket');
+  late.trigger('captions-set', { roomCode: f.code, on: true });
+  assert.deepEqual(events(late, 'caption-unavailable').map(e => e.payload), [{ socketId: 'guest-socket', userName: 'guest-socket' }]);
+});
+
+test('rooms stop accepting people at the mesh limit and tell the newcomer the meeting is full', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  for (let i = 1; i < 8; i++) await f.guest(h, `guest-${i}`);
+  assert.equal(rooms.get(f.code).size, 8);
+  const late = await f.connect('late');
+  late.trigger('request-join', { roomCode: f.code });
+  assert.equal(events(late, 'room-full').length, 1);
+  assert.equal(events(h, 'join-request').filter(e => e.payload.socketId === 'late').length, 0);
+  late.data.admittedRoom = f.code;
+  f.join(late);
+  assert.equal(rooms.get(f.code).size, 8);
+  assert.equal(events(late, 'room-full').length, 2);
+});
+
+test('meeting metrics follow the session and are finished when the host ends the meeting', async t => {
+  const { meetingMetrics } = require('../src/meetingMetrics');
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket');
+  assert.equal(meetingMetrics.has(f.code), true);
+  g.trigger('raise-hand', { roomCode: f.code });
+  h.trigger('end-meeting', { roomCode: f.code }, () => {});
+  assert.equal(meetingMetrics.has(f.code), false);
+});
+
+test('admitted participants get a ticket that readmits them after a server restart, unless removed', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket', 'guest-user');
+  const issued = events(g, 'admission-ticket').at(-1)?.payload.ticket;
+  const claims = jwt.verify(issued, process.env.JWT_SECRET);
+  assert.deepEqual([claims.purpose, claims.room, claims.uid], ['admission', f.code, 'guest-user']);
+  // Same account after a restart: no server memory of the admission, only the ticket.
+  const ticket = jwt.sign({ purpose: 'admission', room: f.code, uid: 'returning-user' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const back = await f.connect('returning-socket', 'returning-user');
+  back.trigger('join-room', { roomCode: f.code, ticket });
+  assert.equal(rooms.get(f.code).has('returning-socket'), true);
+  // Someone else's ticket or no ticket: approval still required.
+  const thief = await f.connect('thief-socket', 'thief-user');
+  thief.trigger('join-room', { roomCode: f.code, ticket });
+  thief.trigger('join-room', { roomCode: f.code });
+  assert.equal(rooms.get(f.code).has('thief-socket'), false);
+  // Removed participants cannot use their ticket.
+  h.trigger('kick-participant', { roomCode: f.code, to: 'returning-socket' });
+  const again = await f.connect('returning-socket-2', 'returning-user');
+  again.trigger('request-join', { roomCode: f.code, ticket });
+  again.trigger('join-room', { roomCode: f.code, ticket });
+  assert.equal(rooms.get(f.code).has('returning-socket-2'), false);
+  assert.equal(events(again, 'admitted').length, 0);
+});
+
+test('recording cannot start in a room whose host turned recording off', async t => {
+  const code = 'test-recording-off';
+  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => 'host-user', resolveRecordingAllowed: async owner => owner !== 'host-user' });
+  registerRoomHost(code, 'host-user');
+  t.after(() => { [...io.sockets.sockets.values()].forEach(s => s.disconnect()); rooms.delete(code); });
+  const h = new FakeSocket('host-socket', io, code, 'host-user'); await io.connect(h);
+  h.trigger('join-room', { roomCode: code, userName: 'Host' });
+  let reply; await new Promise(resolve => h.trigger('recording-start', { roomCode: code }, r => { reply = r; resolve(); }));
+  assert.equal(reply.ok, false);
+  assert.match(reply.error, /turned recording off/);
+});

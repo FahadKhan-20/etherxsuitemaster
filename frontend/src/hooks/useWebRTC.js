@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { getStoredUser, getAuthToken } from '../utils/auth';
-import { acquireMeetingMedia, deviceConstraint, listMeetingDevices } from '../utils/meetingMedia';
+import { acquireMeetingMedia, audioConstraint, deviceConstraint, listMeetingDevices } from '../utils/meetingMedia';
 import { useWallet } from '../context/WalletContext';
+import apiClient from '../utils/apiClient';
 
-const ICE_SERVERS = [
+// Used until (or if) the backend's /api/rooms/ice-servers answers with the configured relay.
+const FALLBACK_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   {
@@ -51,6 +53,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   const [amHost, setAmHost] = useState(false);
   const [coHost, setCoHost] = useState(null); // { socketId, userId, userName } | null
   const [lockedOut, setLockedOut] = useState(false);
+  const [roomFull, setRoomFull] = useState(false);
   const isCoHost = !!(coHost && coHost.userId === userId);
   const canHost = amHost || isCoHost; // current host authority, host OR co-host
 
@@ -64,7 +67,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   const [screenStream, setScreenStream] = useState(null);
   const [screenSharerId, setScreenSharerId] = useState(null);   // socketId of the remote presenter, if any
   const [screenShareNotice, setScreenShareNotice] = useState('');
-  const [noiseSuppressed, setNoiseSuppressed] = useState(false);
+  const [noiseSuppressed, setNoiseSuppressed] = useState(true);
   const [roomLocked, setRoomLockedState] = useState(false);
   const [spotlightId, setSpotlightId] = useState('local');
   const [connectionError, setConnectionError] = useState('');
@@ -128,9 +131,10 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const screenAudioMixRef = useRef(null);      // { ctx, track } — mic + screen audio mixed while sharing
-  const noiseAudioCtxRef = useRef(null);
-  const noiseInputTrackRef = useRef(null);       // AudioContext used while noise suppression is on
-  const rawMicTrackRef = useRef(null);         // original (unfiltered) mic track, kept to revert to
+  const iceServersRef = useRef(FALLBACK_ICE_SERVERS);
+  const noiseSuppressedRef = useRef(true);
+  const micMonitorRef = useRef(null);            // enabled clone of the muted mic, for the "you're talking while muted" meter
+  const [micMonitorStream, setMicMonitorStream] = useState(null);      // browser noise suppression requested for every mic capture
 
   // ── Per-peer remote stream registry ────────────────────────────────────────
   // Keeps one stable MediaStream per remote peer so VideoTile's srcObject
@@ -149,7 +153,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     }
     pendingCandidatesRef.current[socketId] = [];
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
     const local = localStreamRef.current;
     const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
@@ -256,21 +260,28 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     let cancelled = false;
 
     const generation = ++mediaGenerationRef.current;
-    setPeers({});setIsScreenSharing(false);setScreenStream(null);setScreenSharerId(null);setNoiseSuppressed(false);
+    setPeers({});setIsScreenSharing(false);setScreenStream(null);setScreenSharerId(null);
     const init = async () => {
       let stream = initialMediaRef.current?.stream;
       if (!stream || stream.getTracks().some(t => t.readyState === 'ended')) {
-        const result = await acquireMeetingMedia({ devices: selectedDevicesRef.current, audio: initialMediaRef.current?.audioEnabled !== false, video: initialMediaRef.current?.videoEnabled !== false });
+        const result = await acquireMeetingMedia({ devices: selectedDevicesRef.current, audio: initialMediaRef.current?.audioEnabled !== false, video: initialMediaRef.current?.videoEnabled !== false, noiseSuppression: noiseSuppressedRef.current });
         stream = result.stream;
         if (!cancelled) setMediaError(result.error);
       }
       if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+      // A lobby stream may carry the browser default; show what the microphone actually does.
+      const suppressing = stream.getAudioTracks()[0]?.getSettings?.().noiseSuppression;
+      if (typeof suppressing === 'boolean') { noiseSuppressedRef.current = suppressing; setNoiseSuppressed(suppressing); }
       localStreamRef.current = stream;
       setLocalStream(new MediaStream(stream.getTracks()));
       const muted = !stream.getAudioTracks().some(t => t.enabled);
       setMicMuted(muted); micMutedRef.current = muted;
       setCameraOff(!stream.getVideoTracks().some(t => t.enabled));
       try { const available = await listMeetingDevices(); if (!cancelled) setDevices(available); } catch { /* Optional device list. */ }
+      try {
+        const { data } = await apiClient.get('/api/rooms/ice-servers');
+        if (Array.isArray(data?.iceServers) && data.iceServers.length) iceServersRef.current = data.iceServers;
+      } catch { /* Keep the fallback servers. */ }
       if (cancelled || generation !== mediaGenerationRef.current) return;
 
       const socketUrl =
@@ -301,10 +312,16 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         setAmHost(!!serverSaysHost);
       });
 
+      // Lets this tab rejoin without host approval after a server restart (kept per tab, like the host flag).
+      socket.on('admission-ticket', ({ ticket }) => {
+        try { sessionStorage.setItem(`etherx_ticket:${normalizedCode}`, ticket); } catch { /* storage unavailable */ }
+      });
+      const admissionTicket = () => { try { return sessionStorage.getItem(`etherx_ticket:${normalizedCode}`) || undefined; } catch { return undefined; } };
+
       socket.on('admitted', () => {
         admittedRef.current = true;
         setAdmitted(true);
-        socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled) });
+        socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled), ticket: admissionTicket() });
         socket.emit('get-notes', { roomCode: normalizedCode });
         socket.emit('get-media', { roomCode: normalizedCode });
         socket.emit('get-files', { roomCode: normalizedCode });
@@ -460,6 +477,21 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         setLockedOut(true);
       });
 
+      // Shared files. The server echoes 'file-shared' to the sharer too, so everyone gets the popup
+      // (auto-removed after 8s; the X button in the UI can dismiss it early).
+      socket.on('file-shared', (entry) => {
+        setSharedFiles(prev => prev.some(f => f.id === entry.id) ? prev : [...prev, entry]);
+        setFileNotifications(prev => [...prev, entry]);
+        setTimeout(() => setFileNotifications(prev => prev.filter(f => f.id !== entry.id)), 8000);
+      });
+      socket.on('files-state', ({ files }) => setSharedFiles(files || []));
+
+      // The meeting already holds the maximum number of people a peer-to-peer call supports.
+      socket.on('room-full', ({ max }) => {
+        setAdmitted(false); setRoomFull(true);
+        setConnectionError(`This meeting is full (${max} people max). Try again when someone leaves.`);
+      });
+
       // Co-host designation changed (host set or cleared it) — everyone is told.
       socket.on('co-host-changed', ({ socketId, userId: coUserId, userName: coName }) => {
         setCoHost(socketId ? { socketId, userId: coUserId, userName: coName } : null);
@@ -576,19 +608,30 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
  */
       const joinOrRequestJoin = () => {
         if (isHost || admittedRef.current) {
-          socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled) });
+          socket.emit('join-room', { roomCode: normalizedCode, userName: userNameRef.current, muted: micMutedRef.current, videoOff: !localStreamRef.current?.getVideoTracks().some(t => t.enabled), ticket: admissionTicket() });
           socket.emit('get-notes', { roomCode: normalizedCode });
           socket.emit('get-media', { roomCode: normalizedCode });
           socket.emit('get-files', { roomCode: normalizedCode });
           socket.emit('get-agenda', { roomCode: normalizedCode });
           socket.emit('get-polls', { roomCode: normalizedCode });
         } else {
-          socket.emit('request-join', { roomCode: normalizedCode, userName: userNameRef.current });
+          socket.emit('request-join', { roomCode: normalizedCode, userName: userNameRef.current, ticket: admissionTicket() });
         }
       };
       // 'connect' fires for the initial connection too, so this alone covers both cases —
       // no separate one-off call is needed (that would double-fire on the first connect).
-      socket.on('connect', () => { setSocketReady(true); setAgendaReady(false); setConnectionError(''); joinOrRequestJoin(); });
+      // After a reconnect every socket id may be new (always so after a server restart, which cannot send
+      // 'user-left' for sockets it never knew). Drop old peer connections; 'existing-users' rebuilds them.
+      let connectedBefore = false;
+      socket.on('connect', () => {
+        if (connectedBefore) {
+          Object.values(pcsRef.current).forEach(pc => pc.close());
+          pcsRef.current = {}; remoteStreamsRef.current = {}; pendingCandidatesRef.current = {};
+          setPeers({}); setSpotlightId('local'); setScreenSharerId(null);
+        }
+        connectedBefore = true;
+        setSocketReady(true); setAgendaReady(false); setConnectionError(''); joinOrRequestJoin();
+      });
       socket.on('connect_error', error => { setSocketReady(false); setConnectionError(error.message || 'Could not connect. Please check your connection and sign-in.'); });
       socket.on('disconnect', () => { setSocketReady(false); });
       socket.on('room-error', ({ message }) => setConnectionError(message));
@@ -606,10 +649,6 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
       outgoingVideoRef.current = null;
-      rawMicTrackRef.current?.stop();
-      noiseAudioCtxRef.current?.close().catch(() => {});
-      noiseAudioCtxRef.current = null;
-      noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;rawMicTrackRef.current=null;
       screenStreamRef.current?.getTracks().forEach(t => t.stop());screenStreamRef.current=null;
       screenAudioMixRef.current?.ctx.close().catch(() => { });screenAudioMixRef.current=null;
       socketRef.current?.disconnect();
@@ -659,15 +698,13 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   const switchDevice = useCallback(async (kind, deviceId) => {
     const generation = mediaGenerationRef.current;
-    const capture = await navigator.mediaDevices.getUserMedia({ [kind]: deviceConstraint(deviceId) });
+    const capture = await navigator.mediaDevices.getUserMedia({ [kind]: kind === 'audio' ? audioConstraint(deviceId, noiseSuppressedRef.current) : deviceConstraint(deviceId) });
     if (generation !== mediaGenerationRef.current || !localStreamRef.current) { capture.getTracks().forEach(t => t.stop()); return; }
     const next = capture.getTracks()[0];
     const current = localStreamRef.current;
     const old = current.getTracks().filter(t => t.kind === kind);
     next.enabled = kind === 'audio' ? !micMutedRef.current && !hostMutedRef.current : old.some(t => t.enabled);
     if (kind === 'audio') {
-      noiseAudioCtxRef.current?.close().catch(() => {}); noiseAudioCtxRef.current = null;
-      rawMicTrackRef.current?.stop(); rawMicTrackRef.current = null;noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;setNoiseSuppressed(false);
       const mix = screenAudioMixRef.current;
       if (mix) {
         mix.micSource?.disconnect();
@@ -698,7 +735,6 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         await switchDevice('audio', selectedDevicesRef.current.audio || 'default');
       }
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
-      rawMicTrackRef.current && (rawMicTrackRef.current.enabled = !nextMuted);
       micMutedRef.current = nextMuted; setMicMuted(nextMuted);
       socketRef.current?.emit('microphone-state', { roomCode, muted: nextMuted });
     } catch { setMediaError('Could not enable microphone. Check browser permissions and retry.'); }
@@ -728,62 +764,38 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     }
   }, [cameraOff, roomCode, setOutgoingVideoTrack]);
 
+  // While muted, keep an enabled private clone of the mic so the room can warn "you're talking while muted".
+  useEffect(() => {
+    const track = localStream?.getAudioTracks()[0];
+    if (!track || track.readyState !== 'live' || !micMuted || hostMuted) return undefined;
+    const clone = track.clone(); clone.enabled = true;
+    micMonitorRef.current = clone;
+    setMicMonitorStream(new MediaStream([clone]));
+    return () => { clone.stop(); if (micMonitorRef.current === clone) micMonitorRef.current = null; setMicMonitorStream(null); };
+  }, [localStream, micMuted, hostMuted]);
+
   /**
-   * Basic noise suppression: routes the mic track through a Web Audio
-   * highpass + lowpass filter pair (cuts low-frequency rumble and
-   * high-frequency hiss outside the human-voice band, ~200Hz-3.5kHz) and
-   * sends the filtered track instead. This is a simple band-pass filter,
-   * not full ML-based noise cancellation (e.g. RNNoise) — it reduces
-   * steady background hum/hiss but won't remove other voices or
-   * non-stationary noise.
+   * Noise suppression uses the browser's own WebRTC audio processing. Browsers do not reliably change it on a
+   * live track, so the microphone is captured again with the new setting through the normal device-switch path
+   * (keeps mute state, peer senders and any screen-audio mix).
    */
-  const toggleNoiseSuppression = useCallback(() => {
-    const stream = localStreamRef.current;
-    const current = stream?.getAudioTracks()[0];
-    if (!current) return;
-    let replacement;
-    if (!noiseAudioCtxRef.current) {
-      try {
-        const context = new (window.AudioContext || window.webkitAudioContext)();
-        // Analyse a local clone without enabling the muted outgoing microphone.
-        const input = current.clone(); input.enabled = true;
-        noiseInputTrackRef.current = input;
-        const source = context.createMediaStreamSource(new MediaStream([input]));
-        const highpass = context.createBiquadFilter(), lowpass = context.createBiquadFilter();
-        highpass.type = 'highpass'; highpass.frequency.value = 200;
-        lowpass.type = 'lowpass'; lowpass.frequency.value = 3500;
-        const destination = context.createMediaStreamDestination();
-        source.connect(highpass).connect(lowpass).connect(destination);
-        context.resume().catch(() => {});
-        replacement = destination.stream.getAudioTracks()[0];
-        rawMicTrackRef.current = current; noiseAudioCtxRef.current = context;
-        setNoiseSuppressed(true);
-      } catch {
-        noiseInputTrackRef.current?.stop();noiseInputTrackRef.current=null;
-        setMediaError('Noise suppression is unavailable in this browser.');
-        return;
-      }
-    } else {
-      replacement = rawMicTrackRef.current;
-      if (!replacement) return;
-      noiseAudioCtxRef.current.close().catch(() => {});
-      noiseInputTrackRef.current?.stop(); noiseInputTrackRef.current = null;
-      noiseAudioCtxRef.current = null; rawMicTrackRef.current = null;
-      setNoiseSuppressed(false);
+  const toggleNoiseSuppression = useCallback(async () => {
+    const next = !noiseSuppressedRef.current;
+    noiseSuppressedRef.current = next;
+    setNoiseSuppressed(next);
+    if (!localStreamRef.current?.getAudioTracks().some(t => t.readyState === 'live')) return;
+    try {
+      // Chrome shares one audio source per device and ignores applyConstraints for processing: a new capture
+      // keeps the old setting while any track on the microphone is still open, so release them all first.
+      micMonitorRef.current?.stop(); micMonitorRef.current = null;
+      localStreamRef.current.getAudioTracks().forEach(t => t.stop());
+      await switchDevice('audio', selectedDevicesRef.current.audio || 'default');
+    } catch {
+      noiseSuppressedRef.current = !next;
+      setNoiseSuppressed(!next);
+      setMediaError('Could not change noise suppression. Check microphone permissions and retry.');
     }
-    replacement.enabled = !micMutedRef.current && !hostMutedRef.current;
-    stream.removeTrack(current); stream.addTrack(replacement);
-    const mix = screenAudioMixRef.current;
-    if (mix) {
-      mix.micSource?.disconnect();
-      mix.micSource = mix.ctx.createMediaStreamSource(new MediaStream([replacement]));
-      mix.micSource.connect(mix.destination);
-    }
-    Object.values(pcsRef.current).forEach(pc => {
-      pc.getSenders().find(sender => sender.track?.kind === 'audio')?.replaceTrack(mix?.track || replacement).catch(() => {});
-    });
-    setLocalStream(new MediaStream(stream.getTracks()));
-  }, []);
+  }, [switchDevice]);
 
   // ── Screen sharing ─────────────────────────────────────────────────────────
 
@@ -1004,37 +1016,6 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 
-  // Listen for file-shared and files-state events (wired on socket connect)
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return;
-
-    const onFileShared = (entry) => {
-      setSharedFiles(prev => {
-        if (prev.some(f => f.id === entry.id)) return prev;
-        return [...prev, entry];
-      });
-      // Pop up a dismissible notification for everyone (including the
-      // sharer, since the server echoes 'file-shared' back to them too).
-      // Auto-removed after 8s; the X button in the UI can dismiss it early.
-      setFileNotifications(prev => [...prev, entry]);
-      setTimeout(() => {
-        setFileNotifications(prev => prev.filter(f => f.id !== entry.id));
-      }, 8000);
-    };
-    const onFilesState = ({ files }) => {
-      setSharedFiles(files || []);
-    };
-
-    socket.on('file-shared', onFileShared);
-    socket.on('files-state', onFilesState);
-
-    return () => {
-      socket.off('file-shared', onFileShared);
-      socket.off('files-state', onFilesState);
-    };
-  }, [socketRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const shareFile = useCallback((file) => {
     const socket = socketRef.current;
     if (!socket || !roomCode) return;
@@ -1084,10 +1065,10 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     micMuted, hostMuted, cameraOff, isScreenSharing, screenSharerId, screenShareNotice,
     spotlightId, setSpotlightId,
     toggleMic, toggleCamera, toggleScreenShare,
-    toggleNoiseSuppression, noiseSuppressed,
+    toggleNoiseSuppression, noiseSuppressed, micMonitorStream,
     userName, connectionError, mediaError, devices, selectedDevices, switchDevice, setOutgoingVideoTrack,
     // Waiting Room / Admission
-    admitted, denied, joinRequests, admitUser, denyUser, lockedOut,
+    admitted, denied, joinRequests, admitUser, denyUser, lockedOut, roomFull,
     // Feature 1: Host Controls
     muteParticipant, unmuteParticipant, kickParticipant, setRoomLocked, roomLocked,
     // Co-host
