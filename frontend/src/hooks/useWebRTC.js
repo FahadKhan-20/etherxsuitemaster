@@ -355,6 +355,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
             [u.socketId]: {
               userName: u.userName,
               userId: u.userId,
+              avatar: u.avatar || null,
               stream: null,
               isMuted: !!u.selfMuted,
               mutedByHost: !!u.hostMuted,
@@ -368,8 +369,8 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         }
       });
 
-      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, isHost: peerIsHost, isMuted, mutedByHost, videoOff }) => {
-        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, stream: null, isHost: !!peerIsHost, isMuted: !!isMuted, mutedByHost: !!mutedByHost, videoOff: !!videoOff } }));
+      socket.on('user-joined', ({ socketId, userName: uName, userId: uId, avatar, isHost: peerIsHost, isMuted, mutedByHost, videoOff }) => {
+        setPeers(prev => ({ ...prev, [socketId]: { userName: uName, userId: uId, avatar: avatar || null, stream: null, isHost: !!peerIsHost, isMuted: !!isMuted, mutedByHost: !!mutedByHost, videoOff: !!videoOff } }));
       });
 
       socket.on('offer', async ({ from, offer }) => {

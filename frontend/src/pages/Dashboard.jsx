@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import AnimatedPage from '../components/layout/AnimatedPage';
 import {
-  CalendarClock, CalendarDays, Link2, Plus, TimerReset, Trash2, Check, X,
+  ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, Check,
+  Clock3, Repeat2, Trash2, Video, X,
 } from 'lucide-react';
+import AnimatedPage from '../components/layout/AnimatedPage';
 import TopBar from '../components/layout/TopBar';
 import Scheduler from '../components/features/Scheduler';
 import { useSchedules } from '../hooks/useSchedules';
@@ -12,270 +12,135 @@ import { nextStart } from '../components/layout/MeetingReminders';
 import { useUser } from '../context/UserContext';
 import '../styles/dashboard.css';
 
-const GOLD = '#d4af37';
-const GOLD_DIM = 'rgba(212,175,55,0.15)';
-const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const CARD_BG = 'rgba(10,10,12,0.38)';
-const CARD_BORDER = 'rgba(255,255,255,0.06)';
-const GRADIENT_CTA = 'linear-gradient(90deg, #d4af37 0%, #b8860b 100%)';
-
-const card = {
-  background: CARD_BG,
-  border: `1px solid ${CARD_BORDER}`,
-  borderRadius: 28,
-  backdropFilter: 'blur(32px)',
-  WebkitBackdropFilter: 'blur(32px)',
-  padding: '24px 20px',
-  boxShadow: '0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
-};
-
-const overline = {
-  fontSize: 10,
-  letterSpacing: '0.35em',
-  textTransform: 'uppercase',
-  color: `rgba(212,175,55,0.9)`,
-  fontWeight: 700,
-  marginBottom: 4,
-};
-
-const sectionTitle = {
-  fontSize: 20,
-  fontWeight: 500,
-  color: '#E8D5A3',
-  letterSpacing: '-0.02em',
-  marginTop: 2,
-};
-
-const lift = {
-  whileHover: { scale: 1.02, y: -3, transition: { type: 'spring', stiffness: 420, damping: 26 } },
-  whileTap: { scale: 0.98 },
-};
-
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const { user } = useUser();
-  const { meetings: scheduledMeetings, create: createSchedule, remove: cancelScheduledMeeting, error: scheduleError } = useSchedules();
+  const { meetings, create, remove, error, loading } = useSchedules();
   const [showScheduler, setShowScheduler] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const timezone = user.timezone || 'Asia/Kolkata';
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
+  const upcoming = useMemo(() => meetings
+    .map((meeting) => ({
+      ...meeting,
+      next: nextStart({ startAt: meeting.date, duration: meeting.duration, recurring: meeting.recurring }, now),
+    }))
+    .filter((meeting) => meeting.next !== null)
+    .sort((a, b) => a.next - b.next), [meetings, now]);
+  const visibleMeetings = showAll ? upcoming : upcoming.slice(0, 4);
+  const plannedHours = (meetings.reduce((sum, meeting) => sum + (meeting.duration || 0), 0) / 60).toFixed(1);
+  const formatDate = (date, options) => new Intl.DateTimeFormat(undefined, { timeZone: timezone, ...options }).format(date);
 
-  const upcoming = useMemo(
-    // Upcoming occurrences: repeating meetings show their next date, finished one-off meetings drop out.
-    () => scheduledMeetings
-      .map((m) => ({ ...m, next: nextStart({ startAt: m.date, duration: m.duration, recurring: m.recurring }) }))
-      .filter((m) => m.next !== null)
-      .map((m) => ({ ...m, date: new Date(m.next).toISOString() }))
-      .sort((a, b) => a.next - b.next).slice(0, 4),
-    [scheduledMeetings],
-  );
+  const openRoom = (roomCode) => {
+    sessionStorage.setItem('etherx_host_room', roomCode);
+    sessionStorage.setItem('etherx_meet_start', String(Date.now()));
+    navigate(`/room/${roomCode}`);
+  };
 
-  const stats = useMemo(() => {
-    const totalMinutes = scheduledMeetings.reduce((sum, m) => sum + (m.duration || 0), 0);
-    const uniqueParticipants = new Set(
-      scheduledMeetings.flatMap((m) => m.participants || [])
-    ).size;
-    return [
-      { label: 'Meetings Scheduled', value: `${scheduledMeetings.length}`, Icon: CalendarDays },
-      { label: 'Hours Planned', value: `${(totalMinutes / 60).toFixed(1)}h`, Icon: TimerReset },
-    ];
-  }, [scheduledMeetings]);
+  const deleteMeeting = async (id) => {
+    setDeletingId(id);
+    await remove(id);
+    setDeletingId(null);
+    setConfirmDeleteId(null);
+  };
 
   return (
     <AnimatedPage>
-      <div style={{ minHeight: '100dvh', color: '#f0f0f0', position: 'relative', background: '#000000' }}>
+      <div className="dashboard-page">
+        <a className="dashboard-skip-link" href="#dashboard-content">Skip to content</a>
         <TopBar />
-
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px 60px' }}>
-
-          {/* ── HERO ── */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            style={{
-              ...card,
-              borderColor: GOLD_BORDER,
-              boxShadow: `0 0 0 1px ${GOLD_BORDER}, 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(212,181,113,0.15)`,
-              marginBottom: 20,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            {/* gold shimmer line */}
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(212,181,113,0.6), transparent)',
-            }} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-end', justifyContent: 'space-between' }}>
-              <div>
-                <p style={overline}>Personal Mission Control</p>
-                <h1 style={{ fontSize: 'clamp(24px,4vw,48px)', fontWeight: 500, color: '#E8D5A3', letterSpacing: '-0.03em', margin: '8px 0 10px' }}>
-                  {user.name.split(' ')[0]}'s Collaboration Cockpit
-                </h1>
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', lineHeight: 1.65, maxWidth: 520 }}>
-                  Run live rooms, async follow-ups, scheduled sessions, and recordings from one premium workspace.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: '100%', maxWidth: 'max-content' }}>
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem('etherx_host_room', user.roomSlug);
-                    sessionStorage.setItem('etherx_meet_start', String(Date.now()));
-                    navigate(`/room/${user.roomSlug}`);
-                  }}
-                  style={{ background: GRADIENT_CTA, border: 'none', color: '#111', fontWeight: 700, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140, whiteSpace: 'nowrap' }}
-                >
-                  <Plus size={15} /> Open My Room
-                </button>
-                <button
-                  onClick={() => setShowScheduler(true)}
-                  style={{ background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, color: GOLD, fontWeight: 600, fontSize: 14, padding: '11px 22px', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, flex: 1, justifyContent: 'center', minWidth: 140, whiteSpace: 'nowrap' }}
-                >
-                  <CalendarClock size={15} /> Schedule
-                </button>
-              </div>
+        <main className="dashboard-content" id="dashboard-content">
+          <div className="dashboard-heading">
+            <h1>Dashboard</h1>
+            <div className="dashboard-actions">
+              <button className="dashboard-button dashboard-button-secondary" onClick={() => setShowScheduler(true)}>
+                <CalendarClock size={18} aria-hidden="true" /> Schedule
+              </button>
+              <button className="dashboard-button dashboard-button-primary" onClick={() => openRoom(user.roomSlug)}>
+                <Video size={18} aria-hidden="true" /> Open my room
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </button>
             </div>
-          </motion.div>
-
-          {/* ── STATS GRID ── */}
-          <div className="dashboard-stats-grid">
-            {stats.map(({ label, value, Icon }, i) => (
-              <motion.div
-                key={label}
-                {...lift}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 + 0.15 }}
-                style={{
-                  ...card,
-                  borderColor: GOLD_BORDER,
-                  padding: '14px 18px',
-                  cursor: 'default',
-                  display: 'flex', alignItems: 'center', gap: 14,
-                }}
-              >
-                <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 10, background: GOLD_DIM, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon size={18} color={GOLD} />
-                </div>
-                <div>
-                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>{label}</p>
-                  <p style={{ fontSize: 24, fontWeight: 600, color: '#E8D5A3', letterSpacing: '-0.03em', marginTop: 2 }}>{value}</p>
-                </div>
-              </motion.div>
-            ))}
           </div>
 
-          {/* ── MAIN 2-COL ── */}
-          <div className="dashboard-main-grid">
+          {!loading && !error && meetings.length > 0 && (
+            <section className="dashboard-stats" aria-label="Schedule summary">
+              <div className="dashboard-stat">
+                <CalendarDays size={20} aria-hidden="true" />
+                <div><span>Meetings scheduled</span><strong>{meetings.length}</strong></div>
+              </div>
+              <div className="dashboard-stat">
+                <Clock3 size={20} aria-hidden="true" />
+                <div><span>Hours planned</span><strong>{plannedHours}h</strong></div>
+              </div>
+            </section>
+          )}
 
-            {/* LEFT */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-              {/* Upcoming Sessions */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                style={card}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-                  <div>
-                    <p style={overline}>Timeline</p>
-                    <p style={sectionTitle}>Upcoming Sessions</p>
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: GOLD, background: GOLD_DIM, border: `1px solid ${GOLD_BORDER}`, padding: '5px 13px', borderRadius: 99 }}>
-                    {upcoming.length} scheduled
-                  </span>
-                </div>
-                {scheduleError && <p role="alert" style={{ fontSize: 12, color: '#f87171', marginBottom: 10 }}>{scheduleError}</p>}
-                {upcoming.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', padding: '20px 0' }}>
-                    No sessions scheduled yet. Use the Schedule button to add one.
-                  </p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {upcoming.map((meeting) => (
-                      <motion.div
-                        key={meeting.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 18, padding: '14px 18px', textAlign: 'left', width: '100%' }}
-                      >
-                        <div style={{ minWidth: 52, textAlign: 'center', background: 'rgba(0,0,0,0.4)', border: `1px solid ${GOLD_BORDER}`, borderRadius: 12, padding: '8px 10px' }}>
-                          <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: GOLD, fontWeight: 700 }}>
-                            {new Date(meeting.date).toLocaleDateString([], { month: 'short' })}
-                          </p>
-                          <p style={{ fontSize: 22, fontWeight: 600, color: '#E8D5A3', lineHeight: 1.1 }}>
-                            {new Date(meeting.date).getDate()}
-                          </p>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 15, fontWeight: 500, color: '#E8D5A3', marginBottom: 3 }}>{meeting.title}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                            {new Date(meeting.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {meeting.duration} min{meeting.recurring !== 'none' ? ` · repeats ${meeting.recurring}` : ''} · {meeting.participants.length} people
-                          </p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, position: 'relative', zIndex: 5 }}>
-                          {confirmDeleteId === meeting.id ? (
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                type="button"
-                                title="Confirm delete"
-                                aria-label={`Confirm delete ${meeting.title}`}
-                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); cancelScheduledMeeting(meeting.id); }}
-                                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                              >
-                                <Check size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                title="Cancel"
-                                aria-label="Cancel delete"
-                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
-                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                              >
-                                <X size={15} />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              title="Delete scheduled meeting"
-                              aria-label={`Delete ${meeting.title}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setConfirmDeleteId(meeting.id);
-                                setTimeout(() => setConfirmDeleteId((cur) => (cur === meeting.id ? null : cur)), 4000);
-                              }}
-                              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              // The scheduler owns the meeting's registered room, so they join as its host.
-                              sessionStorage.setItem('etherx_host_room', meeting.roomCode);
-                              sessionStorage.setItem('etherx_meet_start', String(Date.now()));
-                              navigate(`/room/${meeting.roomCode}`);
-                            }}
-                            style={{ background: 'none', border: 'none', padding: '6px 4px', fontSize: 13, color: GOLD, fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Join →
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-
-
+          <section className="dashboard-panel" aria-labelledby="dashboard-sessions-title" aria-busy={loading}>
+            <div className="dashboard-panel-heading">
+              <h2 id="dashboard-sessions-title">Upcoming meetings</h2>
+              {!loading && !error && upcoming.length > 0 && <span className="dashboard-count">{upcoming.length}</span>}
             </div>
-
-
-          </div>
-        </div>
-
-        <Scheduler isOpen={showScheduler} onClose={() => setShowScheduler(false)} onSchedule={createSchedule} />
+            {error ? (
+              <p role="alert" className="dashboard-error">{error}</p>
+            ) : loading ? (
+              <p className="dashboard-empty" role="status">Loading your meetings…</p>
+            ) : upcoming.length === 0 ? (
+              <p className="dashboard-empty">No upcoming meetings.</p>
+            ) : (
+              <ul className="dashboard-meeting-list">
+                {visibleMeetings.map((meeting) => (
+                  <li key={meeting.id} className="dashboard-meeting-row">
+                    <div className="dashboard-date-tile" aria-hidden="true">
+                      <span>{formatDate(meeting.next, { month: 'short' })}</span>
+                      <strong>{formatDate(meeting.next, { day: 'numeric' })}</strong>
+                    </div>
+                    <div className="dashboard-meeting-info">
+                      <h3>{meeting.title}</h3>
+                      <p>
+                        <time dateTime={new Date(meeting.next).toISOString()}>{formatDate(meeting.next, { hour: 'numeric', minute: '2-digit' })}</time>
+                        <span>·</span>{meeting.duration} min<span>·</span>{meeting.participants.length} invited
+                      </p>
+                      {meeting.recurring && meeting.recurring !== 'none' && (
+                        <span className="dashboard-repeat"><Repeat2 size={13} aria-hidden="true" />Repeats {meeting.recurring}</span>
+                      )}
+                    </div>
+                    <div className="dashboard-meeting-actions">
+                      {confirmDeleteId === meeting.id ? (
+                        <>
+                          <span className="dashboard-delete-label">Delete?</span>
+                          <button className="dashboard-icon-button dashboard-delete" disabled={deletingId === meeting.id} aria-label={`Confirm delete ${meeting.title}`} onClick={() => deleteMeeting(meeting.id)}><Check size={17} /></button>
+                          <button className="dashboard-icon-button" disabled={deletingId === meeting.id} aria-label="Cancel delete" onClick={() => setConfirmDeleteId(null)}><X size={17} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="dashboard-icon-button dashboard-delete" aria-label={`Delete ${meeting.title}`} onClick={() => setConfirmDeleteId(meeting.id)}><Trash2 size={17} /></button>
+                          <button className="dashboard-join-button" onClick={() => openRoom(meeting.roomCode)} aria-label={`Join ${meeting.title}`}>Join<ArrowUpRight size={16} aria-hidden="true" /></button>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!error && upcoming.length > 4 && (
+              <button className="dashboard-show-all" onClick={() => setShowAll(!showAll)}>
+                {showAll ? 'Show fewer meetings' : `View all ${upcoming.length} meetings`}
+                <ArrowDown size={15} className={showAll ? 'is-expanded' : ''} aria-hidden="true" />
+              </button>
+            )}
+            {!error && upcoming.length > 0 && <p className="dashboard-timezone">Times shown in {timezone.replaceAll('_', ' ')}</p>}
+          </section>
+        </main>
+        <Scheduler isOpen={showScheduler} onClose={() => setShowScheduler(false)} onSchedule={create} />
       </div>
     </AnimatedPage>
   );

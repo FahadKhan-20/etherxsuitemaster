@@ -11,6 +11,7 @@ import { ROUTES } from '../utils/constants';
 import apiClient from '../utils/apiClient';
 import { clearAuthSession, getAuthToken } from '../utils/auth';
 import MeetingSettings from '../components/room/MeetingSettings';
+import ProfileAvatar from '../components/ui/ProfileAvatar';
 import { useMeetingPreferences } from '../hooks/useMeetingPreferences';
 import { copyMeetingText } from '../utils/meetingClipboard';
 import '../styles/meeting.css';
@@ -171,7 +172,7 @@ export default function Room() {
               <VideoCanvasProcessor stream={stream} activeFilter={activeFilter} selectedBgImage={selectedBgImage} mirror={mirror} style={{ objectFit: 'contain' }} />
             ) : (
               <div className="prejoin-camera-off">
-                <div className="prejoin-avatar">{initial}</div>
+                <ProfileAvatar className="prejoin-avatar" src={user?.avatar} name={displayName} initials={initial}/>
                 <h2>Your camera is off</h2>
                 <p>You can turn it on whenever you’re ready.</p>
               </div>

@@ -78,7 +78,7 @@ const roomCoHosts = new Map();
 // While this is non-empty, everyone's browser transcribes its own mic (unless muted) for the captions.
 const roomCaptionViewers = new Map();
 // Room capacity includes the host. Media still uses full mesh, so load grows with room size.
-const MAX_PARTICIPANTS = 20;
+const MAX_PARTICIPANTS = 50;
 const CAPTION_MAX_CHARS = 300;        // longest caption line relayed
 const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) caption updates
 
@@ -185,6 +185,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     return room?.hostUserId ? String(room.hostUserId) : null;
   },
   resolveRecordingAllowed = require('./recordingPolicy').hostAllowsRecording,
+  resolveUserAvatar = async id => {
+    const user = await require('./models/User').findById(id).select('avatar').lean();
+    return user?.avatar || null;
+  },
 } = {}) {
   const io = new SocketServer(httpServer, {
     maxHttpBufferSize: MAX_SOCKET_MESSAGE_BYTES,
@@ -205,7 +209,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       if (!code || code.length > 128) throw new Error('Invalid meeting code.');
       const owner = await resolveRoomOwner(code);
       if (!owner) throw new Error('Meeting not found. Ask the host to start it, then try again.');
-      socket.data.user = { id: String(user.id), name: user.name || 'Participant' };
+      socket.data.user = { id: String(user.id), name: user.name || 'Participant', avatar: await resolveUserAvatar(String(user.id)) };
       socket.data.authorizedRoom = code;
       socket.data.roomOwnerId = String(owner);
       next();
@@ -327,6 +331,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         socketId: socket.id,
         userId,
         userName,
+        avatar: socket.data.user.avatar,
         isHost: String(roomHosts.get(roomCode)) === String(userId),
         selfMuted: !!muted,
         hostMuted: false,
@@ -360,6 +365,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         socketId: socket.id,
         userId,
         userName,
+        avatar: socket.data.user.avatar,
         isHost: String(roomHosts.get(roomCode)) === String(userId),
         isMuted: !!muted,
         mutedByHost: false,

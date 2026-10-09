@@ -7,12 +7,14 @@ const fromServer = (m) => ({ id: m._id, title: m.title, date: m.startAt, duratio
 export function useSchedules() {
   const [meetings, setMeetings] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     apiClient.get('/api/schedules')
       .then((res) => { if (!cancelled) setMeetings((res.data?.data?.meetings || []).map(fromServer)); })
-      .catch((err) => { if (!cancelled) setError(getApiErrorMessage(err, 'Could not load scheduled meetings.')); });
+      .catch((err) => { if (!cancelled) setError(getApiErrorMessage(err, 'Could not load scheduled meetings.')); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -33,5 +35,5 @@ export function useSchedules() {
     }
   }, []);
 
-  return { meetings, create, remove, error };
+  return { meetings, create, remove, error, loading };
 }

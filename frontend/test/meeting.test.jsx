@@ -9,6 +9,7 @@ import { DEFAULT_MEETING_PREFERENCES, useMeetingPreferences } from '../src/hooks
 import MeetingSettings from '../src/components/room/MeetingSettings';
 import CaptionsOverlay from '../src/components/room/CaptionsOverlay';
 import ReferenceVideoRoom from '../src/components/room/ReferenceVideoRoom';
+import ProfileAvatar from '../src/components/ui/ProfileAvatar';
 import apiClient from '../src/utils/apiClient';
 import { useStreamLevel } from '../src/hooks/useStreamLevel';
 import { copyMeetingText } from '../src/utils/meetingClipboard';
@@ -314,12 +315,44 @@ describe('complete reference template integration',()=>{
     act(()=>sockets[0].trigger('participant-mute-command',{muted:true,mutedByHost:true}));
     expect(document.querySelector('[title="Microphone muted by host"]').disabled).toBe(true);
   });
+  it('shows Google account photos in camera-off tiles, the header and participant list',async()=>{
+    const localPhoto='https://lh3.googleusercontent.com/local-photo',peerPhoto='https://lh3.googleusercontent.com/peer-photo';
+    localStorage.setItem('nexmeet_user',JSON.stringify({id:'user-1',name:'Audit User',avatar:localPhoto}));
+    await room();await act(async()=>document.querySelector('[title="Turn camera off (V)"]').click());
+    await act(async()=>sockets[0].trigger('existing-users',[{socketId:'peer',userName:'Peer User',avatar:peerPhoto,videoOff:true}]));
+    act(()=>sockets[0].trigger('user-joined',{socketId:'newcomer',userName:'New User',avatar:peerPhoto,videoOff:true}));
+    act(()=>sockets[0].trigger('roster-state',{members:[{socketId:'self',userName:'Audit User',isHost:true,avatar:localPhoto},{socketId:'peer',userName:'Peer User',avatar:peerPhoto},{socketId:'newcomer',userName:'New User',avatar:peerPhoto}]}));
+    expect(document.querySelector('[data-tile=me] img').src).toBe(localPhoto);
+    expect(document.querySelector('[data-tile=peer] img').src).toBe(peerPhoto);
+    expect(document.querySelector('[data-tile=newcomer] img').src).toBe(peerPhoto);
+    expect(document.querySelector('header img[alt="Audit User\'s profile photo"]').src).toBe(localPhoto);
+    clickTitle('Participants');
+    expect(document.querySelector('aside img[alt="Peer User\'s profile photo"]').src).toBe(peerPhoto);
+    act(()=>document.querySelector('[data-tile=peer] img').dispatchEvent(new Event('error')));
+    expect(document.querySelector('[data-tile=peer] img')).toBeNull();expect(document.querySelector('[data-tile=peer]').textContent).toContain('PU');
+    await act(async()=>document.querySelector('[title="Turn camera on (V)"]').click());
+    expect(document.querySelector('[data-tile=me] img')).toBeNull();expect(document.querySelector('[data-tile=me] video').srcObject.getVideoTracks()[0].readyState).toBe('live');
+  });
   it('guests can access shared polls and files without a poll composer or host tools',async()=>{
     await room(false);clickTitle('More options');expect(document.body.textContent).toContain('Polls');expect(document.body.textContent).toContain('File sharing');expect(document.body.textContent).not.toContain('Security options');clickText('Polls');expect(document.querySelector('input[placeholder="Ask a question"]')).toBeNull();
   });
   it('policy changes remove guest chat composer and profile rename reaches server',async()=>{
     await room(false);act(()=>sockets[0].trigger('meeting-policy',{waitingRoom:true,allowChat:false,allowShare:false}));clickTitle('Chat (C)');expect(document.querySelector('input[placeholder="Send a message to everyone"]')).toBeNull();
     clickTitle('More options');clickText('Settings');clickText('Profile');typeInput(document.querySelector('[role=dialog] input'),'New name');await act(async()=>new Promise(r=>setTimeout(r,600)));expect(sockets[0].events).toContainEqual({event:'rename-participant',payload:{roomCode:'test-room',name:'New name'}});
+  });
+});
+
+describe('profile photo fallback',()=>{
+  it('uses initials for missing photos and recovers when a failed photo URL changes',()=>{
+    const rendered=mount(<ProfileAvatar name="Test User" initials="TU"/>);
+    expect(rendered.container.textContent).toBe('TU');expect(rendered.container.querySelector('img')).toBeNull();
+    rendered.rerender(<ProfileAvatar name="Test User" initials="TU" src="https://lh3.googleusercontent.com/old-photo"/>);
+    act(()=>rendered.container.querySelector('img').dispatchEvent(new Event('error')));
+    expect(rendered.container.textContent).toBe('TU');expect(rendered.container.querySelector('img')).toBeNull();
+    rendered.rerender(<ProfileAvatar name="Test User" initials="TU" src="https://lh3.googleusercontent.com/new-photo"/>);
+    expect(rendered.container.querySelector('img').src).toBe('https://lh3.googleusercontent.com/new-photo');
+    expect(rendered.container.querySelector('img').style.objectFit).toBe('cover');
+    expect(rendered.container.querySelector('img').getAttribute('referrerpolicy')).toBe('no-referrer');
   });
 });
 
@@ -377,9 +410,9 @@ describe('TURN relay configuration',()=>{
 describe('full meetings',()=>{
   it('shows a full-meeting screen instead of the room when the server rejects the join',async()=>{
     mount(<MemoryRouter><ReferenceVideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    await act(async()=>sockets[0].trigger('room-full',{max:20}));
+    await act(async()=>sockets[0].trigger('room-full',{max:50}));
     expect(document.body.textContent).toContain('Meeting is full');
-    expect(document.body.textContent).toContain('This meeting is full (20 people max)');
+    expect(document.body.textContent).toContain('This meeting is full (50 people max)');
   });
 });
 

@@ -2,6 +2,7 @@
 import { Fragment } from "react";
 import etherxLogo from '../../assets/etherx_logo_header.png';
 import ReferenceTile from "./ReferenceTile";
+import ProfileAvatar from "../ui/ProfileAvatar";
 import "../../styles/reference-room.css";
 export const REFERENCE_ICONS={
   hand: 'M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L6 14', people: 'M9 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6', share: 'M3 4h18v13H3zM8 21h8M12 17v4M9 10l3-3 3 3M12 7v7',
@@ -129,6 +130,7 @@ export const REFERENCE_BINDINGS=[
   "moreSections",
   "mt",
   "mutedHint",
+  "myAvatar",
   "myInitials",
   "myName",
   "name",
@@ -265,7 +267,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.wide) && <><span style={{"whiteSpace": "nowrap"}}>{v.netLabel}</span></>}
 </div>
 <div style={{"display": "flex","alignItems": "center","gap": "8px","height": "36px","padding": "0 12px 0 4px","borderRadius": "999px","background": "#13110e","border": "1px solid #26231c"}}>
-<span style={{"width": "28px","height": "28px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.myInitials}</span>
+<ProfileAvatar style={{"width": "28px","height": "28px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}} src={v.myAvatar} name={v.myName} initials={v.myInitials}/>
 <span style={{"fontSize": "13px","fontWeight": "500","whiteSpace": "nowrap","maxWidth": "140px","overflow": "hidden","textOverflow": "ellipsis"}}>{v.myName}</span>
 </div>
 </div>
@@ -309,7 +311,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <video ref={t.videoRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "cover","filter": t.vfilter,"transform": t.vflip}}></video>
 </>}
 {(t.showAv) && <>
-<div style={{"width": "clamp(48px,22%,120px)","aspectRatio": "1","borderRadius": "50%","background": "#2a2519","display": "flex","alignItems": "center","justifyContent": "center","fontSize": "clamp(18px,2.4vw,40px)","fontWeight": "600","color": "#d9b54a"}}>{t.initials}</div>
+<ProfileAvatar style={{"width": "clamp(48px,22%,120px)","aspectRatio": "1","borderRadius": "50%","background": "#2a2519","display": "flex","alignItems": "center","justifyContent": "center","fontSize": "clamp(18px,2.4vw,40px)","fontWeight": "600","color": "#d9b54a"}} src={t.avatar} name={t.name} initials={t.initials}/>
 </>}
 {(t.invite) && <>
 <div className="room-empty-invite" data-video={t.showVid}>
@@ -417,7 +419,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.menuMore) && <>
 <div role="menu" data-pop={"menu"} style={{"position": "absolute","right": v.moreRight,"bottom": "calc(100% + 10px)","width": "min(480px, calc(100vw - 32px))","maxHeight": "calc(100vh - 150px)","overflow": "auto","padding": "16px","borderRadius": "18px","background": "#0f0e0b","border": "1px solid #2e2a21","boxShadow": "0 24px 60px rgba(0,0,0,0.6)","display": "flex","flexDirection": "column","gap": "16px","zIndex": "10"}}>
 <div style={{"display": "flex","alignItems": "center","gap": "10px"}}>
-<span style={{"width": "32px","height": "32px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.myInitials}</span>
+<ProfileAvatar style={{"width": "32px","height": "32px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}} src={v.myAvatar} name={v.myName} initials={v.myInitials}/>
 <span style={{"flex": "1","display": "flex","flexDirection": "column","gap": "1px"}}><span style={{"fontSize": "14px","fontWeight": "600"}}>{v.myName}</span><span style={{"fontSize": "12px","color": "#8a8373"}}>{v.roleLabel}</span></span>
 </div>
 <div style={{"display": "grid","gridTemplateColumns": "repeat(auto-fill,minmax(104px,1fr))","gap": "8px"}}>
@@ -559,7 +561,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.peopleRows || []).map((p,index)=><Fragment key={p?.key || p?.id || index}>
 <div style={{"display": "flex","flexDirection": "column","borderRadius": "12px","background": p.rowBg}}>
 <button onClick={p.toggle} style={{"display": "flex","alignItems": "center","gap": "10px","padding": "8px","border": "0","borderRadius": "12px","background": "transparent","color": "#f3eee2","font": "inherit","textAlign": "left","cursor": "pointer"}} className="dc-22">
-<span style={{"flexShrink": "0","width": "34px","height": "34px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{p.initials}</span>
+<ProfileAvatar style={{"flexShrink": "0","width": "34px","height": "34px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "12px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}} src={p.avatar} name={p.name} initials={p.initials}/>
 <span style={{"flex": "1","minWidth": "0","display": "flex","alignItems": "center","gap": "6px","fontSize": "14px"}}><span style={{"overflow": "hidden","textOverflow": "ellipsis","whiteSpace": "nowrap"}}>{p.name}</span>{(p.hasBadge) && <><span style={{"flexShrink": "0","padding": "1px 6px","borderRadius": "5px","background": "#2a2414","color": "#ecd389","fontSize": "11px","fontWeight": "600"}}>{p.badge}</span></>}</span>
 {(p.hand) && <><span style={{"fontSize": "11px","fontWeight": "600","color": "#d9b54a"}}>{p.handLabel}</span></>}
 {(p.muted) && <><svg width={"15"} height={"15"} viewBox={"0 0 24 24"} fill={"none"} stroke={"#e0605a"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M15 10V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.3 5.5M12 18v3M3 3l18 18"}></path></svg></>}
@@ -695,7 +697,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.isBgTab) && <>
 <div style={{"position": "relative","aspectRatio": "16/9","maxHeight": "220px","borderRadius": "14px","overflow": "hidden","background": v.previewBg,"display": "flex","alignItems": "center","justifyContent": "center"}}>
 {(v.previewVid) && <><video ref={v.previewRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "cover","filter": v.previewFilter,"transform": v.previewMirror ? 'scaleX(-1)' : 'none'}}></video></>}
-{(v.previewAv) && <><span style={{"width": "84px","height": "84px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "30px","fontWeight": "600","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.myInitials}</span></>}
+{(v.previewAv) && <><ProfileAvatar style={{"width": "84px","height": "84px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "30px","fontWeight": "600","display": "flex","alignItems": "center","justifyContent": "center"}} src={v.myAvatar} name={v.myName} initials={v.myInitials}/></>}
 </div>
 <div style={{"display": "flex","flexDirection": "column","gap": "10px"}}>
 <span style={{"fontSize": "13px","color": "#a49c8a"}}>{"Background"}</span>
@@ -717,7 +719,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </>}
 {(v.isProfile) && <>
 <div style={{"display": "flex","alignItems": "center","gap": "16px"}}>
-<span style={{"width": "64px","height": "64px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "22px","fontWeight": "600","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.myInitials}</span>
+<ProfileAvatar style={{"width": "64px","height": "64px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "22px","fontWeight": "600","display": "flex","alignItems": "center","justifyContent": "center"}} src={v.myAvatar} name={v.myName} initials={v.myInitials}/>
 <label style={{"flex": "1","display": "flex","flexDirection": "column","gap": "8px"}}>
 <span style={{"fontSize": "13px","color": "#a49c8a"}}>{"Display name"}</span>
 <input value={v.name} onChange={v.onName} style={{"height": "44px","padding": "0 14px","borderRadius": "12px","background": "#13110e","border": "1px solid #2e2a21","color": "#f3eee2","font": "inherit","fontSize": "15px","outline": "none"}} className="dc-36"/>

@@ -16,6 +16,7 @@ import { useWallet } from '../../context/WalletContext';
 import { ROUTES } from '../../utils/constants';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
 import etherxLogo from '../../assets/etherx_transparent.png';
+import etherxHeaderLogo from '../../assets/etherx_logo_header.png';
 
 function buildMeetingCode(meetingId) {
   if (!meetingId) {
@@ -42,7 +43,7 @@ function buildWeatherLabel(hour) {
   return '26°C Calm';
 }
 
-export default function TopBar({ showMeetingInfo = false }) {
+export default function TopBar({ showMeetingInfo = false, compactLogo = false }) {
   const navigate = useNavigate();
   const { logout } = useWallet();
   const { user } = useUser();
@@ -150,15 +151,16 @@ export default function TopBar({ showMeetingInfo = false }) {
   );
 
   return (
-    <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(212,175,55,0.08)', background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(16px)', fontFamily: "'Inter', sans-serif" }}>
+    <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(212,175,55,0.08)', background: '#050505', backdropFilter: 'blur(16px)', fontFamily: "'Inter', sans-serif" }}>
       <div 
         style={{ margin: '0 auto', display: 'flex', maxWidth: '1680px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '10px 14px' }}
       >
         <button
+          aria-label="EtherX Meet home"
           onClick={() => navigate(ROUTES.HOME)}
           style={{ display: 'flex', minWidth: 0, alignItems: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
         >
-          <EtherxMark />
+          <EtherxMark compact={compactLogo} />
         </button>
 
         {showMeetingInfo ? (
@@ -212,6 +214,7 @@ export default function TopBar({ showMeetingInfo = false }) {
               position="bottom-right"
               trigger={
                 <button 
+                  aria-label="Account menu"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#f0e6d3', transition: 'color 0.2s' }}
                   onMouseEnter={(e) => e.currentTarget.style.color = '#d4af37'}
                   onMouseLeave={(e) => e.currentTarget.style.color = '#f0e6d3'}
@@ -240,10 +243,10 @@ export default function TopBar({ showMeetingInfo = false }) {
   );
 }
 
-function EtherxMark() {
+function EtherxMark({ compact = false }) {
   return (
     <img
-      src={etherxLogo}
+      src={compact ? etherxHeaderLogo : etherxLogo}
       alt="EtherX Meet"
       style={{ width: 'clamp(125px, 28vw, 160px)', height: 'auto', display: 'block' }}
     />

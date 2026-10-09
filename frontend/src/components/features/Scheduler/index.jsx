@@ -1,21 +1,11 @@
-import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarClock, Download, Repeat, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { CalendarClock, Download, X } from 'lucide-react';
 import { getApiErrorMessage } from '../../../utils/apiClient';
+import { useDialogFocus } from '../../../hooks/useDialogFocus';
 
-const GOLD = '#d4af37';
-const GOLD_DIM = 'rgba(212,175,55,0.1)';
-const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const BORDER = 'rgba(255,255,255,0.08)';
-const INPUT_STYLE = {
-  width: '100%', boxSizing: 'border-box',
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  borderRadius: 10, padding: '10px 14px',
-  fontSize: 14, color: '#fff',
-  outline: 'none', fontFamily: 'DM Sans, sans-serif',
-};
-const LABEL_STYLE = { display: 'block', fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 6, letterSpacing: '0.03em', fontWeight: 500 };
+import './scheduler.css';
 
 const recurringOptions = ['none', 'daily', 'weekly'];
 
@@ -52,41 +42,44 @@ function downloadInvite(meeting) {
 }
 
 export default function Scheduler({ isOpen, onClose, onSchedule }) {
+  const dialogRef = useRef(null);
+  const formRef = useRef(null);
+  const reduceMotion = useReducedMotion();
+  useDialogFocus(dialogRef, onClose, isOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-
   const [form, setForm] = useState({
     title: '',
-    date: tomorrow,
+    date: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
     time: '10:00',
     duration: '45',
     recurring: 'none',
     participants: '',
   });
 
-  const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    formRef.current?.querySelector('input')?.focus();
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [isOpen]);
 
-  const preview = useMemo(() => {
-    const start = new Date(`${form.date}T${form.time}`);
-    const end = new Date(start.getTime() + Number(form.duration) * 60000);
-    return { start, end };
-  }, [form.date, form.time, form.duration]);
-
-  // Saves the schedule on the server (which registers its room); optionally downloads the calendar invite.
+  const set = (key) => (event) => setForm((previous) => ({ ...previous, [key]: event.target.value }));
   const save = async (withInvite) => {
-    if (!form.title.trim() || saving) return;
-    setSaving(true); setError('');
+    if (saving || !form.title.trim() || !formRef.current?.reportValidity()) return;
+    setSaving(true);
+    setError('');
     try {
       const meeting = await onSchedule({
-        title: form.title,
-        startAt: preview.start.toISOString(),
+        title: form.title.trim(),
+        startAt: new Date(`${form.date}T${form.time}`).toISOString(),
         duration: Number(form.duration),
-        participants: form.participants.split(',').map((p) => p.trim()).filter(Boolean),
+        participants: form.participants.split(',').map((email) => email.trim()).filter(Boolean),
         recurring: form.recurring,
       });
       if (withInvite) downloadInvite(meeting);
-      setForm((prev) => ({ ...prev, title: '', participants: '' }));
+      setForm((previous) => ({ ...previous, title: '', participants: '' }));
       onClose();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Could not save this meeting.'));
@@ -95,198 +88,91 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
     }
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }}
+          className="scheduler-overlay"
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.15 }}
           onClick={onClose}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 50,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
-            padding: 16,
-          }}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 20 }}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 860,
-              borderRadius: 28,
-              border: `1px solid ${BORDER}`,
-              background: 'rgba(11,12,18,0.97)',
-              padding: 28,
-              boxShadow: '0 30px 90px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)',
-              backdropFilter: 'blur(24px)',
-              maxHeight: '90vh', overflowY: 'auto',
-            }}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scheduler-title"
+            className="scheduler-dialog"
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: reduceMotion ? 0 : 0.15 }}
+            onClick={(event) => event.stopPropagation()}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 24 }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 10, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(212,175,55,0.5)' }}>
-                  Integrated Scheduler
-                </p>
-                <h2 style={{ margin: '6px 0 6px', fontSize: 26, fontWeight: 700, color: '#fff', fontFamily: 'Syne, sans-serif', letterSpacing: '-0.03em' }}>
-                  Book a future room
-                </h2>
-                <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 }}>
-                  Schedule a session, download a calendar invite, and get browser reminders.
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                style={{
-                  background: 'rgba(255,255,255,0.08)', border: `1px solid ${BORDER}`,
-                  borderRadius: 10, width: 36, height: 36, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  color: 'rgba(255,255,255,0.6)', flexShrink: 0,
-                }}
-              >
-                <X style={{ width: 16, height: 16 }} />
+            <header className="scheduler-header">
+              <h2 id="scheduler-title">Schedule a meeting</h2>
+              <button type="button" className="scheduler-close" aria-label="Close scheduler" onClick={onClose}>
+                <X size={20} aria-hidden="true" />
               </button>
-            </div>
+            </header>
 
-            {/* Body */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-
-              {/* Left — form */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label style={LABEL_STYLE}>Meeting title *</label>
-                  <input value={form.title} onChange={set('title')} placeholder="e.g. Weekly Strategy Sync" style={INPUT_STYLE} />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={LABEL_STYLE}>Date</label>
-                    <input type="date" value={form.date} onChange={set('date')} style={INPUT_STYLE} />
-                  </div>
-                  <div>
-                    <label style={LABEL_STYLE}>Time</label>
-                    <input type="time" value={form.time} onChange={set('time')} style={INPUT_STYLE} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={LABEL_STYLE}>Duration (minutes)</label>
-                    <input type="number" min="5" max="480" value={form.duration} onChange={set('duration')} style={INPUT_STYLE} />
-                  </div>
-                  <div>
-                    <label style={LABEL_STYLE}>Recurring</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {recurringOptions.map((opt) => (
-                        <button
-                          key={opt}
-                          onClick={() => setForm((p) => ({ ...p, recurring: opt }))}
-                          style={{
-                            flex: 1, padding: '9px 4px', borderRadius: 8, fontSize: 11,
-                            fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
-                            fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s',
-                            background: form.recurring === opt ? GOLD_DIM : 'rgba(255,255,255,0.04)',
-                            border: form.recurring === opt ? `1px solid ${GOLD_BORDER}` : `1px solid ${BORDER}`,
-                            color: form.recurring === opt ? GOLD : 'rgba(255,255,255,0.45)',
-                          }}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={LABEL_STYLE}>Participants (comma-separated emails)</label>
-                  <input value={form.participants} onChange={set('participants')} placeholder="alice@email.com, bob@email.com" style={INPUT_STYLE} />
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                  <button
-                    onClick={() => save(false)}
-                    disabled={!form.title.trim() || saving}
-                    style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      background: form.title.trim() ? `linear-gradient(135deg,${GOLD},#b8860b)` : 'rgba(255,255,255,0.06)',
-                      border: 'none', borderRadius: 12, padding: '12px 20px',
-                      fontSize: 13, fontWeight: 700,
-                      color: form.title.trim() ? '#000' : 'rgba(255,255,255,0.3)',
-                      cursor: form.title.trim() ? 'pointer' : 'not-allowed',
-                      fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s',
-                    }}
-                  >
-                    <CalendarClock style={{ width: 15, height: 15 }} />
-                    Save schedule
-                  </button>
-                  <button
-                    onClick={() => save(true)}
-                    disabled={!form.title.trim() || saving}
-                    title="Save and download a calendar invite"
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      background: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`,
-                      borderRadius: 12, padding: '12px 16px', fontSize: 13, fontWeight: 600,
-                      color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
-                      fontFamily: 'DM Sans, sans-serif',
-                    }}
-                  >
-                    <Download style={{ width: 14, height: 14 }} />
-                    Save + .ics
-                  </button>
-                </div>
-                {error && <p role="alert" style={{ margin: '10px 0 0', fontSize: 12, color: '#f87171' }}>{error}</p>}
+            <form ref={formRef} className="scheduler-form" onSubmit={(event) => { event.preventDefault(); save(false); }}>
+              <div className="scheduler-field">
+                <label htmlFor="scheduler-meeting-title">Meeting title <span aria-hidden="true">*</span></label>
+                <input id="scheduler-meeting-title" required value={form.title} onChange={set('title')} placeholder="Meeting name" />
               </div>
 
-              {/* Right — preview */}
-              <div style={{
-                borderRadius: 20, border: `1px solid ${BORDER}`,
-                background: 'rgba(255,255,255,0.03)', padding: 20,
-              }}>
-                <p style={{ margin: '0 0 4px', fontSize: 10, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Preview</p>
-                <h3 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>
-                  {form.title || <span style={{ color: 'rgba(255,255,255,0.2)' }}>Untitled meeting</span>}
-                </h3>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ borderRadius: 14, border: `1px solid ${BORDER}`, background: 'rgba(0,0,0,0.15)', padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-                      <CalendarClock style={{ width: 16, height: 16, color: GOLD }} />
-                      <span>
-                        {preview.start.toLocaleDateString()} at{' '}
-                        {preview.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 8 }}>
-                      <Repeat style={{ width: 14, height: 14 }} />
-                      <span style={{ textTransform: 'capitalize' }}>{form.recurring === 'none' ? 'One-time' : `Repeats ${form.recurring}`}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 8 }}>
-                      <Users style={{ width: 14, height: 14 }} />
-                      <span>
-                        {form.participants.split(',').filter((p) => p.trim()).length} participant{form.participants.split(',').filter((p) => p.trim()).length !== 1 ? 's' : ''} invited
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{
-                    borderRadius: 14, border: '1px solid rgba(212,175,55,0.15)',
-                    background: 'rgba(212,175,55,0.05)', padding: '12px 16px',
-                    fontSize: 12, lineHeight: 1.7, color: 'rgba(255,255,255,0.75)',
-                  }}>
-                    Lobby opens 5 min before start. Browser reminders fire 15 min before kickoff when notifications are allowed.
-                  </div>
+              <div className="scheduler-fields">
+                <div className="scheduler-field">
+                  <label htmlFor="scheduler-date">Date</label>
+                  <input id="scheduler-date" type="date" required value={form.date} onChange={set('date')} />
+                </div>
+                <div className="scheduler-field">
+                  <label htmlFor="scheduler-time">Time</label>
+                  <input id="scheduler-time" type="time" required value={form.time} onChange={set('time')} />
                 </div>
               </div>
-            </div>
+
+              <div className="scheduler-fields">
+                <div className="scheduler-field">
+                  <label htmlFor="scheduler-duration">Duration (minutes)</label>
+                  <input id="scheduler-duration" type="number" required min="5" max="480" value={form.duration} onChange={set('duration')} />
+                </div>
+                <fieldset className="scheduler-field scheduler-recurrence">
+                  <legend>Repeat</legend>
+                  <div className="scheduler-segments">
+                    {recurringOptions.map((option) => (
+                      <button type="button" key={option} aria-pressed={form.recurring === option} onClick={() => setForm((previous) => ({ ...previous, recurring: option }))}>
+                        {option === 'none' ? 'None' : option === 'daily' ? 'Daily' : 'Weekly'}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              </div>
+
+              <div className="scheduler-field">
+                <label htmlFor="scheduler-participants">Participants <span className="scheduler-optional">(optional)</span></label>
+                <input id="scheduler-participants" value={form.participants} onChange={set('participants')} placeholder="Email addresses" aria-describedby="scheduler-participant-help" />
+                <p className="scheduler-help" id="scheduler-participant-help">Separate email addresses with commas.</p>
+              </div>
+
+              {error && <p role="alert" className="scheduler-error">{error}</p>}
+
+              <footer className="scheduler-actions">
+                <button type="submit" className="scheduler-save" disabled={!form.title.trim() || saving}>
+                  <CalendarClock size={17} aria-hidden="true" />{saving ? 'Saving…' : 'Save schedule'}
+                </button>
+                <button type="button" className="scheduler-invite" disabled={!form.title.trim() || saving} onClick={() => save(true)} title="Save and download a calendar invite">
+                  <Download size={17} aria-hidden="true" />Save + invite
+                </button>
+              </footer>
+            </form>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

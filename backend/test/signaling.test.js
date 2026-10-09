@@ -32,9 +32,9 @@ class FakeServer {
   }
 }
 const events = (socket, event) => socket.clientEvents.filter(e => e.event === event);
-function fixture(t, owner = 'host-user') {
+function fixture(t, owner = 'host-user', avatars = {}) {
   const code = `test-${t.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
-  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => owner });
+  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => owner, resolveUserAvatar: id => avatars[id] || null });
   registerRoomHost(code, owner);
   t.after(() => { [...io.sockets.sockets.values()].forEach(s => s.disconnect()); rooms.delete(code); });
   const connect = async (id, userId = id, token) => { const socket = new FakeSocket(id, io, code, userId, token); await io.connect(socket); return socket; };
@@ -162,6 +162,22 @@ test('initial microphone and camera choices reach existing and new peers', async
   assert.equal(member.selfMuted, true); assert.equal(member.videoOff, true);
   assert.ok(guest.roomEvents.some(e => e.event === 'user-joined' && e.payload.isMuted && e.payload.videoOff));
 });
+test('account photos reach existing users, new peers and the roster without trusting join payloads', async t => {
+  const avatars = { 'host-user': 'https://lh3.googleusercontent.com/host-photo', guest: 'https://lh3.googleusercontent.com/guest-photo' };
+  const f = fixture(t, 'host-user', avatars);
+  const host = await f.host();
+  const guest = await f.connect('guest');
+  guest.trigger('request-join', { roomCode: f.code });
+  host.trigger('admit-user', { roomCode: f.code, toSocketId: guest.id });
+  guest.trigger('join-room', { roomCode: f.code, videoOff: true, avatar: 'https://example.com/spoofed' });
+  assert.equal(rooms.get(f.code).get(guest.id).avatar, avatars.guest);
+  assert.equal(events(guest, 'existing-users').at(-1).payload.find(p => p.socketId === host.id).avatar, avatars['host-user']);
+  assert.equal(guest.roomEvents.find(e => e.event === 'user-joined').payload.avatar, avatars.guest);
+  const roster = f.io.emittedEvents.filter(e => e.event === 'roster-state').at(-1).payload.members;
+  assert.equal(roster.find(p => p.socketId === guest.id).avatar, avatars.guest);
+  const local = await f.guest(host, 'local');
+  assert.equal(rooms.get(f.code).get(local.id).avatar, null);
+});
 test('host receives requests that arrived before the host joined', async t => {
   const f = fixture(t); const waiting = await f.connect('waiting');
   waiting.trigger('request-join', { roomCode: f.code, userName: 'Waiting guest' });
@@ -234,33 +250,33 @@ test('speakers whose browser cannot caption are announced to current and later c
   assert.deepEqual(events(late, 'caption-unavailable').map(e => e.payload), [{ socketId: 'guest-socket', userName: 'guest-socket' }]);
 });
 
-test('rooms admit 20 people including the host and reject a 21st through both join paths', async t => {
+test('rooms admit 50 people including the host and reject a 51st through both join paths', async t => {
   const f = fixture(t);
   const h = await f.host();
   let lastGuest;
-  for (let i = 1; i < 20; i++) {
+  for (let i = 1; i < 50; i++) {
     lastGuest = await f.guest(h, `guest-${i}`);
     assert.ok(rooms.get(f.code).has(lastGuest.id));
     assert.equal(events(lastGuest, 'room-full').length, 0);
   }
-  assert.equal(rooms.get(f.code).size, 20);
+  assert.equal(rooms.get(f.code).size, 50);
   const late = await f.connect('late');
   late.trigger('request-join', { roomCode: f.code });
   assert.equal(events(late, 'room-full').length, 1);
-  assert.deepEqual(events(late, 'room-full')[0].payload, { max: 20 });
+  assert.deepEqual(events(late, 'room-full')[0].payload, { max: 50 });
   assert.equal(events(h, 'join-request').filter(e => e.payload.socketId === 'late').length, 0);
   late.data.admittedRoom = f.code;
   f.join(late);
-  assert.equal(rooms.get(f.code).size, 20);
+  assert.equal(rooms.get(f.code).size, 50);
   assert.equal(events(late, 'room-full').length, 2);
-  assert.deepEqual(events(late, 'room-full')[1].payload, { max: 20 });
+  assert.deepEqual(events(late, 'room-full')[1].payload, { max: 50 });
   lastGuest.disconnect();
-  assert.equal(rooms.get(f.code).size, 19);
+  assert.equal(rooms.get(f.code).size, 49);
   late.trigger('request-join', { roomCode: f.code });
   h.trigger('admit-user', { roomCode: f.code, toSocketId: late.id });
   f.join(late);
   assert.ok(rooms.get(f.code).has(late.id));
-  assert.equal(rooms.get(f.code).size, 20);
+  assert.equal(rooms.get(f.code).size, 50);
   assert.equal(events(late, 'room-full').length, 2);
 });
 
@@ -303,7 +319,7 @@ test('admitted participants get a ticket that readmits them after a server resta
 
 test('recording cannot start in a room whose host turned recording off', async t => {
   const code = 'test-recording-off';
-  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => 'host-user', resolveRecordingAllowed: async owner => owner !== 'host-user' });
+  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => 'host-user', resolveUserAvatar: () => null, resolveRecordingAllowed: async owner => owner !== 'host-user' });
   registerRoomHost(code, 'host-user');
   t.after(() => { [...io.sockets.sockets.values()].forEach(s => s.disconnect()); rooms.delete(code); });
   const h = new FakeSocket('host-socket', io, code, 'host-user'); await io.connect(h);
