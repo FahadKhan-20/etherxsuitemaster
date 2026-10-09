@@ -370,6 +370,25 @@ test('polls created in the same instant get unique ids and clean text', async t 
   assert.equal(f.io.emittedEvents.filter(e => e.event === 'poll-created').length, 100);
 });
 
+test('any participant can launch a poll; only its creator or a host can end it', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  const g = await f.guest(h, 'guest-socket');
+  const other = await f.guest(h, 'other-socket');
+  g.trigger('create-poll', { roomCode: f.code, question: 'Lunch?', options: ['Yes', 'No'] });
+  const poll = f.io.emittedEvents.find(e => e.event === 'poll-created')?.payload;
+  assert.equal(poll?.question, 'Lunch?');
+  const ended = () => f.io.emittedEvents.filter(e => e.event === 'poll-updated' && e.payload.active === false).length;
+  other.trigger('end-poll', { roomCode: f.code, pollId: poll.id });
+  assert.equal(ended(), 0);
+  g.trigger('end-poll', { roomCode: f.code, pollId: poll.id });
+  assert.equal(ended(), 1);
+  g.trigger('create-poll', { roomCode: f.code, question: 'Again?', options: ['Yes', 'No'] });
+  const second = f.io.emittedEvents.filter(e => e.event === 'poll-created')[1].payload;
+  h.trigger('end-poll', { roomCode: f.code, pollId: second.id });
+  assert.equal(ended(), 2);
+});
+
 test('YouTube links are shared as an embedded player; other pages cannot claim that kind', async t => {
   const f = fixture(t);
   const h = await f.host();

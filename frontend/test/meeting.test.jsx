@@ -333,8 +333,8 @@ describe('complete reference template integration',()=>{
     await act(async()=>document.querySelector('[title="Turn camera on (V)"]').click());
     expect(document.querySelector('[data-tile=me] img')).toBeNull();expect(document.querySelector('[data-tile=me] video').srcObject.getVideoTracks()[0].readyState).toBe('live');
   });
-  it('guests can access shared polls and files without a poll composer or host tools',async()=>{
-    await room(false);clickTitle('More options');expect(document.body.textContent).toContain('Polls');expect(document.body.textContent).toContain('File sharing');expect(document.body.textContent).not.toContain('Security options');clickText('Polls');expect(document.querySelector('input[placeholder="Ask a question"]')).toBeNull();
+  it('guests can launch polls and share files without host tools',async()=>{
+    await room(false);clickTitle('More options');expect(document.body.textContent).toContain('Polls');expect(document.body.textContent).toContain('File sharing');expect(document.body.textContent).not.toContain('Security options');clickText('Polls');expect(document.querySelector('input[placeholder="Ask a question"]')).not.toBeNull();
   });
   it('policy changes remove guest chat composer and profile rename reaches server',async()=>{
     await room(false);act(()=>sockets[0].trigger('meeting-policy',{waitingRoom:true,allowChat:false,allowShare:false}));clickTitle('Chat (C)');expect(document.querySelector('input[placeholder="Send a message to everyone"]')).toBeNull();

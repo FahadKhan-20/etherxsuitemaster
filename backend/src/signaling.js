@@ -256,7 +256,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         return;
       }
       if (payload.to && !room.has(payload.to)) return;
-      if (['create-poll', 'end-poll', 'share-media'].includes(event) && !isPrivileged(currentRoom, member.userId)) return;
+      if (event === 'share-media' && !isPrivileged(currentRoom, member.userId)) return;
       if (payload.to && ['offer','answer','ice-candidate'].includes(event) && getGroup(currentRoom,socket.id)!==getGroup(currentRoom,payload.to)) return;
       const result = handler({ ...payload, roomCode: currentRoom }, acknowledge);
       if(['microphone-state','camera-toggled'].includes(event)||(['mute-participant','unmute-participant'].includes(event)&&isPrivileged(currentRoom,member.userId)))extension.roster();
@@ -636,7 +636,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       const user = rooms.get(roomCode)?.get(socket.id);
       const poll = {
         id: randomUUID(), // Date.now() repeats for polls created in the same millisecond
-        createdBy: user?.userName || 'Host',
+        createdBy: user?.userName || 'Someone',
         createdById: socket.id,
         question: question.trim().slice(0, 300),
         options: choices.map(t => ({ text: t, voters: [] })),
@@ -672,7 +672,9 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     onMember('end-poll', ({ roomCode, pollId }) => {
       const polls = roomPolls.get(roomCode) || [];
       const poll = polls.find(p => p.id === pollId);
-      if (poll) {
+      const user = rooms.get(roomCode)?.get(socket.id);
+      // Anyone may launch a poll; only its creator or a host/co-host may end it.
+      if (poll && (poll.createdById === socket.id || isPrivileged(roomCode, user?.userId))) {
         poll.active = false;
         io.to(roomCode).emit('poll-updated', poll);
       }

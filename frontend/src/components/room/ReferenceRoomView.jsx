@@ -478,9 +478,9 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </div>
 </div>
 </>}
-<div style={{"position": "fixed","right": v.previewRight,"bottom": "96px","zIndex": "12","display": "flex","flexDirection": "column","alignItems": "flex-end","gap": "8px","maxWidth": "320px"}}>
+<div data-previews="" style={{"position": "fixed","right": v.previewRight,"bottom": "96px","zIndex": "12","display": "flex","flexDirection": "column","alignItems": "flex-end","gap": "8px","maxWidth": "320px"}}>
 {(v.previews || []).map((pv,index)=><Fragment key={pv?.key || pv?.id || index}>
-<button data-pop={"menu"} onClick={v.openChat} style={{"display": "flex","gap": "10px","alignItems": "flex-start","padding": "10px 14px 10px 10px","borderRadius": "14px","border": "1px solid #2e2a21","background": "rgba(26,23,18,0.96)","boxShadow": "0 12px 30px rgba(0,0,0,0.45)","color": "#f3eee2","font": "inherit","textAlign": "left","cursor": "pointer"}}>
+<button data-pop={"menu"} onClick={pv.open} style={{"display": "flex","gap": "10px","alignItems": "flex-start","padding": "10px 14px 10px 10px","borderRadius": "14px","border": "1px solid #2e2a21","background": "rgba(26,23,18,0.96)","boxShadow": "0 12px 30px rgba(0,0,0,0.45)","color": "#f3eee2","font": "inherit","textAlign": "left","cursor": "pointer"}}>
 <span style={{"flexShrink": "0","width": "28px","height": "28px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "11px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{pv.initials}</span>
 <span style={{"display": "flex","flexDirection": "column","gap": "2px","minWidth": "0"}}><span style={{"fontSize": "12px","fontWeight": "600","color": "#d9b54a"}}>{pv.who}</span><span style={{"fontSize": "13px","lineHeight": "1.4","color": "#e8e2d3","textWrap": "pretty"}}>{pv.text}</span></span>
 </button>
@@ -607,7 +607,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </>}
 {(v.isPolls) && <>
 <div style={{"flex": "1","minHeight": "0","overflow": "auto","padding": "16px","display": "flex","flexDirection": "column","gap": "18px"}}>
-{(v.canMod) && <><div style={{"display": "flex","flexDirection": "column","gap": "8px","padding": "14px","borderRadius": "14px","background": "#0e0d0a","border": "1px solid #26231c"}}>
+<div style={{"display": "flex","flexDirection": "column","gap": "8px","padding": "14px","borderRadius": "14px","background": "#0e0d0a","border": "1px solid #26231c"}}>
 <span style={{"fontSize": "11px","letterSpacing": "0.2em","color": "#a49c8a"}}>{"NEW POLL"}</span>
 <input value={v.pollQ} onChange={v.onPollQ} placeholder={"Ask a question"} style={{"height": "40px","padding": "0 12px","borderRadius": "10px","background": "#13110e","border": "1px solid #2e2a21","color": "#f3eee2","font": "inherit","fontSize": "14px","outline": "none"}} className="dc-29"/>
 {(v.pollOptInputs || []).map((o,index)=><Fragment key={o?.key || o?.id || index}>
@@ -617,7 +617,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.canAddOpt) && <><button onClick={v.addOpt} style={{"border": "0","background": "transparent","color": "#d9b54a","font": "inherit","fontSize": "13px","cursor": "pointer","padding": "0"}}>{"+ Add option"}</button></>}
 <button onClick={v.launchPoll} style={{"marginLeft": "auto","height": "36px","padding": "0 14px","borderRadius": "10px","border": "0","background": "#d9b54a","color": "#1a1608","font": "inherit","fontSize": "13px","fontWeight": "600","cursor": "pointer"}}>{"Launch poll"}</button>
 </div>
-</div></>}
+</div>
 {(v.polls || []).map((pl,index)=><Fragment key={pl?.key || pl?.id || index}>
 <div style={{"display": "flex","flexDirection": "column","gap": "10px"}}>
 <div style={{"display": "flex","justifyContent": "space-between","gap": "10px","alignItems": "baseline"}}>

@@ -1013,7 +1013,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   // ── Feature 7: Poll emitters ────────────────────────────────────────────────
 
-  /** Host: create a new poll. options is an array of option strings. */
+  /** Create a new poll (any participant). options is an array of option strings. */
   const createPoll = useCallback((question, options) => {
     const s = socketRef.current;
     console.log('[createPoll] socket:', s?.id, 'connected:', s?.connected, 'roomCode:', roomCode, 'q:', question, 'opts:', options);
@@ -1025,7 +1025,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     socketRef.current?.emit('vote-poll', { roomCode, pollId, optionIndex });
   }, [roomCode]);
 
-  /** Host: end an active poll. */
+  /** End an active poll (its creator or a host/co-host). */
   const endPoll = useCallback((pollId) => {
     socketRef.current?.emit('end-poll', { roomCode, pollId });
   }, [roomCode]);

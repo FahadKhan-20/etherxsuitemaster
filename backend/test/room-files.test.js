@@ -33,7 +33,7 @@ test('members upload once; the room gets metadata only; only members can downloa
   assert.equal(ok.statusCode, 201);
   const shared = emitted.find(e => e.event === 'file-shared');
   assert.equal(shared.room, code);
-  assert.deepEqual(Object.keys(shared.payload).sort(), ['id', 'name', 'sharedAt', 'sharedBy', 'size', 'type']);
+  assert.deepEqual(Object.keys(shared.payload).sort(), ['id', 'name', 'sharedAt', 'sharedBy', 'sharedBySocketId', 'size', 'type']);
   const download = route('/:code/files/:id', 'get').stack.at(-1).handle;
   const denied = response();
   await download({ params: { code, id: shared.payload.id }, user: { id: 'stranger' } }, denied, e => { throw e; });
