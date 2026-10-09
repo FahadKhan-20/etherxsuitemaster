@@ -377,9 +377,9 @@ describe('TURN relay configuration',()=>{
 describe('full meetings',()=>{
   it('shows a full-meeting screen instead of the room when the server rejects the join',async()=>{
     mount(<MemoryRouter><ReferenceVideoRoom roomCode="test-room" isHost preferences={prefs()} savePreferences={vi.fn()}/></MemoryRouter>);await settle();
-    await act(async()=>sockets[0].trigger('room-full',{max:8}));
+    await act(async()=>sockets[0].trigger('room-full',{max:20}));
     expect(document.body.textContent).toContain('Meeting is full');
-    expect(document.body.textContent).toContain('This meeting is full (8 people max)');
+    expect(document.body.textContent).toContain('This meeting is full (20 people max)');
   });
 });
 

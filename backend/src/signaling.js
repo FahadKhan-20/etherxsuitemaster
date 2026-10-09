@@ -77,8 +77,8 @@ const roomCoHosts = new Map();
 // roomCode -> Set<socketId> — participants who currently have live captions switched on.
 // While this is non-empty, everyone's browser transcribes its own mic (unless muted) for the captions.
 const roomCaptionViewers = new Map();
-// Every participant sends media to every other one (full mesh); past this size calls degrade badly.
-const MAX_PARTICIPANTS = 8;
+// Room capacity includes the host. Media still uses full mesh, so load grows with room size.
+const MAX_PARTICIPANTS = 20;
 const CAPTION_MAX_CHARS = 300;        // longest caption line relayed
 const CAPTION_MIN_INTERVAL_MS = 120;  // throttle for interim (not-yet-final) caption updates
 

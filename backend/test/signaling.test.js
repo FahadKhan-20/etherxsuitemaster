@@ -234,18 +234,33 @@ test('speakers whose browser cannot caption are announced to current and later c
   assert.deepEqual(events(late, 'caption-unavailable').map(e => e.payload), [{ socketId: 'guest-socket', userName: 'guest-socket' }]);
 });
 
-test('rooms stop accepting people at the mesh limit and tell the newcomer the meeting is full', async t => {
+test('rooms admit 20 people including the host and reject a 21st through both join paths', async t => {
   const f = fixture(t);
   const h = await f.host();
-  for (let i = 1; i < 8; i++) await f.guest(h, `guest-${i}`);
-  assert.equal(rooms.get(f.code).size, 8);
+  let lastGuest;
+  for (let i = 1; i < 20; i++) {
+    lastGuest = await f.guest(h, `guest-${i}`);
+    assert.ok(rooms.get(f.code).has(lastGuest.id));
+    assert.equal(events(lastGuest, 'room-full').length, 0);
+  }
+  assert.equal(rooms.get(f.code).size, 20);
   const late = await f.connect('late');
   late.trigger('request-join', { roomCode: f.code });
   assert.equal(events(late, 'room-full').length, 1);
+  assert.deepEqual(events(late, 'room-full')[0].payload, { max: 20 });
   assert.equal(events(h, 'join-request').filter(e => e.payload.socketId === 'late').length, 0);
   late.data.admittedRoom = f.code;
   f.join(late);
-  assert.equal(rooms.get(f.code).size, 8);
+  assert.equal(rooms.get(f.code).size, 20);
+  assert.equal(events(late, 'room-full').length, 2);
+  assert.deepEqual(events(late, 'room-full')[1].payload, { max: 20 });
+  lastGuest.disconnect();
+  assert.equal(rooms.get(f.code).size, 19);
+  late.trigger('request-join', { roomCode: f.code });
+  h.trigger('admit-user', { roomCode: f.code, toSocketId: late.id });
+  f.join(late);
+  assert.ok(rooms.get(f.code).has(late.id));
+  assert.equal(rooms.get(f.code).size, 20);
   assert.equal(events(late, 'room-full').length, 2);
 });
 

@@ -495,7 +495,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       });
       socket.on('files-state', ({ files }) => setSharedFiles(files || []));
 
-      // The meeting already holds the maximum number of people a peer-to-peer call supports.
+      // Display the room capacity reported by the server.
       socket.on('room-full', ({ max }) => {
         setAdmitted(false); setRoomFull(true);
         setConnectionError(`This meeting is full (${max} people max). Try again when someone leaves.`);
