@@ -353,3 +353,11 @@ describe('recording status across a quick stop and restart',()=>{
     expect(hook.recordingState).toBe('recording');expect(hook.isRecording).toBe(true);
   });
 });
+
+describe('YouTube links',()=>{
+  it('finds the video id in every common link shape and rejects other pages',async()=>{
+    const { youtubeId } = await import('../src/utils/youtube');
+    for(const url of ['https://youtu.be/-S_9Kuy8faU?si=H5oYf-6uuTAvndGI','https://www.youtube.com/watch?v=-S_9Kuy8faU&t=42','https://m.youtube.com/watch?v=-S_9Kuy8faU','https://www.youtube.com/shorts/-S_9Kuy8faU','https://www.youtube.com/embed/-S_9Kuy8faU','https://www.youtube.com/live/-S_9Kuy8faU?feature=share'])expect(youtubeId(url)).toBe('-S_9Kuy8faU');
+    for(const url of ['https://vimeo.com/123','https://www.youtube.com/@channel','https://evil.example/watch?v=-S_9Kuy8faU','not a url','https://youtu.be/short'])expect(youtubeId(url)).toBe(null);
+  });
+});

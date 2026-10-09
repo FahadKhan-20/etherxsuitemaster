@@ -1,5 +1,6 @@
 // Generated from design-artifacts/EtherX Meet Room.dc.html. Regenerate with node scripts/port-meeting-reference.cjs.
 import { Fragment } from "react";
+import etherxLogo from '../../assets/etherx_logo_header.png';
 import ReferenceTile from "./ReferenceTile";
 import "../../styles/reference-room.css";
 export const REFERENCE_ICONS={
@@ -12,6 +13,7 @@ export const REFERENCE_ICONS={
   keys: 'M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', feedback: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM9 11h.01M12 11h.01M15 11h.01',
 };
 export const REFERENCE_BINDINGS=[
+  "youtubeRef",
   "ackRec",
   "addAgenda",
   "addOpt",
@@ -181,6 +183,7 @@ export const REFERENCE_BINDINGS=[
   "previewAv",
   "previewBg",
   "previewFilter",
+  "previewMirror",
   "previewRef",
   "previewRight",
   "previewVid",
@@ -231,9 +234,8 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 
 <div style={{"height": "100vh","display": "flex","flexDirection": "column","background": "#0b0a08"}}>
 <header style={{"flexShrink": "0","display": "grid","gridTemplateColumns": "1fr auto 1fr","alignItems": "center","gap": "16px","padding": "12px " + String(v.headerPadR) + " 12px 20px","opacity": v.chromeOp,"transition": "opacity 300ms ease"}}>
-<div style={{"display": "flex","alignItems": "baseline","gap": "7px"}}>
-<span style={{"fontWeight": "700","letterSpacing": "0.14em","fontSize": "15px","color": "#d9b54a"}}>{"ETHERX"}</span>
-<span style={{"fontWeight": "500","fontSize": "15px","color": "#a49c8a"}}>{"Meet"}</span>
+<div style={{"display": "flex","alignItems": "center"}}>
+<img src={etherxLogo} alt="EtherX Meet" style={{"height": "32px","width": "auto","display": "block"}} />
 </div>
 <div style={{"display": "flex","alignItems": "center","gap": "10px"}}>
 <div style={{"display": "flex","alignItems": "center","gap": "12px","height": "40px","padding": "0 8px 0 16px","borderRadius": "999px","background": "#13110e","border": "1px solid #2e2a21","fontSize": "14px"}}>
@@ -284,6 +286,9 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <div style={{"position": "absolute","left": "12px","top": "12px","padding": "5px 10px","borderRadius": "8px","background": "#d9b54a","color": "#1a1608","fontSize": "12px","fontWeight": "600"}}>{t.screenLabel}</div>
 </>}
 {(t.isMedia) && <>
+{(t.isYouTube) && <>
+<div ref={v.youtubeRef} style={{"position": "absolute","inset": "0","background": "#050504"}}></div>
+</>}
 {(t.isVideoMedia) && <>
 <video ref={v.mediaVideoRef} controls={true} autoPlay={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "contain","background": "#050504"}}></video>
 </>}
@@ -307,14 +312,14 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <div style={{"width": "clamp(48px,22%,120px)","aspectRatio": "1","borderRadius": "50%","background": "#2a2519","display": "flex","alignItems": "center","justifyContent": "center","fontSize": "clamp(18px,2.4vw,40px)","fontWeight": "600","color": "#d9b54a"}}>{t.initials}</div>
 </>}
 {(t.invite) && <>
-<div style={{"display": "flex","flexDirection": "column","alignItems": "center","gap": "16px","textAlign": "center","padding": "0 24px","position": "relative"}}>
+<div className="room-empty-invite" data-video={t.showVid}>
 <div style={{"display": "flex","flexDirection": "column","gap": "6px"}}>
-<div style={{"fontSize": "22px","fontWeight": "600"}}>{"You're the only one here"}</div>
-<div style={{"fontSize": "14px","color": "#8a8373"}}>{"Share the link to invite others"}</div>
+<div className="room-empty-title">{"Your meeting is ready"}</div>
+<div className="room-empty-description">{"Invite people to join you."}</div>
 </div>
-<div style={{"display": "flex","alignItems": "center","gap": "8px","padding": "6px 6px 6px 14px","borderRadius": "12px","background": "#13110e","border": "1px solid #26231c"}}>
-<span style={{"fontFamily": "'JetBrains Mono',monospace","fontSize": "13px","color": "#d8d1c1"}}>{v.inviteLink}</span>
-<button onClick={v.copyLink} style={{"padding": "7px 12px","borderRadius": "8px","border": "0","background": "#d9b54a","color": "#1a1608","font": "inherit","fontSize": "13px","fontWeight": "600","cursor": "pointer"}}>{v.linkShort}</button>
+<div className="room-empty-link">
+<span title={v.inviteLink}>{v.inviteLink}</span>
+<button onClick={v.copyLink}>{v.linkShort === 'Copy' ? 'Copy link' : v.linkShort}</button>
 </div>
 </div>
 </>}
@@ -646,7 +651,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <span style={{"fontSize": "14px","overflow": "hidden","textOverflow": "ellipsis","whiteSpace": "nowrap"}}>{f.name}</span>
 <span style={{"fontSize": "12px","color": "#7d7666"}}>{String(f.size) + " · " + String(f.by)}</span>
 </div>
-<a href={f.url} download={f.name} style={{"fontSize": "13px","fontWeight": "600"}}>{"Download"}</a>
+<a href={f.url} download={f.name} onClick={f.download} style={{"fontSize": "13px","fontWeight": "600"}}>{"Download"}</a>
 <button aria-label={"Remove"} disabled={!v.canMod} onClick={f.remove} title={"Remove"} style={{"border": "0","background": "transparent","color": "#6f685a","cursor": "pointer","fontSize": "18px","lineHeight": "1"}} className="dc-33">{"×"}</button>
 </div>
 </Fragment>)}
@@ -689,7 +694,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </div>
 {(v.isBgTab) && <>
 <div style={{"position": "relative","aspectRatio": "16/9","maxHeight": "220px","borderRadius": "14px","overflow": "hidden","background": v.previewBg,"display": "flex","alignItems": "center","justifyContent": "center"}}>
-{(v.previewVid) && <><video ref={v.previewRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "cover","filter": v.previewFilter,"transform": "scaleX(-1)"}}></video></>}
+{(v.previewVid) && <><video ref={v.previewRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "cover","filter": v.previewFilter,"transform": v.previewMirror ? 'scaleX(-1)' : 'none'}}></video></>}
 {(v.previewAv) && <><span style={{"width": "84px","height": "84px","borderRadius": "50%","background": "#2a2519","color": "#d9b54a","fontSize": "30px","fontWeight": "600","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.myInitials}</span></>}
 </div>
 <div style={{"display": "flex","flexDirection": "column","gap": "10px"}}>

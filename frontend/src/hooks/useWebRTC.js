@@ -1018,11 +1018,20 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   // ── Feature: File Sharing callbacks ─────────────────────────────────────────
 
-  const shareFile = useCallback((file) => {
-    const socket = socketRef.current;
-    if (!socket || !roomCode) return;
-    socket.emit('share-file', { roomCode, file });
-  }, [roomCode]);
+  // Files go over HTTP (the server tells the room about them); bytes never travel through the meeting socket.
+  const shareFile = useCallback(async (file) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    await apiClient.post(`/api/rooms/${encodeURIComponent(normalizedCode)}/files`, form);
+  }, [normalizedCode]);
+
+  const downloadFile = useCallback(async (file) => {
+    const res = await apiClient.get(`/api/rooms/${encodeURIComponent(normalizedCode)}/files/${file.id}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const link = Object.assign(document.createElement('a'), { href: url, download: file.name });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, [normalizedCode]);
 
   /** Dismiss a poll popup notification before its 15s auto-timeout. */
   const dismissPollNotification = useCallback((id) => {
@@ -1087,7 +1096,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     // Feature 7: Polls
     polls, createPoll, votePoll, endPoll, pollNotifications, dismissPollNotification,
     // Feature: File Sharing
-    sharedFiles, shareFile, fileNotifications, dismissFileNotification,
+    sharedFiles, shareFile, downloadFile, fileNotifications, dismissFileNotification,
     // Feature: Meeting Agenda
     agendaItems, agendaReady, addAgendaItem, toggleAgendaItem, reorderAgenda, deleteAgendaItem,
     // Socket ref — exposed so panels can subscribe to room-scoped events

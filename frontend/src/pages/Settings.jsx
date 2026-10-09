@@ -283,7 +283,7 @@ export default function Settings() {
                 <div className="space-y-4">
                   <SettingToggle label="Send HD video" description="720p; turn off on slow connections to send 360p" enabled={roomPref('hd', true)} onChange={(v) => setRoomPref('hd', v)} />
                   <SettingToggle label="Blur my background" description="Start every meeting with a blurred background" enabled={roomPref('bg', 'none') === 'blur'} onChange={(v) => setRoomPref('bg', v ? 'blur' : 'none')} />
-                  <SettingToggle label="Mirror my video" description="Only changes how you see yourself" enabled={roomPref('mirror', true)} onChange={(v) => setRoomPref('mirror', v)} />
+                  <SettingToggle label="Mirror my video" description="Only changes how you see yourself" enabled={roomPref('mirror', false)} onChange={(v) => setRoomPref('mirror', v)} />
                 </div>
               </SettingCard>
             </motion.div>

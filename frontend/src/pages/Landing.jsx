@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
-import { LayoutDashboard, QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { LayoutDashboard, QrCode, Scan, Copy, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import etherxLogo from '../assets/etherx_transparent.png';
+import etherxLogo from '../assets/etherx_logo_header.png';
 import { clearAuthSession, getStoredUser, getUserInitials } from '../utils/auth';
 import { useWallet } from '../context/WalletContext';
 import { ROUTES } from '../utils/constants';
@@ -18,7 +18,6 @@ const formatTime = (date) =>
   date.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
-    second: '2-digit',
   });
 
 const normalizeMeetingCode = (value) => {
@@ -39,54 +38,15 @@ function generateRoomCode() {
   return code;
 }
 
-function MicOnIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0z"
-      />
-    </svg>
-  );
-}
-
-function MicOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M15 11V8.41l2 2V11a5 5 0 0 1-7.73 4.18l1.46-1.46A3 3 0 0 0 15 11zM12 3a3 3 0 0 1 3 3v1.59l-6-6A3 3 0 0 1 12 3zM5.27 4L4 5.27 8.09 9.36V11a3.9 3.9 0 0 0 .04.54L6.31 9.72A5.9 5.9 0 0 0 6 11a6 6 0 0 0 6 6 5.8 5.8 0 0 0 2.43-.51L16 18.06V21h3a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h3v-2.07A8 8 0 0 1 4 11a7.9 7.9 0 0 1 .88-3.65L5.27 4zM20 20.73L6.54 7.27 5.13 5.86 3.27 4 2 5.27l1.86 1.86 1.41 1.41L18.73 22 20 20.73z"
-      />
-    </svg>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2l5 4V4l-5 4z"
-      />
-    </svg>
-  );
-}
-
-
-
 export default function Landing() {
   const navigate = useNavigate();
   const { logout } = useWallet();
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
   const storedUser = getStoredUser();
-  const displayName = storedUser?.name || 'Alex';
+  const displayName = storedUser?.name || 'Guest';
   const displayInitial = getUserInitials(displayName).charAt(0) || 'A';
 
   const [clock, setClock] = useState(formatTime(new Date()));
   const [meetingCode, setMeetingCode] = useState('');
-  const [micMuted, setMicMuted] = useState(true);
-  const [cameraOn, setCameraOn] = useState(false);
 
   // New QR features states
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -208,62 +168,6 @@ export default function Landing() {
     return () => clearInterval(timerId);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (cameraOn && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [cameraOn]);
-
-  const startCamera = async () => {
-    if (!navigator.mediaDevices) {
-      window.alert('Camera access requires HTTPS or localhost on mobile devices.');
-      setCameraOn(false);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setCameraOn(true);
-    } catch (error) {
-      setCameraOn(false);
-      window.alert('Unable to access camera. Please check browser permissions.');
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setCameraOn(false);
-  };
-
-  const handleCameraToggle = () => {
-    if (cameraOn) {
-      stopCamera();
-    } else {
-      startCamera();
-    }
-  };
-
   const handleJoin = () => {
     const code = normalizeMeetingCode(meetingCode);
     if (!code) { window.alert('Please enter a meeting code.'); return; }
@@ -323,12 +227,12 @@ export default function Landing() {
         <header className="meet-nav">
           <div className="meet-logo" role="img" aria-label="EtherXMeet logo">
             <span className="meet-brand-logo">
-              <img src={etherxLogo} alt="EtherX Meet" style={{ height: '120px', width: 'auto' }} />
+              <img src={etherxLogo} alt="EtherX Meet" style={{ height: '44px', width: 'auto' }} />
             </span>
           </div>
 
           <div className="meet-nav-right">
-            <span className="meet-clock" aria-live="polite">{clock}</span>
+            <span className="meet-clock">{clock}</span>
             <button
               type="button"
               onClick={() => navigate(ROUTES.DASHBOARD)}
@@ -339,7 +243,7 @@ export default function Landing() {
                 gap: 6,
                 background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)',
                 border: 'none',
-                color: '#eedca0',
+                color: '#1a1608',
                 fontWeight: 600,
                 fontSize: 13,
                 padding: '7px 16px',
@@ -364,51 +268,14 @@ export default function Landing() {
 
         <main className="meet-main">
           <div className="meet-content">
-            <section className="meet-preview-column">
-              <div className="meet-preview-box">
-                {cameraOn ? (
-                  <video ref={videoRef} autoPlay muted playsInline className="meet-video" />
-                ) : (
-                  <div className="meet-preview-avatar" aria-hidden="true">
-                    {displayInitial}
-                  </div>
-                )}
-
-                <span className="meet-label meet-name-label">{displayName}</span>
-                <span className="meet-label meet-camera-label">{cameraOn ? 'Camera is on' : 'Camera is off'}</span>
-              </div>
-
-              <div className="meet-controls">
-                <button
-                  type="button"
-                  className={`meet-control-btn ${micMuted ? 'is-muted' : ''}`}
-                  onClick={() => setMicMuted((value) => !value)}
-                  aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                >
-                  {micMuted ? <MicOff /> : <Mic />}
-                </button>
-
-                <button
-                  type="button"
-                  className={`meet-control-btn ${cameraOn ? '' : 'is-muted'}`}
-                  onClick={handleCameraToggle}
-                  aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
-                >
-                  {cameraOn ? <Video /> : <VideoOff />}
-                </button>
-
-
-              </div>
-            </section>
-
             <motion.section
               className="meet-join-column"
               variants={staggerContainer}
               initial="hidden"
               animate="visible"
             >
-              <motion.h1 variants={staggerChild}>Ready to join?</motion.h1>
-              <motion.p variants={staggerChild}>No one else can see you until you join this meeting.</motion.p>
+              <motion.h1 variants={staggerChild}>Start or join a meeting.</motion.h1>
+              <motion.p variants={staggerChild}>Create a room for your conversation, or open one with a meeting code or invite link.</motion.p>
 
               <motion.div variants={staggerChild} className="meet-join-row">
                 <input
@@ -420,7 +287,7 @@ export default function Landing() {
                       handleJoin();
                     }
                   }}
-                  placeholder="Enter a code or link"
+                  placeholder="Meeting code or invite link"
                   aria-label="Meeting code"
                   data-cursor-hover
                 />
@@ -429,6 +296,7 @@ export default function Landing() {
                   type="button"
                   onClick={() => setScannerOpen(true)}
                   title="Scan QR Code to Join"
+                  aria-label="Scan QR Code to Join"
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -447,7 +315,7 @@ export default function Landing() {
                 </button>
 
                 <motion.button type="button" className="join-btn" onClick={handleJoin} {...glowPulse}>
-                  Join
+                  Continue
                 </motion.button>
               </motion.div>
 

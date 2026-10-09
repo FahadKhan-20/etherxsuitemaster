@@ -9,6 +9,40 @@ const router = express.Router();
 const normalizeRoomCode = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 const {getMeetingPolicy} = require('../meetingExtensions');
 const { meetingMetrics } = require('../meetingMetrics');
+const multer = require('multer');
+const roomFiles = require('../roomFiles');
+
+const fileUpload = multer({ dest: require('path').join(roomFiles.baseDir, '.incoming'), limits: { fileSize: roomFiles.MAX_FILE_BYTES, files: 1, fields: 5 } });
+const handleFileUpload = (req, res, next) => fileUpload.single('file')(req, res, error => {
+  if (!error) return next();
+  return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? 'Files must be under 10 MB.' : error.message });
+});
+
+// Meeting members upload a file once; the room is told about it, not sent it.
+router.post('/:code/files', auth, handleFileUpload, (req, res) => {
+  const code = normalizeRoomCode(req.params.code);
+  const member = findRoomMember(code, req.user.id);
+  if (!member) {
+    if (req.file) require('fs').rm(req.file.path, { force: true }, () => {});
+    return res.status(403).json({ success: false, message: 'Join this meeting before sharing files.' });
+  }
+  if (!req.file) return res.status(400).json({ success: false, message: 'Choose a file to share.' });
+  const entry = roomFiles.add(code, { name: req.file.originalname, size: req.file.size, type: req.file.mimetype, tempPath: req.file.path, sharedBy: member.userName || 'Someone' });
+  req.app.get('io')?.to(code).emit('file-shared', roomFiles.publicFile(entry));
+  return res.status(201).json({ success: true, file: roomFiles.publicFile(entry) });
+});
+
+router.get('/:code/files/:id', auth, (req, res) => {
+  const code = normalizeRoomCode(req.params.code);
+  if (!findRoomMember(code, req.user.id)) return res.status(403).json({ success: false, message: 'Join this meeting to download its files.' });
+  const entry = roomFiles.get(code, String(req.params.id));
+  if (!entry) return res.status(404).json({ success: false, message: 'This file is no longer shared.' });
+  const name = entry.name.replace(/[^\w.\- ]+/g, '_');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', entry.size);
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  return require('fs').createReadStream(entry.path).pipe(res);
+});
 const findRoomMember = (roomCode, userId) => [...(rooms.get(roomCode)?.values() || [])].find(member => String(member.userId) === String(userId));
 
 // STUN plus a TURN relay for peers behind strict NATs. Configure your own relay in backend/.env;

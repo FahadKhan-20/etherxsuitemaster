@@ -1,6 +1,16 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
+
+/** Video id from a YouTube link (youtube.com watch/shorts/live/embed, youtu.be), or null. */
+function youtubeId(value) {
+  let url;
+  try { url = new URL(String(value || '')); } catch { return null; }
+  const host = url.hostname.replace(/^(www\.|m\.|music\.)/, '');
+  const id = host === 'youtu.be' ? url.pathname.slice(1).split('/')[0]
+    : host === 'youtube.com' ? (url.searchParams.get('v') || (url.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/?#]+)/) || [])[1]) : null;
+  return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}
 const { meetingMetrics } = require('./meetingMetrics');
 const { safeAck, guardedOn } = require('./socketGuard');
 const {registerMeetingExtensions,getMeetingPolicy,getGroup,meetingEnded,clearMeetingExtensions} = require('./meetingExtensions');
@@ -22,7 +32,7 @@ const roomMedia = new Map();
 const roomMediaPlayback = new Map();
 
 // roomCode -> [{id, name, size, type, url, sharedBy, sharedAt}]
-const roomFiles = new Map();
+const roomFiles = require('./roomFiles');
 
 
 // roomCode -> [{id, title, done, createdBy}]
@@ -55,7 +65,8 @@ function ticketAdmits(ticket, roomCode, userId) {
 
 // Shared files travel through the socket as base64 data URLs (files up to 10 MB, ~13.4 MB
 // once encoded). socket.io's default 1 MB message limit silently drops the sharer's connection.
-const MAX_SOCKET_MESSAGE_BYTES = 15 * 1024 * 1024;
+// Files go over HTTP (routes/rooms.js), so socket messages stay small: large ones block control traffic.
+const MAX_SOCKET_MESSAGE_BYTES = 1e6;
 
 // roomCode -> userId (host/presenter who controls the whiteboard)
 const roomHosts = new Map();
@@ -248,7 +259,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       return result;
     });
 
-    const extension = registerMeetingExtensions(io,socket,{roomCode:()=>currentRoom,getRoom:()=>rooms.get(currentRoom),privileged:isPrivileged,locked:code=>!!roomLocks[code],setHand,screenShares:roomScreenShares,recordings:roomRecordings,setNotes:(code,notes)=>roomNotes.set(code,notes),removeFile:(code,id)=>{roomFiles.set(code,(roomFiles.get(code)||[]).filter(f=>f.id!==id));io.to(code).emit('files-state',{files:roomFiles.get(code)});},setPlayback:(code,state)=>roomMediaPlayback.set(code,state)});
+    const extension = registerMeetingExtensions(io,socket,{roomCode:()=>currentRoom,getRoom:()=>rooms.get(currentRoom),privileged:isPrivileged,locked:code=>!!roomLocks[code],setHand,screenShares:roomScreenShares,recordings:roomRecordings,setNotes:(code,notes)=>roomNotes.set(code,notes),removeFile:(code,id)=>{roomFiles.remove(code,id);io.to(code).emit('files-state',{files:roomFiles.list(code)});},setPlayback:(code,state)=>roomMediaPlayback.set(code,state)});
     guardedOn(socket, 'join-room', (payload = {}) => {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
       const { roomCode: rawCode, userName: chosenName, muted = false, videoOff = false } = payload;
@@ -668,8 +679,11 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
      */
     onMember('share-media', ({ roomCode, url,kind }) => {
       if(url && (typeof url!=='string'||!/^https?:\/\//i.test(url)))return;
+      // YouTube pages play through YouTube's embedded player; store a canonical link for a real video id.
+      let shared={url:url||'',kind:kind==='audio'?'audio':'video'};
+      if(kind==='youtube'){const id=youtubeId(url);if(!id)return;shared={url:`https://www.youtube.com/watch?v=${id}`,kind:'youtube'};}
       roomMediaPlayback.delete(roomCode);
-      roomMedia.set(roomCode, {url:url||'',kind:kind==='audio'?'audio':'video'});
+      roomMedia.set(roomCode, shared);
       io.to(roomCode).emit('media-shared', roomMedia.get(roomCode));
     });
 
@@ -688,31 +702,13 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
      * Share a file with all participants in the room.
      * The file payload contains base64 data URL, name, size, type.
      */
-    onMember('share-file', ({ roomCode, file },ack=()=>{}) => {
-      if(!file || typeof file.name!=='string' || !Number.isFinite(file.size)||file.size<0||file.size>10*1024*1024||typeof file.url!=='string'||file.url.length>14*1024*1024||!/^data:[^,]*;base64,/.test(file.url))return ack({ok:false,error:'Invalid file or file over 10 MB.'});
-      const user = rooms.get(roomCode)?.get(socket.id);
-      const entry = {
-        id: require('crypto').randomUUID(),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        url: file.url, // base64 data URL
-        sharedBy: user?.userName || 'Someone',
-        sharedAt: Date.now(),
-      };
-      if (!roomFiles.has(roomCode)) roomFiles.set(roomCode, []);
-      roomFiles.get(roomCode).push(entry);
-      // Broadcast to all (including sender) so everyone's Files panel updates
-      io.to(roomCode).emit('file-shared', entry);
-      ack({ok:true});
-    });
 
     /**
      * Request the current list of shared files for the room.
      * Returns to the requesting socket only.
      */
     onMember('get-files', ({ roomCode }) => {
-      socket.emit('files-state', { files: roomFiles.get(roomCode) || [] });
+      socket.emit('files-state', { files: roomFiles.list(roomCode) });
     });
 
     // ── Feature: Meeting Agenda (host-only add/edit/complete) ───────────────
@@ -997,7 +993,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
           roomMedia.delete(currentRoom);
           roomMediaPlayback.delete(currentRoom);
           clearMeetingExtensions(currentRoom);
-          roomFiles.delete(currentRoom);
+          roomFiles.removeAll(currentRoom);
 
           roomAgenda.delete(currentRoom);
           roomHands.delete(currentRoom);

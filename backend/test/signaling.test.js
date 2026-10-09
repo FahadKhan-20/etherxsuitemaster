@@ -51,8 +51,8 @@ test('rejects sockets without a valid JWT before registering any handlers', asyn
   await assert.rejects(f.connect('expired', 'attacker', jwt.sign({ id: 'attacker' }, process.env.JWT_SECRET, { expiresIn: -1 })), /sign-in expired/);
   assert.equal(f.io.sockets.sockets.size, 0);
 });
-test('accepts socket messages big enough for a 10 MB shared file', t => {
-  assert.ok(fixture(t).io.options.maxHttpBufferSize >= Math.ceil(10 * 1024 * 1024 * 4 / 3));
+test('socket messages stay small; files travel over HTTP instead', t => {
+  assert.ok(fixture(t).io.options.maxHttpBufferSize <= 1e6);
 });
 test('direct join cannot bypass approval or claim another user identity or host role', async t => {
   const f = fixture(t); const host = await f.host(); const attacker = await f.connect('attacker');
@@ -203,8 +203,8 @@ test('reference rename, bandwidth request, file removal and end-all use authenti
   const f=fixture(t),host=await f.host(),guest=await f.guest(host,'guest');let reply;
   guest.trigger('rename-participant',{roomCode:f.code,name:'Chosen Name'},r=>reply=r);assert.equal(reply.ok,true);assert.equal(rooms.get(f.code).get(guest.id).userName,'Chosen Name');
   guest.trigger('request-media-quality',{roomCode:f.code,low:true},r=>reply=r);assert.equal(events(host,'peer-quality-request').at(-1).payload.low,true);
-  guest.trigger('share-file',{roomCode:f.code,file:{name:'bad',size:1,url:'javascript:alert(1)'}},r=>reply=r);assert.equal(reply.ok,false);
-  guest.trigger('share-file',{roomCode:f.code,file:{name:'notes.txt',size:2,url:'data:text/plain;base64,aGk='}});const file=f.io.emittedEvents.filter(e=>e.event==='file-shared').at(-1).payload;
+  const tmp=require('path').join(require('os').tmpdir(),'sig-file-'+Date.now());require('fs').writeFileSync(tmp,'hi');
+  const file=require('../src/roomFiles').add(f.code,{name:'notes.txt',size:2,type:'text/plain',tempPath:tmp,sharedBy:'Guest'});
   guest.trigger('remove-shared-file',{roomCode:f.code,id:file.id},r=>reply=r);assert.equal(reply.ok,false);
   host.trigger('remove-shared-file',{roomCode:f.code,id:file.id},r=>reply=r);assert.equal(reply.ok,true);assert.deepEqual(f.io.emittedEvents.filter(e=>e.event==='files-state').at(-1).payload.files,[]);
   guest.trigger('end-meeting',{roomCode:f.code},r=>reply=r);assert.equal(reply.ok,false);assert.equal(host.connected,true);
@@ -337,4 +337,13 @@ test('polls created in the same instant get unique ids and clean text', async t 
   h.trigger('create-poll', { roomCode: f.code, question: 'Bad', options: [{ evil: true }, 'Ok'] });
   h.trigger('create-poll', { roomCode: f.code, question: 'Too few', options: ['One'] });
   assert.equal(f.io.emittedEvents.filter(e => e.event === 'poll-created').length, 100);
+});
+
+test('YouTube links are shared as an embedded player; other pages cannot claim that kind', async t => {
+  const f = fixture(t);
+  const h = await f.host();
+  h.trigger('share-media', { roomCode: f.code, url: 'https://youtu.be/-S_9Kuy8faU?si=x', kind: 'youtube' });
+  assert.deepEqual(f.io.emittedEvents.filter(e => e.event === 'media-shared').at(-1).payload, { url: 'https://www.youtube.com/watch?v=-S_9Kuy8faU', kind: 'youtube' });
+  h.trigger('share-media', { roomCode: f.code, url: 'https://evil.example/x', kind: 'youtube' });
+  assert.equal(f.io.emittedEvents.filter(e => e.event === 'media-shared').length, 1);
 });
