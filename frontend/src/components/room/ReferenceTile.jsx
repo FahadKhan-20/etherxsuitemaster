@@ -10,7 +10,7 @@ export default function ReferenceTile({ person, children }) {
   }, [person.stream, person.showVid, person.isScreen]);
   useEffect(() => { if (speaking) person.onSpeaking?.(person.key); }, [speaking, person.key, person.onSpeaking]);
   return children({ ...person, videoRef: ref, screenRef: ref,
-    ring: speaking ? '#d9b54a' : person.ring,
+    ring: speaking ? 'var(--c-d9b54a)' : person.ring,
     glow: speaking ? `0 0 0 ${2 + Math.round(level * 8)}px rgba(217,181,74,${.12 + level * .22})` : 'none',
     bars: [.55,1,.7].map(k => Math.max(3,Math.round(12*k*(.2+level*.8)))+'px'),
   });

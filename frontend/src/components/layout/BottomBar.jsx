@@ -36,7 +36,7 @@ export default function BottomBar({ isInMeeting, onAction }) {
       <motion.div
         initial={{ y: 28, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="pointer-events-auto mx-auto flex w-fit max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-2 sm:gap-4 rounded-[24px] sm:rounded-[30px] border border-white/10 bg-[rgba(7,10,18,0.92)] px-3 sm:px-4 py-2 sm:py-3 font-inter shadow-[0_24px_80px_rgba(1,4,14,0.7),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-[28px]"
+        className="pointer-events-auto mx-auto flex w-fit max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-2 sm:gap-4 rounded-[24px] sm:rounded-[30px] border border-white/10 bg-[color-mix(in_srgb,var(--c-070a12)_92%,transparent)] px-3 sm:px-4 py-2 sm:py-3 font-inter shadow-[0_24px_80px_rgba(1,4,14,0.7),inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)] backdrop-blur-[28px]"
       >
         <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-3">
           <DockButton
@@ -99,7 +99,7 @@ export default function BottomBar({ isInMeeting, onAction }) {
 
 function DockButton({ icon, label, onClick, active = false, muted = false }) {
   const shellClass = active
-    ? 'border-[#d4af37]/28 bg-[#d4af37]/14 text-[#eedca0] shadow-[0_0_0_1px_rgba(212,175,55,0.12)]'
+    ? 'border-[var(--c-d4af37)]/28 bg-[var(--c-d4af37)]/14 text-[var(--t-eedca0)] shadow-[0_0_0_1px_rgba(212,175,55,0.12)]'
     : muted
       ? 'border-red-400/18 bg-red-500/10 text-red-100'
       : 'border-white/10 bg-white/[0.04] text-white/72';

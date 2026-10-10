@@ -72,7 +72,7 @@ export default function BreakoutRooms({ isOpen, onClose }) {
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 20 }}
-        className="w-full max-w-6xl rounded-[34px] border border-white/10 bg-[rgba(13,13,26,0.92)] p-6 shadow-[0_30px_90px_rgba(4,8,24,0.55)] backdrop-blur-2xl"
+        className="w-full max-w-6xl rounded-[34px] border border-white/10 bg-[color-mix(in_srgb,var(--c-0d0d1a)_92%,transparent)] p-6 shadow-[0_30px_90px_rgba(4,8,24,0.55)] backdrop-blur-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -109,7 +109,7 @@ export default function BreakoutRooms({ isOpen, onClose }) {
             {rooms.map((room) => (
               <article
                 key={room.id}
-                className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]"
               >
                 <div className="flex items-center justify-between">
                   <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-xs text-white/45">
@@ -130,7 +130,7 @@ export default function BreakoutRooms({ isOpen, onClose }) {
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-white/10">
                       <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#10B981,#06B6D4,#4F46E5)]"
+                        className="h-full rounded-full bg-[linear-gradient(90deg,var(--c-10b981),var(--c-06b6d4),var(--c-4f46e5))]"
                         style={{ width: `${room.activity}%` }}
                       />
                     </div>
@@ -143,7 +143,7 @@ export default function BreakoutRooms({ isOpen, onClose }) {
             ))}
           </div>
 
-          <div className="space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-white/35">Host broadcast</p>
               <h3 className="mt-2 text-2xl font-semibold text-white">One message to every room</h3>

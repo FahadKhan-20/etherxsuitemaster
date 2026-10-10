@@ -23,14 +23,14 @@ import {
 } from 'recharts';
 
 
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 
 
 
 // Same gold-on-black palette as the dashboard.
-const GOLD_SOFT = '#E8D5A3';
-const GOLD_DEEP = '#8a7330';
-const TOOLTIP = { background: 'rgba(10,10,12,0.95)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: 14, color: GOLD_SOFT };
+const GOLD_SOFT = 'var(--c-e8d5a3)';
+const GOLD_DEEP = 'var(--c-8a7330)';
+const TOOLTIP = { background: 'color-mix(in srgb, var(--c-0a0a0c) 95%, transparent)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: 14, color: 'var(--t-e8d5a3)' };
 const minutes = (seconds) => Math.round(seconds / 60);
 
 export default function Analytics() {
@@ -47,13 +47,13 @@ export default function Analytics() {
 
   return (
     <AnimatedPage>
-    <div className="min-h-[100dvh] bg-black text-app-text" style={{ position: 'relative', background: '#000000' }}>
+    <div className="min-h-[100dvh] bg-black text-app-text" style={{ position: 'relative', background: 'var(--c-000000)' }}>
       <TopBar />
 
       <main className="mx-auto max-w-[1450px] px-3 pb-12 pt-4 md:px-6">
-        <div className="rounded-[28px] border p-6" style={{ borderColor: 'rgba(212,175,55,0.25)', background: 'rgba(10,10,12,0.38)' }}>
-          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>Meeting analytics</p>
-          <h1 className="mt-2 font-syne text-4xl font-bold tracking-[-0.04em]" style={{ color: GOLD_SOFT }}>Read what the room was actually doing</h1>
+        <div className="rounded-[28px] border p-6" style={{ borderColor: 'rgba(212,175,55,0.25)', background: 'color-mix(in srgb, var(--c-0a0a0c) 38%, transparent)' }}>
+          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>Meeting analytics</p>
+          <h1 className="mt-2 font-syne text-4xl font-bold tracking-[-0.04em]" style={{ color: 'var(--t-e8d5a3)' }}>Read what the room was actually doing</h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-white/70">
             Attendance, meeting length and activity from the meetings you hosted or joined.
           </p>
@@ -103,11 +103,11 @@ function RealAnalytics({ sessions }) {
           <ChartCard title="Meetings per week" subtitle="Last 8 weeks">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={stats.weeks}>
-                <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-                <XAxis dataKey="week" tick={{ fill: '#b5ad9a', fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fill: '#b5ad9a', fontSize: 11 }} />
+                <CartesianGrid stroke="color-mix(in srgb, var(--t-ffffff) 8%, transparent)" vertical={false} />
+                <XAxis dataKey="week" tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
                 <Tooltip contentStyle={TOOLTIP} />
-                <Bar dataKey="meetings" fill={GOLD} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="meetings" fill={'var(--t-d4af37)'} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -116,12 +116,12 @@ function RealAnalytics({ sessions }) {
           <ChartCard title="Attendance and length" subtitle="Your last 10 meetings">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={stats.recent}>
-                <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: '#b5ad9a', fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fill: '#b5ad9a', fontSize: 11 }} />
+                <CartesianGrid stroke="color-mix(in srgb, var(--t-ffffff) 8%, transparent)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
                 <Tooltip contentStyle={TOOLTIP} />
-                <Bar dataKey="people" name="People" fill={GOLD} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="minutes" name="Minutes" fill={GOLD_DEEP} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="people" name="People" fill={'var(--t-d4af37)'} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="minutes" name="Minutes" fill={'var(--t-8a7330)'} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -130,7 +130,7 @@ function RealAnalytics({ sessions }) {
 
       <motion.div className="mt-6 grid gap-6 xl:grid-cols-[1fr_0.9fr]" variants={fadeUp} initial="hidden" animate="visible">
         <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>Recent meetings</p>
+          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>Recent meetings</p>
           <div className="mt-5 space-y-3">
             {sessions.slice(0, 8).map((s) => {
               const mine = s.participants.find((p) => String(p.user) === String(user?.id));
@@ -148,7 +148,7 @@ function RealAnalytics({ sessions }) {
           </div>
         </section>
         <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>Totals</p>
+          <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>Totals</p>
           <div className="mt-5 space-y-3">
             <MetricRow label="Meetings" value={`${sessions.length}`} />
             <MetricRow label="Time in meetings" value={`${(stats.total / 3600).toFixed(1)} h`} />
@@ -181,7 +181,7 @@ function SampleAnalytics() {
 
   return (
     <>
-        <div role="note" className="mt-6 rounded-[24px] border px-5 py-4 text-sm" style={{ borderColor: 'rgba(212,175,55,0.35)', background: 'rgba(212,175,55,0.08)', color: '#E8D5A3' }}>
+        <div role="note" className="mt-6 rounded-[24px] border px-5 py-4 text-sm" style={{ borderColor: 'rgba(212,175,55,0.35)', background: 'rgba(212,175,55,0.08)', color: 'var(--t-e8d5a3)' }}>
           <strong>Sample data.</strong> These charts are an example, not your meetings. Your real analytics appear here after your first meeting ends.
         </div>
 
@@ -196,11 +196,11 @@ function SampleAnalytics() {
             <ChartCard title="Speaking time distribution" subtitle="Live balance across the room">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={meetingAnalytics.speakingTime}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-                  <XAxis dataKey="participant" tick={{ fill: '#b5ad9a', fontSize: 11 }} hide />
-                  <YAxis tick={{ fill: '#b5ad9a', fontSize: 11 }} />
+                  <CartesianGrid stroke="color-mix(in srgb, var(--t-ffffff) 8%, transparent)" vertical={false} />
+                  <XAxis dataKey="participant" tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} hide />
+                  <YAxis tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
                   <Tooltip contentStyle={TOOLTIP} />
-                  <Bar dataKey="percentage" fill={GOLD} radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="percentage" fill={'var(--t-d4af37)'} radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -210,11 +210,11 @@ function SampleAnalytics() {
             <ChartCard title="Room energy over time" subtitle="Sentiment meter across the timeline">
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={timelineData}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-                  <XAxis dataKey="minute" tick={{ fill: '#b5ad9a', fontSize: 11 }} />
-                  <YAxis tick={{ fill: '#b5ad9a', fontSize: 11 }} />
+                  <CartesianGrid stroke="color-mix(in srgb, var(--t-ffffff) 8%, transparent)" vertical={false} />
+                  <XAxis dataKey="minute" tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
+                  <YAxis tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
                   <Tooltip contentStyle={TOOLTIP} />
-                  <Line type="monotone" dataKey="score" stroke={GOLD} strokeWidth={3} dot={{ r: 4, fill: GOLD }} />
+                  <Line type="monotone" dataKey="score" stroke={'var(--t-d4af37)'} strokeWidth={3} dot={{ r: 4, fill: 'var(--t-d4af37)' }} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -224,10 +224,10 @@ function SampleAnalytics() {
             <ChartCard title="Participation equity score" subtitle="Who dominated and who needs a nudge">
               <ResponsiveContainer width="100%" height={280}>
                 <RadarChart data={equityData}>
-                  <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                  <PolarAngleAxis dataKey="name" tick={{ fill: '#b5ad9a', fontSize: 11 }} />
-                  <Radar name="Speaking" dataKey="speaking" stroke={GOLD} fill={GOLD} fillOpacity={0.3} />
-                  <Radar name="Engagement" dataKey="engagement" stroke={GOLD_SOFT} fill={GOLD_SOFT} fillOpacity={0.22} />
+                  <PolarGrid stroke="color-mix(in srgb, var(--t-ffffff) 8%, transparent)" />
+                  <PolarAngleAxis dataKey="name" tick={{ fill: 'var(--t-b5ad9a)', fontSize: 11 }} />
+                  <Radar name="Speaking" dataKey="speaking" stroke={'var(--t-d4af37)'} fill={'var(--t-d4af37)'} fillOpacity={0.3} />
+                  <Radar name="Engagement" dataKey="engagement" stroke={'var(--t-e8d5a3)'} fill={'var(--t-e8d5a3)'} fillOpacity={0.22} />
                 </RadarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -258,14 +258,14 @@ function SampleAnalytics() {
           viewport={{ once: true, margin: '-40px' }}
         >
           <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>Swimlane timeline</p>
+            <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>Swimlane timeline</p>
             <div className="mt-5 space-y-4">
               {meetingAnalytics.speakingTime.map((entry, index) => (
                 <div key={entry.participant} className="grid items-center gap-3 md:grid-cols-[180px_1fr_auto]">
                   <p className="text-sm font-medium text-white">{entry.participant}</p>
                   <div className="h-3 overflow-hidden rounded-full bg-white/10">
                     <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#b8860b,#d4af37)]"
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--c-b8860b),var(--c-d4af37))]"
                       style={{ width: `${entry.percentage * 2.2}%` }}
                     />
                   </div>
@@ -276,7 +276,7 @@ function SampleAnalytics() {
           </section>
 
           <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>Quality indicators</p>
+            <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>Quality indicators</p>
             <div className="mt-5 space-y-3">
               <MetricRow label="Engagement score" value={`${meetingAnalytics.engagementScore}/100`} />
               <MetricRow label="Interruptions" value={`${meetingAnalytics.interruptionCount}`} />
@@ -293,8 +293,8 @@ function SampleAnalytics() {
 function ChartCard({ title, subtitle, children }) {
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-      <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'rgba(212,175,55,0.9)' }}>{subtitle}</p>
-      <h2 className="mt-2 text-2xl font-semibold" style={{ color: GOLD_SOFT }}>{title}</h2>
+      <p className="text-xs font-bold uppercase tracking-[0.28em]" style={{ color: 'color-mix(in srgb, var(--t-d4af37) 90%, transparent)' }}>{subtitle}</p>
+      <h2 className="mt-2 text-2xl font-semibold" style={{ color: 'var(--t-e8d5a3)' }}>{title}</h2>
       <div className="mt-5">{children}</div>
     </section>
   );

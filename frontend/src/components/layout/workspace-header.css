@@ -1,19 +1,21 @@
-.workspace-header { height: 130px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 40; background: #000; color: #fff; font-family: 'Inter', sans-serif; }
+.workspace-header { height: 130px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 40; background: var(--c-000000); color: var(--t-ffffff); font-family: 'Inter', sans-serif; }
 .workspace-brand { display: inline-flex; align-items: center; flex-shrink: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .workspace-brand picture { display: block; }
 .workspace-brand img { display: block; width: auto; height: 120px; }
 .workspace-header-controls { display: flex; align-items: center; gap: 10px; }
-.workspace-clock { min-width: 88px; text-align: right; font-size: 13px; color: #c8c1af; font-variant-numeric: tabular-nums; }
+.workspace-clock { min-width: 88px; text-align: right; font-size: 13px; color: var(--t-c8c1af); font-variant-numeric: tabular-nums; }
 .workspace-header-controls button { display: inline-flex; align-items: center; justify-content: center; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
-.workspace-nav-button { min-height: 34px; padding: 7px 16px; gap: 6px; border: 1px solid #ffd029; border-radius: 8px; background: #ffd029; color: #000; }
-.workspace-nav-button:hover { background: #ffe365; border-color: #ffe365; }
-.workspace-logout { min-height: 34px; padding: 0 14px; border: 1px solid #453918; border-radius: 8px; background: transparent; color: #ffd029; }
-.workspace-logout:hover { background: #221b05; border-color: #ffd029; }
+.workspace-nav-button { min-height: 34px; padding: 7px 16px; gap: 6px; border: 1px solid var(--c-ffd029); border-radius: 8px; background: var(--c-ffd029); color: var(--t-000000); }
+.workspace-nav-button:hover { background: var(--c-ffe365); border-color: var(--c-ffe365); }
+.workspace-logout { min-height: 34px; padding: 0 14px; border: 1px solid var(--c-453918); border-radius: 8px; background: transparent; color: var(--t-ffd029); }
+.workspace-logout:hover { background: var(--c-221b05); border-color: var(--c-ffd029); }
 .workspace-logout:disabled { opacity: .65; cursor: wait; }
+.workspace-theme { width: 34px; height: 34px; padding: 0; border: 1px solid var(--c-453918); border-radius: 8px; background: transparent; color: var(--t-ffd029); }
+.workspace-theme:hover { background: var(--c-221b05); border-color: var(--c-ffd029); }
 .workspace-account { padding: 0; border: 0; border-radius: 50%; background: transparent; }
-.workspace-avatar { width: 34px; height: 34px; background: #ffd029; color: #000; font-size: 13px; font-weight: 600; box-shadow: 0 0 0 2px #ffd02940; }
-.workspace-header :is(button, a):focus-visible { outline: 2px solid #ffd029; outline-offset: 4px; }
-.workspace-header-error { position: absolute; right: 24px; bottom: 5px; color: #ffaaaa; font-size: 12px; }
+.workspace-avatar { width: 34px; height: 34px; background: var(--c-ffd029); color: var(--t-000000); font-size: 13px; font-weight: 600; box-shadow: 0 0 0 2px #ffd02940; }
+.workspace-header :is(button, a):focus-visible { outline: 2px solid var(--c-ffd029); outline-offset: 4px; }
+.workspace-header-error { position: absolute; right: 24px; bottom: 5px; color: var(--t-ffaaaa); font-size: 12px; }
 @media (max-width: 768px) {
   .workspace-header { height: 72px; padding: 0 16px; gap: 10px; }
   .workspace-brand img { width: 125px; height: 42px; object-fit: contain; }
@@ -22,6 +24,7 @@
   .workspace-header-controls button { min-height: 44px; }
   .workspace-nav-button { padding: 8px 10px; }
   .workspace-logout { padding: 0 10px; }
+  .workspace-theme { width: 44px; }
   .workspace-account { min-width: 44px; }
 }
 @media (max-width: 380px) {

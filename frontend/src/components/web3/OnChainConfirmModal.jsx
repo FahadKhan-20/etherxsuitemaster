@@ -3,24 +3,24 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 const GOLD_DIM = 'rgba(212,175,55,0.10)';
 const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const SURFACE = 'rgba(18,18,22,0.98)';
+const SURFACE = 'color-mix(in srgb, var(--c-121216) 98%, transparent)';
 
 function Row({ label, value, gold, mono }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       padding: '10px 14px',
-      background: 'rgba(255,255,255,0.04)',
+      background: 'color-mix(in srgb, var(--c-ffffff) 4%, transparent)',
       borderRadius: 8,
       marginBottom: 8,
     }}>
-      <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'var(--t-888888)' }}>{label}</span>
       <span style={{
         fontSize: 13,
-        color: gold ? GOLD : '#F0EEE8',
+        color: gold ? GOLD : 'var(--t-f0eee8)',
         fontFamily: mono ? 'monospace' : 'inherit',
         fontWeight: gold ? 600 : 400,
         maxWidth: 200,
@@ -107,7 +107,7 @@ export default function OnChainConfirmModal({
           exit={{ opacity: 0 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(9,11,11,0.8)',
+            background: 'color-mix(in srgb, var(--c-090b0b) 80%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 20,
           }}
@@ -135,7 +135,7 @@ export default function OnChainConfirmModal({
                 style={{
                   position: 'absolute', top: 16, right: 16,
                   background: 'transparent', border: 'none',
-                  color: '#666', cursor: 'pointer', padding: 4,
+                  color: 'var(--t-666666)', cursor: 'pointer', padding: 4,
                 }}
               >
                 <X size={18} />
@@ -144,10 +144,10 @@ export default function OnChainConfirmModal({
 
             {phase === 'confirm' && (
               <>
-                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: '#f0e6d3', marginBottom: 6 }}>
+                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: 'var(--t-f0e6d3)', marginBottom: 6 }}>
                   {isHost ? 'Start meeting on Polygon' : 'Join meeting on Polygon'}
                 </h2>
-                <p style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>
+                <p style={{ fontSize: 13, color: 'var(--t-888888)', marginBottom: 24 }}>
                   This will record your meeting permanently on-chain.
                 </p>
                 <Row label="Meeting ID" value={meetingId} mono />
@@ -158,8 +158,8 @@ export default function OnChainConfirmModal({
                   onClick={handleConfirm}
                   style={{
                     width: '100%', marginTop: 20,
-                    background: 'linear-gradient(135deg,#d4af37,#b8860b)',
-                    border: 'none', color: '#000',
+                    background: 'linear-gradient(135deg,var(--c-d4af37),var(--c-b8860b))',
+                    border: 'none', color: 'var(--t-000000)',
                     fontWeight: 700, fontSize: 14,
                     padding: 14, borderRadius: 10, cursor: 'pointer',
                   }}
@@ -171,7 +171,7 @@ export default function OnChainConfirmModal({
                   style={{
                     width: '100%', marginTop: 10,
                     background: 'transparent', border: 'none',
-                    color: '#666', fontSize: 13, cursor: 'pointer', padding: 8,
+                    color: 'var(--t-666666)', fontSize: 13, cursor: 'pointer', padding: 8,
                   }}
                 >
                   Cancel
@@ -181,10 +181,10 @@ export default function OnChainConfirmModal({
 
             {phase === 'pending' && (
               <>
-                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: '#f0e6d3', marginBottom: 6 }}>
+                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: 'var(--t-f0e6d3)', marginBottom: 6 }}>
                   Waiting for confirmation
                 </h2>
-                <p style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>
+                <p style={{ fontSize: 13, color: 'var(--t-888888)', marginBottom: 24 }}>
                   Transaction submitted — waiting for block inclusion.
                 </p>
                 <Row label="Tx Hash" value={txHash ? `${txHash.slice(0,10)}…${txHash.slice(-6)}` : 'Submitting…'} mono />
@@ -194,7 +194,7 @@ export default function OnChainConfirmModal({
                   width: '100%', marginTop: 20,
                   background: GOLD_DIM,
                   border: `1px solid ${GOLD_BORDER}`,
-                  color: GOLD, fontWeight: 700, fontSize: 14,
+                  color: 'var(--t-d4af37)', fontWeight: 700, fontSize: 14,
                   padding: 14, borderRadius: 10,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
                 }}>
@@ -206,10 +206,10 @@ export default function OnChainConfirmModal({
 
             {phase === 'error' && (
               <>
-                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: '#f0e6d3', marginBottom: 6 }}>
+                <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 18, color: 'var(--t-f0e6d3)', marginBottom: 6 }}>
                   Transaction failed
                 </h2>
-                <p style={{ fontSize: 13, color: '#EF4444', marginBottom: 24 }}>
+                <p style={{ fontSize: 13, color: 'var(--t-ef4444)', marginBottom: 24 }}>
                   {contractError ?? 'Unknown error'}
                 </p>
                 <Row label="Meeting ID" value={meetingId} mono />
@@ -217,8 +217,8 @@ export default function OnChainConfirmModal({
                   onClick={handleConfirm}
                   style={{
                     width: '100%', marginTop: 20,
-                    background: 'linear-gradient(135deg,#d4af37,#b8860b)',
-                    border: 'none', color: '#000',
+                    background: 'linear-gradient(135deg,var(--c-d4af37),var(--c-b8860b))',
+                    border: 'none', color: 'var(--t-000000)',
                     fontWeight: 700, fontSize: 14,
                     padding: 14, borderRadius: 10, cursor: 'pointer',
                   }}
@@ -230,7 +230,7 @@ export default function OnChainConfirmModal({
                   style={{
                     width: '100%', marginTop: 10,
                     background: 'transparent', border: 'none',
-                    color: '#888', fontSize: 13, cursor: 'pointer', padding: 8,
+                    color: 'var(--t-888888)', fontSize: 13, cursor: 'pointer', padding: 8,
                   }}
                 >
                   Skip on-chain record and join anyway

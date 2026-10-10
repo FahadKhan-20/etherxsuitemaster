@@ -45,8 +45,8 @@ export default function MeetingRail({ mobile = false }) {
         mobile ? 'h-full' : 'sticky top-24 h-[calc(100dvh-130px)]'
       }`}
     >
-      <div className="mb-4 rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-[#d4af37]/72">Room sidebar</p>
+      <div className="mb-4 rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_6%,transparent)]">
+        <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--t-d4af37)]/72">Room sidebar</p>
         <h2 className="mt-2 font-poppins text-xl font-semibold tracking-[-0.03em] text-white">People and chat</h2>
         <p className="mt-1 text-sm leading-6 text-white/52">
           Follow the live roster and keep quick decisions moving without crowding the stage.
@@ -59,7 +59,7 @@ export default function MeetingRail({ mobile = false }) {
             <p className="text-[11px] uppercase tracking-[0.28em] text-white/36">People</p>
             <p className="mt-1 text-sm font-medium text-white">{participants.length} in this meeting</p>
           </div>
-          <span className="rounded-full border border-[#d4af37]/16 bg-[#d4af37]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#eedca0]">
+          <span className="rounded-full border border-[var(--c-d4af37)]/16 bg-[var(--c-d4af37)]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--t-eedca0)]">
             Live
           </span>
         </div>
@@ -70,14 +70,14 @@ export default function MeetingRail({ mobile = false }) {
               <motion.div
                 key={participant.id}
                 whileHover={{ scale: 1.01, y: -1 }}
-                className="flex items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.03] px-3 py-3 transition-all duration-300 hover:border-[#d4af37]/18"
+                className="flex items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.03] px-3 py-3 transition-all duration-300 hover:border-[var(--c-d4af37)]/18"
               >
                 <Avatar name={participant.name} size="md" status="online" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-medium text-white">{participant.name}</p>
                     {participant.isSpeaking ? (
-                      <span className="rounded-full border border-[#d4af37]/16 bg-[#d4af37]/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[#eedca0]">
+                      <span className="rounded-full border border-[var(--c-d4af37)]/16 bg-[var(--c-d4af37)]/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[var(--t-eedca0)]">
                         Speaking
                       </span>
                     ) : null}
@@ -85,7 +85,7 @@ export default function MeetingRail({ mobile = false }) {
                   <p className="mt-1 text-xs text-white/42">{participant.role}</p>
                 </div>
 
-                <div className="flex items-center gap-1 rounded-full border border-white/8 bg-[#070c14]/70 px-2 py-1 text-white/50">
+                <div className="flex items-center gap-1 rounded-full border border-white/8 bg-[var(--c-070c14)]/70 px-2 py-1 text-white/50">
                   {participant.isMuted ? (
                     <MicOff className="h-3.5 w-3.5 text-red-300" />
                   ) : (
@@ -106,7 +106,7 @@ export default function MeetingRail({ mobile = false }) {
           )}
         </div>
 
-        <div className="mt-4 flex min-h-0 flex-1 flex-col rounded-[22px] border border-white/8 bg-[#050910]/48 p-3">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col rounded-[22px] border border-white/8 bg-[var(--c-050910)]/48 p-3">
           <div className="flex items-center justify-between px-1">
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-white/36">Chat</p>
@@ -127,7 +127,7 @@ export default function MeetingRail({ mobile = false }) {
                   <div
                     className={`max-w-[90%] rounded-[22px] border px-3.5 py-3 ${
                       message.isSelf
-                        ? 'border-[#d4af37]/18 bg-[#d4af37]/10 text-white'
+                        ? 'border-[var(--c-d4af37)]/18 bg-[var(--c-d4af37)]/10 text-white'
                         : 'border-white/8 bg-white/[0.04] text-white/85'
                     }`}
                   >
@@ -151,7 +151,7 @@ export default function MeetingRail({ mobile = false }) {
             )}
           </div>
 
-          <div className="mt-3 rounded-[20px] border border-white/8 bg-white/[0.03] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="mt-3 rounded-[20px] border border-white/8 bg-white/[0.03] p-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_6%,transparent)]">
             <div className="flex gap-2">
               <input
                 id="etherx-chat-input"
@@ -165,13 +165,13 @@ export default function MeetingRail({ mobile = false }) {
                     handleSend();
                   }
                 }}
-                className="min-w-0 flex-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-sm text-white placeholder:text-white/28 focus:border-[#d4af37]/25 focus:outline-none"
+                className="min-w-0 flex-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-sm text-white placeholder:text-white/28 focus:border-[var(--c-d4af37)]/25 focus:outline-none"
               />
               <button
                 type="button"
                 onClick={handleSend}
                 disabled={!draft.trim()}
-                className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#d4af37]/18 bg-[#d4af37]/12 text-[#eedca0] transition-all duration-300 hover:scale-[1.03] hover:border-[#d4af37]/36 hover:bg-[#d4af37]/16 disabled:cursor-not-allowed disabled:opacity-45"
+                className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--c-d4af37)]/18 bg-[var(--c-d4af37)]/12 text-[var(--t-eedca0)] transition-all duration-300 hover:scale-[1.03] hover:border-[var(--c-d4af37)]/36 hover:bg-[var(--c-d4af37)]/16 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Send className="h-4 w-4" />
               </button>

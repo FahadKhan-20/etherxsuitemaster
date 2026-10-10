@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useWallet } from '../../context/WalletContext';
 import { useEnsName } from '../../hooks/useEnsName';
 
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 const GOLD_DIM = 'rgba(212,175,55,0.10)';
 const GOLD_BORDER = 'rgba(212,175,55,0.2)';
 
@@ -46,7 +46,7 @@ export default function ChainHUD({ txPending = false }) {
       {/* Top-right: chain status */}
       <div style={{
         position: 'absolute', top: 20, right: 20, zIndex: 10,
-        background: 'rgba(9,11,11,0.9)',
+        background: 'color-mix(in srgb, var(--c-090b0b) 90%, transparent)',
         border: `1px solid ${GOLD_BORDER}`,
         borderRadius: 8,
         padding: '8px 12px',
@@ -55,19 +55,19 @@ export default function ChainHUD({ txPending = false }) {
       }}>
         <span style={{
           width: 6, height: 6, borderRadius: '50%',
-          background: '#22C55E',
-          boxShadow: '0 0 6px #22C55E',
+          background: 'var(--c-22c55e)',
+          boxShadow: '0 0 6px var(--c-22c55e)',
           flexShrink: 0,
         }} />
         <div>
-          <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+          <div style={{ fontSize: 11, color: 'var(--t-d4af37)', fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.05em' }}>
             {networkLabel}
           </div>
-          <div style={{ fontSize: 10, color: '#666' }}>
+          <div style={{ fontSize: 10, color: 'var(--t-666666)' }}>
             {blockNumber ? `Block #${blockNumber.toLocaleString()}` : 'Syncing…'}
           </div>
           {displayAddress && (
-            <div style={{ fontSize: 10, color: 'rgba(212,175,55,0.5)', fontFamily: 'monospace', marginTop: 1 }}>
+            <div style={{ fontSize: 10, color: 'color-mix(in srgb, var(--t-d4af37) 50%, transparent)', fontFamily: 'monospace', marginTop: 1 }}>
               {displayAddress}
             </div>
           )}
@@ -92,7 +92,7 @@ export default function ChainHUD({ txPending = false }) {
             display: 'inline-block',
             animation: 'spin 0.8s linear infinite',
           }} />
-          <span style={{ fontSize: 11, color: GOLD }}>Anchoring message…</span>
+          <span style={{ fontSize: 11, color: 'var(--t-d4af37)' }}>Anchoring message…</span>
         </div>
       )}
 

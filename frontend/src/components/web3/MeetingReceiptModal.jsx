@@ -2,31 +2,31 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy } from 'lucide-react';
 
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const SURFACE = 'rgba(18,18,22,0.98)';
+const SURFACE = 'color-mix(in srgb, var(--c-121216) 98%, transparent)';
 
 function Row({ label, value, link, linkHref, mono }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       padding: '10px 0',
-      borderBottom: '1px solid rgba(255,255,255,0.05)',
+      borderBottom: '1px solid color-mix(in srgb, var(--c-ffffff) 5%, transparent)',
     }}>
-      <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'var(--t-888888)' }}>{label}</span>
       {link ? (
         <a
           href={linkHref}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontSize: 12, color: GOLD, textDecoration: 'underline', cursor: 'pointer' }}
+          style={{ fontSize: 12, color: 'var(--t-d4af37)', textDecoration: 'underline', cursor: 'pointer' }}
         >
           {value} ↗
         </a>
       ) : (
         <span style={{
           fontSize: 12,
-          color: '#C9B48A',
+          color: 'var(--t-c9b48a)',
           fontFamily: mono ? 'monospace' : 'inherit',
           maxWidth: 220,
           overflow: 'hidden',
@@ -84,7 +84,7 @@ export default function MeetingReceiptModal({
           exit={{ opacity: 0 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(9,11,11,0.85)',
+            background: 'color-mix(in srgb, var(--c-090b0b) 85%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 20,
           }}
@@ -114,10 +114,10 @@ export default function MeetingReceiptModal({
                 ⛓️
               </div>
               <div>
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, color: '#f0e6d3', fontWeight: 600 }}>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, color: 'var(--t-f0e6d3)', fontWeight: 600 }}>
                   Meeting recorded on-chain
                 </div>
-                <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'var(--t-888888)', marginTop: 2 }}>
                   Permanent proof of this meeting exists on Polygon
                 </div>
               </div>
@@ -127,10 +127,10 @@ export default function MeetingReceiptModal({
             <Row label="Meeting ID" value={meetingId} mono />
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)',
+              padding: '10px 0', borderBottom: '1px solid color-mix(in srgb, var(--c-ffffff) 5%, transparent)',
             }}>
-              <span style={{ fontSize: 12, color: '#888' }}>Duration</span>
-              <span style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>
+              <span style={{ fontSize: 12, color: 'var(--t-888888)' }}>Duration</span>
+              <span style={{ fontSize: 12, color: 'var(--t-d4af37)', fontWeight: 600 }}>
                 {durationMin ?? '—'} min · {participantCount ?? '—'} participants
               </span>
             </div>
@@ -140,11 +140,11 @@ export default function MeetingReceiptModal({
             {nftTokenId != null && (
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                padding: '10px 0', borderBottom: '1px solid color-mix(in srgb, var(--c-ffffff) 5%, transparent)',
               }}>
-                <span style={{ fontSize: 12, color: '#888' }}>NFT Receipt</span>
+                <span style={{ fontSize: 12, color: 'var(--t-888888)' }}>NFT Receipt</span>
                 <span style={{
-                  fontSize: 12, color: GOLD, fontWeight: 700,
+                  fontSize: 12, color: 'var(--t-d4af37)', fontWeight: 700,
                   background: 'rgba(212,175,55,0.1)',
                   border: '1px solid rgba(212,175,55,0.25)',
                   borderRadius: 6, padding: '2px 8px',
@@ -165,7 +165,7 @@ export default function MeetingReceiptModal({
                   flex: 1,
                   background: 'transparent',
                   border: `1px solid rgba(212,175,55,0.3)`,
-                  color: GOLD,
+                  color: 'var(--t-d4af37)',
                   fontSize: 13, padding: 10, borderRadius: 8,
                   cursor: 'pointer', fontWeight: 600,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -177,9 +177,9 @@ export default function MeetingReceiptModal({
                 onClick={onDashboard}
                 style={{
                   flex: 1,
-                  background: 'linear-gradient(135deg,#d4af37,#b8860b)',
+                  background: 'linear-gradient(135deg,var(--c-d4af37),var(--c-b8860b))',
                   border: 'none',
-                  color: '#000',
+                  color: 'var(--t-000000)',
                   fontSize: 13, padding: 10, borderRadius: 8,
                   cursor: 'pointer', fontWeight: 700,
                 }}

@@ -13,12 +13,6 @@ export function UIProvider({ children }) {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [networkStatus, setNetworkStatus] = useState('stable');
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [theme, setThemeState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('nexmeet_theme') || 'dark';
-    }
-    return 'dark';
-  });
 
   const addToast = (message, type = TOAST_TYPES.INFO, duration = 4000) => {
     const id = crypto.randomUUID();
@@ -28,13 +22,6 @@ export function UIProvider({ children }) {
 
   const removeToast = (toastId) => {
     setToasts((previousToasts) => previousToasts.filter((toast) => toast.id !== toastId));
-  };
-
-  const setTheme = (newTheme) => {
-    setThemeState(newTheme);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('nexmeet_theme', newTheme);
-    }
   };
 
   const value = useMemo(
@@ -50,10 +37,8 @@ export function UIProvider({ children }) {
       setNetworkStatus,
       isReconnecting,
       setIsReconnecting,
-      theme,
-      setTheme,
     }),
-    [isCommandPaletteOpen, isReconnecting, networkStatus, toasts, theme],
+    [isCommandPaletteOpen, isReconnecting, networkStatus, toasts],
   );
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;

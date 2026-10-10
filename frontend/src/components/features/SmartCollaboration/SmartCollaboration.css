@@ -3,8 +3,8 @@
   min-height: 100%;
   padding: 24px;
   box-sizing: border-box;
-  background: #111827;
-  color: #ffffff;
+  background: var(--c-111827);
+  color: var(--t-ffffff);
 }
 
 .smart-collaboration-header {
@@ -18,7 +18,7 @@
 
 .smart-collaboration-header p {
   margin: 0;
-  color: #9ca3af;
+  color: var(--t-9ca3af);
 }
 
 .smart-collaboration-layout {
@@ -29,14 +29,14 @@
 }
 
 .collaboration-sidebar {
-  background: #1f2937;
+  background: var(--c-1f2937);
   border-radius: 12px;
   padding: 16px;
 }
 
 .collaboration-sidebar h3 {
   margin: 0 0 15px;
-  color: #d1d5db;
+  color: var(--t-d1d5db);
 }
 
 .collaboration-tool {
@@ -49,17 +49,17 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #ffffff;
+  color: var(--t-ffffff);
   text-align: left;
   cursor: pointer;
 }
 
 .collaboration-tool:hover {
-  background: #374151;
+  background: var(--c-374151);
 }
 
 .collaboration-tool.active {
-  background: #374151;
+  background: var(--c-374151);
 }
 
 .tool-icon {
@@ -77,12 +77,12 @@
 }
 
 .tool-info small {
-  color: #9ca3af;
+  color: var(--t-9ca3af);
   line-height: 1.4;
 }
 
 .collaboration-workspace {
-  background: #1f2937;
+  background: var(--c-1f2937);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -92,7 +92,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid var(--c-374151);
 }
 
 .workspace-header h2 {
@@ -101,14 +101,14 @@
 
 .workspace-header p {
   margin: 0;
-  color: #9ca3af;
+  color: var(--t-9ca3af);
 }
 
 .connection-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #86efac;
+  color: var(--t-86efac);
   font-size: 14px;
 }
 
@@ -116,7 +116,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--c-22c55e);
 }
 
 .workspace-content {
@@ -141,7 +141,7 @@
 }
 
 .empty-workspace p {
-  color: #9ca3af;
+  color: var(--t-9ca3af);
   margin-bottom: 24px;
 }
 
@@ -149,14 +149,14 @@
   padding: 12px 20px;
   border: none;
   border-radius: 8px;
-  background: #2563eb;
+  background: var(--c-2563eb);
   color: white;
   cursor: pointer;
   font-weight: 600;
 }
 
 .primary-button:hover {
-  background: #1d4ed8;
+  background: var(--c-1d4ed8);
 }
 
 @media (max-width: 800px) {

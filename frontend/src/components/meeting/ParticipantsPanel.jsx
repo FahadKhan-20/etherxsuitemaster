@@ -11,7 +11,7 @@ const networkTone = {
 export default function ParticipantsPanel({ participants }) {
   return (
     <div className="space-y-3">
-      <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
         <p className="text-xs uppercase tracking-[0.28em] text-white/35">Live roster</p>
         <p className="mt-2 text-xl font-semibold text-white">{participants.length} in the room</p>
         <p className="mt-2 text-sm text-white/50">Presence, media, hands, and connection quality update live.</p>
@@ -21,7 +21,7 @@ export default function ParticipantsPanel({ participants }) {
         <motion.article
           key={participant.id}
           whileHover={{ y: -2 }}
-          className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          className="rounded-[24px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]"
         >
           <div className="flex items-center gap-3">
             <Avatar name={participant.name} size="lg" status="online" />

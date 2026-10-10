@@ -1,27 +1,27 @@
 .gmeet-room {
-  --nm-primary-gold: #d4af37;
-  --nm-shadow-gold: #b8860b;
-  --nm-background: #000000;
+  --nm-primary-gold: var(--c-d4af37);
+  --nm-shadow-gold: var(--c-b8860b);
+  --nm-background: var(--c-000000);
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: #000000;
-  color: #d4af37;
+  background: var(--c-000000);
+  color: var(--t-d4af37);
   font-family: 'Inter', sans-serif;
   position: relative;
 }
 
 .gmeet-topbar {
-  background: #000000;
+  background: var(--c-000000);
   border-bottom: 1px solid rgba(212,175,55,0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
   font-size: 13px;
-  color: #9aa0a6;
+  color: var(--t-9aa0a6);
   gap: 8px;
 }
 
@@ -47,7 +47,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .gmeet-topbar-chip svg {
@@ -64,7 +64,7 @@
 }
 
 .gmeet-tile {
-  background: #1a1b1b;
+  background: var(--c-1a1b1b);
   border-radius: 12px;
   border: 2px solid transparent;
   width: 100%;
@@ -106,14 +106,14 @@
   justify-content: center;
   font-size: 26px;
   font-weight: 500;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .gmeet-tile-meta-left,
 .gmeet-tile-meta-right {
   position: absolute;
   bottom: 8px;
-  background: rgba(32, 33, 36, 0.8);
+  background: color-mix(in srgb, var(--c-202124) 80%, transparent);
   border-radius: 999px;
   min-height: 24px;
   display: inline-flex;
@@ -125,12 +125,12 @@
   padding: 0 10px;
   gap: 8px;
   font-size: 13px;
-  color: #ffffff;
+  color: var(--t-ffffff);
 }
 
 .host-badge {
   font-size: 11px;
-  color: #9aa0a6;
+  color: var(--t-9aa0a6);
 }
 
 .gmeet-tile-meta-right {
@@ -142,7 +142,7 @@
 .gmeet-tile-meta-right svg {
   width: 14px;
   height: 14px;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .gmeet-controls {
@@ -164,7 +164,7 @@
 
 .meeting-code {
   font-size: 12px;
-  color: #9aa0a6;
+  color: var(--t-9aa0a6);
 }
 
 .gmeet-controls-center {
@@ -185,8 +185,8 @@
   height: 48px;
   border-radius: 50%;
   border: none;
-  background: #1f2020;
-  color: #e8eaed;
+  background: var(--c-1f2020);
+  color: var(--t-e8eaed);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -199,12 +199,12 @@
 }
 
 .gmeet-control-btn.is-danger {
-  background: #ea4335;
+  background: var(--c-ea4335);
 }
 
 .gmeet-control-btn.is-warning {
-  background: #fbbc04;
-  color: #202124;
+  background: var(--c-fbbc04);
+  color: var(--t-202124);
 }
 
 .leave-btn {
@@ -213,8 +213,8 @@
   min-width: 90px;
   height: 48px;
   padding: 0 18px;
-  background: #ea4335;
-  color: #ffffff;
+  background: var(--c-ea4335);
+  color: var(--t-ffffff);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -255,7 +255,7 @@
 .gmeet-icon-btn {
   border: none;
   background: transparent;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -276,18 +276,18 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #1f2020;
+  background: var(--c-1f2020);
 }
 
 .gmeet-icon-btn.side-btn {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #1f2020;
+  background: var(--c-1f2020);
 }
 
 .gmeet-icon-btn.side-btn:hover {
-  background: #292a2a;
+  background: var(--c-292a2a);
 }
 
 .gmeet-side-panel {
@@ -321,7 +321,7 @@
   font-family: "Google Sans", Roboto, sans-serif;
   font-size: 14px;
   font-weight: 500;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .panel-content {
@@ -352,14 +352,14 @@
   justify-content: center;
   background: var(--nm-primary-gold);
   color: var(--nm-background);
-  color: #e8eaed;
+  color: var(--t-e8eaed);
   font-size: 11px;
   font-weight: 600;
 }
 
 .participant-name {
   font-size: 13px;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .chat-panel {
@@ -375,7 +375,7 @@
 }
 
 .message-row {
-  background: #1b1c1c;
+  background: var(--c-1b1c1c);
   border-radius: 8px;
   padding: 8px;
 }
@@ -383,13 +383,13 @@
 .message-from {
   margin: 0 0 4px;
   font-size: 12px;
-  color: #9aa0a6;
+  color: var(--t-9aa0a6);
 }
 
 .message-text {
   margin: 0;
   font-size: 13px;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
 }
 
 .chat-input-row input {
@@ -398,7 +398,7 @@
   border: 1px solid var(--nm-shadow-gold);
   background: transparent;
   border-radius: 4px;
-  color: #e8eaed;
+  color: var(--t-e8eaed);
   padding: 0 10px;
   outline: none;
   font-size: 13px;
@@ -408,9 +408,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9aa0a6;
+  color: var(--t-9aa0a6);
   font-size: 14px;
-  background: #1a1b1b;
+  background: var(--c-1a1b1b);
   border-radius: 12px;
 }
 
@@ -420,8 +420,8 @@
   bottom: 82px;
   transform: translateX(-50%);
   background: rgba(234, 67, 53, 0.2);
-  border: 1px solid #ea4335;
-  color: #e8eaed;
+  border: 1px solid var(--c-ea4335);
+  color: var(--t-e8eaed);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 12px;

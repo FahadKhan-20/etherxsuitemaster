@@ -188,17 +188,17 @@ export default function CaptionsOverlay({ socket, roomCode, show, transcribe, bo
       <div
         style={{
           maxWidth: 'min(900px, 85%)', padding: '8px 16px', borderRadius: 6,
-          background: 'rgba(0,0,0,.78)', color: '#fff',
+          background: 'color-mix(in srgb, var(--c-000000) 78%, transparent)', color: 'var(--t-ffffff)',
           fontSize: 'clamp(16px, 1.7vw, 24px)', lineHeight: 1.4, textAlign: 'center',
-          fontFamily: "'Sora', sans-serif", textShadow: '0 1px 2px rgba(0,0,0,.8)',
+          fontFamily: "'Sora', sans-serif", textShadow: '0 1px 2px color-mix(in srgb, var(--s-000000) 80%, transparent)',
           wordBreak: 'break-word',
         }}
       >
-        {notice && <div style={{ color: '#e5c76b' }}>{notice}</div>}
-        {missing.length > 0 && <div style={{ color: '#a49c8a', fontSize: '0.75em' }}>Not captioned (browser unsupported): {missing.join(', ')}</div>}
+        {notice && <div style={{ color: 'var(--t-e5c76b)' }}>{notice}</div>}
+        {missing.length > 0 && <div style={{ color: 'var(--t-a49c8a)', fontSize: '0.75em' }}>Not captioned (browser unsupported): {missing.join(', ')}</div>}
         {lines.map((l) => (
           <div key={l.key}>
-            <span style={{ color: '#e5c76b', fontWeight: 700 }}>{l.name}: </span>
+            <span style={{ color: 'var(--t-e5c76b)', fontWeight: 700 }}>{l.name}: </span>
             {l.text}
           </div>
         ))}

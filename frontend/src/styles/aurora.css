@@ -4,7 +4,7 @@
   z-index: -1;
   width: 100vw;
   height: 100vh;
-  background: #000000;
+  background: var(--c-000000);
   overflow: hidden;
   pointer-events: none;
 }
@@ -22,7 +22,7 @@
 .aurora-orb-1 {
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, #d4af37 0%, #b8860b 55%, transparent 80%);
+  background: radial-gradient(circle, var(--c-d4af37) 0%, var(--c-b8860b) 55%, transparent 80%);
   top: -10%;
   left: -10%;
   animation: orb1 18s ease-in-out infinite;
@@ -31,7 +31,7 @@
 .aurora-orb-2 {
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, #eedca0 0%, #2d2a24 60%, transparent 80%);
+  background: radial-gradient(circle, var(--c-eedca0) 0%, var(--c-2d2a24) 60%, transparent 80%);
   bottom: -15%;
   right: -10%;
   animation: orb2 22s ease-in-out infinite;
@@ -40,7 +40,7 @@
 .aurora-orb-3 {
   width: 420px;
   height: 420px;
-  background: radial-gradient(circle, #eedca0 0%, #b8860b 55%, transparent 80%);
+  background: radial-gradient(circle, var(--c-eedca0) 0%, var(--c-b8860b) 55%, transparent 80%);
   top: 40%;
   left: 50%;
   transform: translateX(-50%);
@@ -50,7 +50,7 @@
 .aurora-orb-4 {
   width: 320px;
   height: 320px;
-  background: radial-gradient(circle, #c39a20 0%, #2d2a24 60%, transparent 80%);
+  background: radial-gradient(circle, var(--c-c39a20) 0%, var(--c-2d2a24) 60%, transparent 80%);
   top: 10%;
   right: 15%;
   animation: orb4 20s ease-in-out infinite;
@@ -59,7 +59,7 @@
 .aurora-orb-5 {
   width: 280px;
   height: 280px;
-  background: radial-gradient(circle, #d4af37 0%, #b8860b 50%, transparent 80%);
+  background: radial-gradient(circle, var(--c-d4af37) 0%, var(--c-b8860b) 50%, transparent 80%);
   bottom: 20%;
   left: 15%;
   animation: orb5 14s ease-in-out infinite;
@@ -81,10 +81,10 @@
   top: 20%;
   background: linear-gradient(90deg,
     transparent 0%,
-    #b8860b 20%,
-    #d4af37 40%,
-    #c39a20 60%,
-    #b8860b 80%,
+    var(--c-b8860b) 20%,
+    var(--c-d4af37) 40%,
+    var(--c-c39a20) 60%,
+    var(--c-b8860b) 80%,
     transparent 100%
   );
   animation: band1 12s ease-in-out infinite;
@@ -95,10 +95,10 @@
   top: 55%;
   background: linear-gradient(90deg,
     transparent 0%,
-    #2d2a24 15%,
-    #c39a20 35%,
-    #d4af37 55%,
-    #b8860b 75%,
+    var(--c-2d2a24) 15%,
+    var(--c-c39a20) 35%,
+    var(--c-d4af37) 55%,
+    var(--c-b8860b) 75%,
     transparent 100%
   );
   animation: band2 17s ease-in-out infinite reverse;

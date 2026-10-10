@@ -131,8 +131,8 @@ export default function CommandPalette() {
               aria-labelledby="command-palette-title"
             >
               {/* Search Input */}
-              <div className="relative border-b border-[#d4af37]/20">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d4af37]" />
+              <div className="relative border-b border-[var(--c-d4af37)]/20">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--t-d4af37)]" />
                 <input
                   type="text"
                   id="command-palette-title"
@@ -143,9 +143,9 @@ export default function CommandPalette() {
                     setSelectedIndex(0);
                   }}
                   autoFocus
-                  className="w-full pl-12 pr-4 py-4 bg-transparent text-white placeholder-[#d4af37]/50 focus:outline-none"
+                  className="w-full pl-12 pr-4 py-4 bg-transparent text-white placeholder-[var(--c-d4af37)]/50 focus:outline-none"
                 />
-                <kbd className="absolute right-4 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-[#d4af37] bg-[#1a1a1a]/80 rounded border border-[#d4af37]/25">
+                <kbd className="absolute right-4 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-[var(--t-d4af37)] bg-[var(--c-1a1a1a)]/80 rounded border border-[var(--c-d4af37)]/25">
                   ESC
                 </kbd>
               </div>
@@ -153,7 +153,7 @@ export default function CommandPalette() {
               {/* Results */}
               <div className="max-h-96 overflow-y-auto p-2">
                 {filteredItems.length === 0 ? (
-                  <div className="py-12 text-center text-[#d4af37]">
+                  <div className="py-12 text-center text-[var(--t-d4af37)]">
                     No results found
                   </div>
                 ) : (
@@ -165,8 +165,8 @@ export default function CommandPalette() {
                         onMouseEnter={() => setSelectedIndex(index)}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
                           selectedIndex === index
-                            ? 'bg-[#d4af37]/20 text-white'
-                            : 'text-[#d4af37]/80 hover:bg-[#d4af37]/10 hover:text-white'
+                            ? 'bg-[var(--c-d4af37)]/20 text-white'
+                            : 'text-[var(--t-d4af37)]/80 hover:bg-[var(--c-d4af37)]/10 hover:text-white'
                         }`}
                       >
                         <span className="text-2xl">{item.icon}</span>
@@ -175,7 +175,7 @@ export default function CommandPalette() {
                           <p className="text-xs opacity-70 capitalize">{item.type}</p>
                         </div>
                         {selectedIndex === index && (
-                          <ArrowRight className="w-4 h-4 text-[#d4af37]" />
+                          <ArrowRight className="w-4 h-4 text-[var(--t-d4af37)]" />
                         )}
                       </button>
                     ))}
@@ -184,22 +184,22 @@ export default function CommandPalette() {
               </div>
 
               {/* Footer */}
-              <div className="border-t border-[#d4af37]/20 px-4 py-3 flex items-center justify-between text-xs text-[#d4af37]">
+              <div className="border-t border-[var(--c-d4af37)]/20 px-4 py-3 flex items-center justify-between text-xs text-[var(--t-d4af37)]">
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1">
-                    <kbd className="px-2 py-1 bg-[#1a1a1a]/80 rounded border border-[#d4af37]/25">↑↓</kbd>
+                    <kbd className="px-2 py-1 bg-[var(--c-1a1a1a)]/80 rounded border border-[var(--c-d4af37)]/25">↑↓</kbd>
                     Navigate
                   </span>
                   <span className="flex items-center gap-1">
-                    <kbd className="px-2 py-1 bg-[#1a1a1a]/80 rounded border border-[#d4af37]/25">↵</kbd>
+                    <kbd className="px-2 py-1 bg-[var(--c-1a1a1a)]/80 rounded border border-[var(--c-d4af37)]/25">↵</kbd>
                     Select
                   </span>
                 </div>
                 <span className="flex items-center gap-1">
-                  <kbd className="px-2 py-1 bg-[#1a1a1a]/80 rounded border border-[#d4af37]/25">
+                  <kbd className="px-2 py-1 bg-[var(--c-1a1a1a)]/80 rounded border border-[var(--c-d4af37)]/25">
                     {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}
                   </kbd>
-                  <kbd className="px-2 py-1 bg-[#1a1a1a]/80 rounded border border-[#d4af37]/25">K</kbd>
+                  <kbd className="px-2 py-1 bg-[var(--c-1a1a1a)]/80 rounded border border-[var(--c-d4af37)]/25">K</kbd>
                   to close
                 </span>
               </div>

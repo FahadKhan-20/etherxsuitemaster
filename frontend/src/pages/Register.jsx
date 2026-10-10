@@ -21,10 +21,10 @@ function getStrength(pw) {
   if (/[^A-Za-z0-9]/.test(pw)) s++
   return [
     { score: 0, label: '', color: '' },
-    { score: 1, label: 'Weak',   color: '#ef4444' },
-    { score: 2, label: 'Fair',   color: '#f59e0b' },
-    { score: 3, label: 'Good',   color: '#3b82f6' },
-    { score: 4, label: 'Strong', color: '#22c55e' },
+    { score: 1, label: 'Weak',   color: 'var(--t-ef4444)' },
+    { score: 2, label: 'Fair',   color: 'var(--t-f59e0b)' },
+    { score: 3, label: 'Good',   color: 'var(--t-3b82f6)' },
+    { score: 4, label: 'Strong', color: 'var(--t-22c55e)' },
   ][s]
 }
 

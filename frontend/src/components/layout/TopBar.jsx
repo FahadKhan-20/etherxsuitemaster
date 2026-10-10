@@ -143,7 +143,7 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
     <button
       type="button"
       onClick={handleLogout}
-      className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white/70 transition-all duration-300 hover:text-[#d4af37] bg-transparent border-none cursor-pointer"
+      className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white/70 transition-all duration-300 hover:text-[var(--t-d4af37)] bg-transparent border-none cursor-pointer"
     >
       <LogOut className="h-4 w-4" />
       <span className="hidden sm:inline">Logout</span>
@@ -151,7 +151,7 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
   );
 
   return (
-    <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(212,175,55,0.08)', background: '#050505', backdropFilter: 'blur(16px)', fontFamily: "'Inter', sans-serif" }}>
+    <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(212,175,55,0.08)', background: 'var(--c-050505)', backdropFilter: 'blur(16px)', fontFamily: "'Inter', sans-serif" }}>
       <div 
         style={{ margin: '0 auto', display: 'flex', maxWidth: '1680px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '10px 14px' }}
       >
@@ -177,18 +177,18 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
 
             <button
               onClick={copyMeetingLink}
-              className="flex items-center gap-2 sm:gap-3 rounded-[16px] sm:rounded-[20px] border border-white/10 bg-white/[0.04] px-2.5 sm:px-4 py-1.5 sm:py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-300 hover:border-[#d4af37]/30"
+              className="flex items-center gap-2 sm:gap-3 rounded-[16px] sm:rounded-[20px] border border-white/10 bg-white/[0.04] px-2.5 sm:px-4 py-1.5 sm:py-2.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_6%,transparent)] transition-all duration-300 hover:border-[var(--c-d4af37)]/30"
               title="Copy invite link"
             >
               <div className="text-left">
                 <p className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/40">Code</p>
                 <p className="text-xs sm:text-sm font-medium text-white">{meetingCode}</p>
               </div>
-              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#d4af37]" />
+              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[var(--t-d4af37)]" />
             </button>
 
             <IconShell title="Secure room">
-              <LockKeyhole className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#d4af37]" />
+              <LockKeyhole className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[var(--t-d4af37)]" />
             </IconShell>
 
             <Dropdown
@@ -206,8 +206,8 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="hidden sm:block" style={{ textAlign: 'right', paddingRight: '4px' }}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#f0e6d3' }}>{user.name}</p>
-              <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#a89878', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>{user.plan}</p>
+              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--t-f0e6d3)' }}>{user.name}</p>
+              <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--t-a89878)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>{user.plan}</p>
             </div>
 
             <Dropdown
@@ -215,11 +215,11 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
               trigger={
                 <button 
                   aria-label="Account menu"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#f0e6d3', transition: 'color 0.2s' }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#d4af37'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#f0e6d3'}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t-f0e6d3)', transition: 'color 0.2s' }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--t-d4af37)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--t-f0e6d3)'}
                 >
-                  <div style={{ display: 'flex', height: '32px', width: '32px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'linear-gradient(135deg,#d4af37,#b8860b)', fontSize: '12px', fontWeight: 700, color: '#0a0a0a' }}>
+                  <div style={{ display: 'flex', height: '32px', width: '32px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'linear-gradient(135deg,var(--c-d4af37),var(--c-b8860b))', fontSize: '12px', fontWeight: 700, color: 'var(--t-0a0a0a)' }}>
                     {userInitials}
                   </div>
                   <UserRound size={14} style={{ opacity: 0.7 }} />
@@ -231,7 +231,7 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
             <button
               type="button"
               onClick={handleLogout}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: '#f0e6d3', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)', cursor: 'pointer', transition: 'all 0.2s', fontFamily: "'Sora', sans-serif" }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: 'var(--t-f0e6d3)', background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)', cursor: 'pointer', transition: 'all 0.2s', fontFamily: "'Sora', sans-serif" }}
             >
               <LogOut size={13} />
               <span className="hidden sm:inline">Logout</span>
@@ -257,7 +257,7 @@ function EtherxMark({ compact = false }) {
 
 function TopChip({ eyebrow, value, detail }) {
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-2.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_6%,transparent)]">
       <p className="text-[10px] uppercase tracking-[0.24em] text-white/38">{eyebrow}</p>
       <p className="mt-0.5 text-sm font-medium text-white">{value}</p>
       {detail ? <p className="mt-0.5 text-xs text-white/45">{detail}</p> : null}
@@ -268,7 +268,7 @@ function TopChip({ eyebrow, value, detail }) {
 function IconShell({ children, title }) {
   return (
     <button
-      className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-300 hover:border-[#d4af37]/30 hover:text-[#d4af37]"
+      className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-[18px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_6%,transparent)] transition-all duration-300 hover:border-[var(--c-d4af37)]/30 hover:text-[var(--t-d4af37)]"
       title={title}
       type="button"
     >

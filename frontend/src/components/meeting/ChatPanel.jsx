@@ -23,7 +23,7 @@ export default function ChatPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 rounded-[26px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="mb-4 rounded-[26px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(79,70,229,0.95),rgba(6,182,212,0.9))]">
             <Sparkles className="h-5 w-5 text-white" />
@@ -46,7 +46,7 @@ export default function ChatPanel() {
             className={`flex ${message.isSelf ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[88%] rounded-[24px] border p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${
+              className={`max-w-[88%] rounded-[24px] border p-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)] ${
                 message.isSelf
                   ? 'border-indigo-400/20 bg-indigo-500/12'
                   : 'border-white/10 bg-white/5'
@@ -76,7 +76,7 @@ export default function ChatPanel() {
         ))}
       </div>
 
-      <div className="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-3 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
         <div className="flex gap-2">
           <Input
             value={draft}

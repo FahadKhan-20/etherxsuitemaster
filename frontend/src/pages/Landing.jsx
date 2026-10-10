@@ -364,7 +364,7 @@ export default function Landing() {
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#d4af37',
+                    color: 'var(--t-d4af37)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -409,14 +409,14 @@ export default function Landing() {
                     width: '52px',
                     height: '52px',
                     borderRadius: '12px',
-                    border: '1.5px solid rgba(45, 42, 36, 0.70)',
-                    color: '#d4af37',
-                    background: 'rgba(0, 0, 0, 0.97)',
+                    border: '1.5px solid color-mix(in srgb, var(--c-2d2a24) 70%, transparent)',
+                    color: 'var(--t-d4af37)',
+                    background: 'color-mix(in srgb, var(--c-000000) 97%, transparent)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    boxShadow: '0 8px 40px rgba(0,0,0,0.80), 0 0 28px rgba(212, 175, 55, 0.16)',
+                    boxShadow: '0 8px 40px color-mix(in srgb, var(--s-000000) 80%, transparent), 0 0 28px rgba(212, 175, 55, 0.16)',
                     transition: 'background 0.15s, border-color 0.15s',
                   }}
                 >
@@ -440,7 +440,7 @@ export default function Landing() {
           <div style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
+            background: 'color-mix(in srgb, var(--c-000000) 85%, transparent)',
             backdropFilter: 'blur(16px)',
             zIndex: 9999,
             display: 'flex',
@@ -455,11 +455,11 @@ export default function Landing() {
               style={{
                 width: '100%',
                 maxWidth: '380px',
-                background: '#0c0c0e',
+                background: 'var(--c-0c0c0e)',
                 border: '1.5px solid rgba(212, 175, 55, 0.3)',
                 borderRadius: '16px',
                 padding: '32px 28px',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.9), 0 0 40px rgba(212,175,55,0.06)',
+                boxShadow: '0 24px 64px color-mix(in srgb, var(--s-000000) 90%, transparent), 0 0 40px rgba(212,175,55,0.06)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -473,12 +473,12 @@ export default function Landing() {
                   position: 'absolute',
                   top: '20px',
                   right: '20px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'color-mix(in srgb, var(--c-ffffff) 5%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--c-ffffff) 10%, transparent)',
                   width: '30px',
                   height: '30px',
                   borderRadius: '50%',
-                  color: 'rgba(255, 255, 255, 0.6)',
+                  color: 'color-mix(in srgb, var(--t-ffffff) 60%, transparent)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -487,25 +487,25 @@ export default function Landing() {
                   transition: 'all 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.target.style.color = '#fff';
+                  e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 10%, transparent)';
+                  e.target.style.color = 'var(--t-ffffff)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.target.style.color = 'rgba(255, 255, 255, 0.6)';
+                  e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 5%, transparent)';
+                  e.target.style.color = 'color-mix(in srgb, var(--t-ffffff) 60%, transparent)';
                 }}
               >
                 ✕
               </button>
 
-              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#d4af37', letterSpacing: '-0.02em' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--t-d4af37)', letterSpacing: '-0.02em' }}>
                 Scan Meeting QR
               </h3>
 
               {scanError ? (
-                <p style={{ color: '#ef4444', fontSize: '13px', textAlign: 'center', margin: 0 }}>{scanError}</p>
+                <p style={{ color: 'var(--t-ef4444)', fontSize: '13px', textAlign: 'center', margin: 0 }}>{scanError}</p>
               ) : (
-                <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '13px', textAlign: 'center', margin: 0, lineHeight: '1.5' }}>
+                <p style={{ color: 'color-mix(in srgb, var(--t-ffffff) 50%, transparent)', fontSize: '13px', textAlign: 'center', margin: 0, lineHeight: '1.5' }}>
                   Align the QR code within the scanning window.
                 </p>
               )}
@@ -517,7 +517,7 @@ export default function Landing() {
                   aspectRatio: '1',
                   borderRadius: '12px',
                   overflow: 'hidden',
-                  background: '#000',
+                  background: 'var(--c-000000)',
                   border: '1.5px solid rgba(212, 175, 55, 0.15)',
                 }}
               />
@@ -525,18 +525,18 @@ export default function Landing() {
               <button
                 onClick={() => setScannerOpen(false)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  background: 'color-mix(in srgb, var(--c-ffffff) 4%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--c-ffffff) 8%, transparent)',
                   borderRadius: '10px',
-                  color: '#fff',
+                  color: 'var(--t-ffffff)',
                   fontSize: '13px',
                   fontWeight: 600,
                   padding: '10px 24px',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.08)'}
-                onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.04)'}
+                onMouseEnter={(e) => e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 8%, transparent)'}
+                onMouseLeave={(e) => e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 4%, transparent)'}
               >
                 Cancel
               </button>
@@ -551,7 +551,7 @@ export default function Landing() {
           <div style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
+            background: 'color-mix(in srgb, var(--c-000000) 85%, transparent)',
             backdropFilter: 'blur(16px)',
             zIndex: 9999,
             display: 'flex',
@@ -566,11 +566,11 @@ export default function Landing() {
               style={{
                 width: '100%',
                 maxWidth: '380px',
-                background: '#0c0c0e',
+                background: 'var(--c-0c0c0e)',
                 border: '1.5px solid rgba(212, 175, 55, 0.3)',
                 borderRadius: '16px',
                 padding: '32px 28px',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.9), 0 0 40px rgba(212,175,55,0.06)',
+                boxShadow: '0 24px 64px color-mix(in srgb, var(--s-000000) 90%, transparent), 0 0 40px rgba(212,175,55,0.06)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -584,12 +584,12 @@ export default function Landing() {
                   position: 'absolute',
                   top: '20px',
                   right: '20px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'color-mix(in srgb, var(--c-ffffff) 5%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--c-ffffff) 10%, transparent)',
                   width: '30px',
                   height: '30px',
                   borderRadius: '50%',
-                  color: 'rgba(255, 255, 255, 0.6)',
+                  color: 'color-mix(in srgb, var(--t-ffffff) 60%, transparent)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -598,22 +598,22 @@ export default function Landing() {
                   transition: 'all 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.target.style.color = '#fff';
+                  e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 10%, transparent)';
+                  e.target.style.color = 'var(--t-ffffff)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.target.style.color = 'rgba(255, 255, 255, 0.6)';
+                  e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 5%, transparent)';
+                  e.target.style.color = 'color-mix(in srgb, var(--t-ffffff) 60%, transparent)';
                 }}
               >
                 ✕
               </button>
 
-              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#d4af37', letterSpacing: '-0.02em' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--t-d4af37)', letterSpacing: '-0.02em' }}>
                 Meeting QR Code
               </h3>
 
-              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '13px', textAlign: 'center', margin: 0, lineHeight: '1.5' }}>
+              <p style={{ color: 'color-mix(in srgb, var(--t-ffffff) 50%, transparent)', fontSize: '13px', textAlign: 'center', margin: 0, lineHeight: '1.5' }}>
                 Scan with your mobile device on the same Wi-Fi network to connect.
               </p>
 
@@ -625,25 +625,25 @@ export default function Landing() {
                   height: '200px',
                   borderRadius: '12px',
                   border: '1.5px solid rgba(212, 175, 55, 0.15)',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                  background: '#0c0c0e'
+                  boxShadow: '0 8px 32px color-mix(in srgb, var(--s-000000) 60%, transparent)',
+                  background: 'var(--c-0c0c0e)'
                 }}
               />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', alignItems: 'center' }}>
-                <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'rgba(212, 175, 55, 0.6)', letterSpacing: '0.08em', fontWeight: 600 }}>
+                <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--t-d4af37) 60%, transparent)', letterSpacing: '0.08em', fontWeight: 600 }}>
                   Meeting Code
                 </span>
-                <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff', letterSpacing: '0.02em' }}>
+                <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--t-ffffff)', letterSpacing: '0.02em' }}>
                   {createdQrCode.code}
                 </span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                <span style={{ fontSize: '9px', textTransform: 'uppercase', color: 'rgba(255, 255, 255, 0.4)', letterSpacing: '0.05em' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', alignItems: 'center', background: 'color-mix(in srgb, var(--c-ffffff) 2%, transparent)', padding: '10px', borderRadius: '10px', border: '1px solid color-mix(in srgb, var(--c-ffffff) 4%, transparent)' }}>
+                <span style={{ fontSize: '9px', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--t-ffffff) 40%, transparent)', letterSpacing: '0.05em' }}>
                   Phone Connect Link
                 </span>
-                <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.6)', wordBreak: 'break-all', textAlign: 'center', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: '11px', color: 'color-mix(in srgb, var(--t-ffffff) 60%, transparent)', wordBreak: 'break-all', textAlign: 'center', fontFamily: 'monospace' }}>
                   {createdQrCode.url}
                 </span>
               </div>
@@ -657,18 +657,18 @@ export default function Landing() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    background: 'color-mix(in srgb, var(--c-ffffff) 4%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--c-ffffff) 8%, transparent)',
                     borderRadius: '10px',
-                    color: '#fff',
+                    color: 'var(--t-ffffff)',
                     fontSize: '13px',
                     fontWeight: 600,
                     height: '42px',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.08)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.04)'}
+                  onMouseEnter={(e) => e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 8%, transparent)'}
+                  onMouseLeave={(e) => e.target.style.background = 'color-mix(in srgb, var(--c-ffffff) 4%, transparent)'}
                 >
                   {copied ? 'Copied' : 'Copy Link'}
                 </button>
@@ -677,10 +677,10 @@ export default function Landing() {
                   onClick={handleJoinCreated}
                   style={{
                     flex: 1,
-                    background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)',
+                    background: 'linear-gradient(135deg, var(--c-d4af37) 0%, var(--c-b8860b) 100%)',
                     border: 'none',
                     borderRadius: '10px',
-                    color: '#0a0800',
+                    color: 'var(--t-0a0800)',
                     fontSize: '13px',
                     fontWeight: 700,
                     height: '42px',

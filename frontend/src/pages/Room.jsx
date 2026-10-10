@@ -162,7 +162,7 @@ export default function Room() {
   };
 
   return (
-    <div className="meeting-prejoin" data-meeting-theme={preferences.theme}>
+    <div className="meeting-prejoin">
       <header className="prejoin-header">
         <a href={ROUTES.HOME} aria-label="EtherX Meet home"><img src={etherxLogo} alt="EtherX Meet" /></a>
         <div className="prejoin-header-meta"><button type="button" onClick={() => navigate(ROUTES.HOME)}><ArrowLeft size={16} /> Back to home</button></div>

@@ -156,7 +156,7 @@ export default function ParticleNetwork() {
         width: '100vw',
         height: '100vh',
         pointerEvents: 'none',
-        background: '#000000',
+        background: 'var(--c-000000)',
       }}
     />
   );

@@ -14,21 +14,21 @@ import {
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  glass:      'rgba(255,255,255,0.78)',
+  glass:      'color-mix(in srgb, var(--c-ffffff) 78%, transparent)',
   glassBlur:  'blur(20px)',
-  glassBdr:   '1px solid rgba(255,255,255,0.65)',
-  popup:      'rgba(255,255,255,0.97)',
-  text:       '#0b1c30',
-  textMuted:  '#424754',
-  textFaint:  '#727785',
-  primary:    '#7C3AED',
+  glassBdr:   '1px solid color-mix(in srgb, var(--c-ffffff) 65%, transparent)',
+  popup:      'color-mix(in srgb, var(--c-ffffff) 97%, transparent)',
+  text:       'var(--c-0b1c30)',
+  textMuted:  'var(--c-424754)',
+  textFaint:  'var(--c-727785)',
+  primary:    'var(--c-7c3aed)',
   primBg:     'rgba(124,58,237,0.08)',
   primBdr:    'rgba(124,58,237,0.2)',
-  error:      '#ba1a1a',
+  error:      'var(--c-ba1a1a)',
   errBg:      'rgba(186,26,26,0.08)',
   errBdr:     'rgba(186,26,26,0.18)',
-  surface:    '#eff4ff',
-  outline:    'rgba(194,198,214,0.55)',
+  surface:    'var(--c-eff4ff)',
+  outline:    'color-mix(in srgb, var(--c-c2c6d6) 55%, transparent)',
 };
 
 // ── CC icon ──────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function CtrlBtn({ onClick, label, active, muted, badge, children }) {
         transition: 'background 0.15s, color 0.15s, border-color 0.15s',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background = muted ? 'rgba(186,26,26,0.14)' : active ? 'rgba(124,58,237,0.14)' : '#fff';
+        e.currentTarget.style.background = muted ? 'rgba(186,26,26,0.14)' : active ? 'rgba(124,58,237,0.14)' : 'var(--c-ffffff)';
         e.currentTarget.style.color = muted ? C.error : C.primary;
       }}
       onMouseLeave={e => {
@@ -71,10 +71,10 @@ function CtrlBtn({ onClick, label, active, muted, badge, children }) {
         <span style={{
           position: 'absolute', top: -4, right: -4,
           width: 18, height: 18, borderRadius: '50%',
-          background: C.primary, color: '#fff',
+          background: C.primary, color: 'var(--t-ffffff)',
           fontSize: 10, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'Geist, Inter, sans-serif', border: '2px solid #FAFAF9',
+          fontFamily: 'Geist, Inter, sans-serif', border: '2px solid var(--c-fafaf9)',
         }}>
           {badge}
         </span>
@@ -184,7 +184,7 @@ function FeaturesMenu({ onClose,
                 borderRadius: 10, color: active ? C.primary : C.textMuted,
                 cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'Geist, Inter, sans-serif',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = active ? 'rgba(124,58,237,0.14)' : '#f0e9ff'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = active ? 'rgba(124,58,237,0.14)' : 'var(--c-f0e9ff)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = active ? C.primBg : C.surface; }}
             >
               <Icon size={17} />
@@ -437,7 +437,7 @@ export default function VideoControls({
           WebkitBackdropFilter: C.glassBlur,
           border: C.glassBdr,
           borderRadius: 20, padding: '10px 14px',
-          boxShadow: '0 8px 32px rgba(11,28,48,0.1), inset 0 1px 0 rgba(255,255,255,0.8)',
+          boxShadow: '0 8px 32px rgba(11,28,48,0.1), inset 0 1px 0 color-mix(in srgb, var(--c-ffffff) 80%, transparent)',
           width: 'max-content',
         }}>
 
@@ -535,8 +535,8 @@ export default function VideoControls({
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '10px 18px', borderRadius: 12,
-              background: '#ba1a1a', border: 'none',
-              color: '#fff', fontWeight: 600, fontSize: 13,
+              background: 'var(--c-ba1a1a)', border: 'none',
+              color: 'var(--t-ffffff)', fontWeight: 600, fontSize: 13,
               fontFamily: 'Geist, Inter, sans-serif', cursor: 'pointer', flexShrink: 0,
               boxShadow: '0 4px 16px rgba(186,26,26,0.3)',
               transition: 'filter 0.15s, transform 0.15s',

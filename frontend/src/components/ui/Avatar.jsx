@@ -57,7 +57,7 @@ export default function Avatar({
     >
       <div className="absolute inset-0 rounded-full bg-[linear-gradient(145deg,rgba(212,175,55,0.82),rgba(52,88,148,0.9))]" />
       
-      <div className="absolute inset-0.5 flex items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(180deg,rgba(17,23,38,0.98),rgba(8,11,20,0.96))]">
+      <div className="absolute inset-0.5 flex items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(180deg,color-mix(in_srgb,var(--c-111726)_98%,transparent),color-mix(in_srgb,var(--c-080b14)_96%,transparent))]">
         {src ? (
           <img
             src={src}

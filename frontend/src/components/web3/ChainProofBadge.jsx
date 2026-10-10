@@ -1,4 +1,4 @@
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 const GOLD_DIM = 'rgba(212,175,55,0.08)';
 const GOLD_BORDER = 'rgba(212,175,55,0.2)';
 
@@ -28,7 +28,7 @@ export default function ChainProofBadge({ txHash }) {
         borderRadius: 6,
         padding: '4px 8px',
         fontSize: 11,
-        color: GOLD,
+        color: 'var(--t-d4af37)',
         fontWeight: 600,
         cursor: url ? 'pointer' : 'default',
         textDecoration: 'none',

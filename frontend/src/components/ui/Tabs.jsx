@@ -37,7 +37,7 @@ export default function Tabs({
             {activeTab === tab.id && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute inset-0 bg-gradient-cta rounded-lg border border-[#d4af37]/50"
+                className="absolute inset-0 bg-gradient-cta rounded-lg border border-[var(--c-d4af37)]/50"
                 transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
               />
             )}

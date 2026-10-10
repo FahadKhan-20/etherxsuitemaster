@@ -7,10 +7,11 @@ import {
   Bell,
   ChevronRight,
   Moon,
+  Sun,
+  Monitor,
   Palette,
   Settings as SettingsIcon,
   Shield,
-  Zap,
   Lock,
   Volume2,
   Mic,
@@ -25,7 +26,7 @@ import Input from '../components/ui/Input';
 import Switch from '../components/ui/Switch';
 import Tabs from '../components/ui/Tabs';
 import { useUserContext } from '../context/UserContext';
-import { useUI } from '../context/UIContext';
+import { useTheme } from '../utils/theme';
 import { useMeetingPreferences } from '../hooks/useMeetingPreferences';
 import { listMeetingDevices } from '../utils/meetingMedia';
 
@@ -42,7 +43,7 @@ const KEYBOARD_SHORTCUTS = [
 
 export default function Settings() {
   const { user, updateUser } = useUserContext();
-  const { theme, setTheme } = useUI();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
   const [formData, setFormData] = useState({
     name: user.name || '',
@@ -121,7 +122,7 @@ export default function Settings() {
 
   return (
     <AnimatedPage>
-    <div className="min-h-[100dvh] bg-black text-app-text" style={{ position: 'relative', background: '#000000' }}>
+    <div className="min-h-[100dvh] bg-black text-app-text" style={{ position: 'relative', background: 'var(--c-000000)' }}>
       <TopBar />
 
       <main className="mx-auto max-w-6xl px-3 py-6 pb-24 md:px-6">
@@ -227,7 +228,7 @@ export default function Settings() {
                 </Button>
                 <Button variant="ghost">Cancel</Button>
                 {saveStatus && (
-                  <span style={{ fontSize: 13, color: saveStatus.startsWith('Saved') ? '#22C55E' : '#EF4444', alignSelf: 'center' }}>
+                  <span style={{ fontSize: 13, color: saveStatus.startsWith('Saved') ? 'var(--t-22c55e)' : 'var(--t-ef4444)', alignSelf: 'center' }}>
                     {saveStatus}
                   </span>
                 )}
@@ -241,7 +242,7 @@ export default function Settings() {
               {!namedDevices && (
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/70">
                   Your browser hides device names until you allow camera and microphone access.{' '}
-                  <button type="button" onClick={askDeviceAccess} className="font-semibold text-[#d4af37] underline">Allow access</button>
+                  <button type="button" onClick={askDeviceAccess} className="font-semibold text-[var(--t-d4af37)] underline">Allow access</button>
                 </div>
               )}
               <SettingCard title="Audio Input" description="Microphone used when you join a meeting">
@@ -294,9 +295,9 @@ export default function Settings() {
               <SettingCard title="Theme" description="Choose your preferred appearance">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {[
+                    { id: 'light', label: 'Light', icon: Sun },
                     { id: 'dark', label: 'Dark', icon: Moon },
-                    { id: 'light', label: 'Light', icon: Zap },
-                    { id: 'amoled', label: 'AMOLED', icon: Settings },
+                    { id: 'system', label: 'System', icon: Monitor },
                   ].map((t) => (
                     <button
                       key={t.id}
@@ -406,7 +407,7 @@ export default function Settings() {
               <SettingCard title="Security" description="How your meetings are protected">
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="flex items-start gap-3">
-                    <Lock className="h-5 w-5 text-[#d4af37] shrink-0 mt-0.5" />
+                    <Lock className="h-5 w-5 text-[var(--t-d4af37)] shrink-0 mt-0.5" />
                     <p className="text-sm text-white/70">
                       Audio and video travel directly between participants, encrypted in transit (WebRTC). Chat, shared files and recordings pass through and are stored on the EtherX Meet server.
                     </p>
@@ -464,7 +465,7 @@ export default function Settings() {
  */
 function SettingCard({ title, description, children }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
+    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)] backdrop-blur-xl">
       <div className="mb-6">
         <h3 className="text-xl font-semibold text-white">{title}</h3>
         <p className="text-sm text-white/65 mt-1">{description}</p>

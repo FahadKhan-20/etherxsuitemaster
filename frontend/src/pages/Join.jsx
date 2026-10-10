@@ -157,7 +157,7 @@ export default function Join() {
 
   return (
     <AnimatedPage>
-    <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans, sans-serif', color: '#eedca0', position: 'relative' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans, sans-serif', color: 'var(--t-eedca0)', position: 'relative' }}>
       {/* Nav */}
       <nav className="flex items-center justify-between px-4 sm:px-7 h-16 sm:h-20 bg-transparent relative z-10">
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -165,13 +165,13 @@ export default function Join() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
-          <span className="hidden sm:inline-block" style={{ fontSize: '13px', fontWeight: 500, color: 'rgba(240,238,232,0.45)', letterSpacing: '0.02em' }}>{clock}</span>
+          <span className="hidden sm:inline-block" style={{ fontSize: '13px', fontWeight: 500, color: 'color-mix(in srgb, var(--t-f0eee8) 45%, transparent)', letterSpacing: '0.02em' }}>{clock}</span>
 
           <button
             type="button"
             onClick={handleHelp}
             aria-label="Help"
-            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
+            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: 'var(--t-d4af37)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
           >
             Help
           </button>
@@ -179,14 +179,14 @@ export default function Join() {
           <button
             type="button"
             onClick={handleLogout}
-            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: '#d4af37', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
+            style={{ height: '34px', padding: '0 12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.28)', background: 'transparent', color: 'var(--t-d4af37)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: '12px', fontWeight: 500 }}
           >
             Logout
           </button>
 
           <div
             aria-label="User avatar"
-            style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)', color: '#eedca0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', boxShadow: '0 0 0 2px rgba(212,175,55,0.25)' }}
+            style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--c-d4af37) 0%, var(--c-b8860b) 100%)', color: 'var(--t-eedca0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', boxShadow: '0 0 0 2px rgba(212,175,55,0.25)' }}
           >
             {userInitial}
           </div>
@@ -200,14 +200,14 @@ export default function Join() {
         animate="visible"
         style={{ width: '100%', maxWidth: '900px' }}
       >
-        <div className="p-4 sm:p-9 rounded-2xl sm:rounded-[20px] bg-[rgba(8,8,12,0.4)] border border-[rgba(212,175,55,0.28)] backdrop-blur-2xl shadow-[0_32px_80px_rgba(0,0,0,0.45),0_1px_0_rgba(212,175,55,0.12)_inset] relative overflow-hidden">
+        <div className="p-4 sm:p-9 rounded-2xl sm:rounded-[20px] bg-[color-mix(in_srgb,var(--c-08080c)_40%,transparent)] border border-[rgba(212,175,55,0.28)] backdrop-blur-2xl shadow-[0_32px_80px_color-mix(in_srgb,var(--s-000000)_45%,transparent),0_1px_0_rgba(212,175,55,0.12)_inset] relative overflow-hidden">
           {/* top accent line */}
           <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.6), transparent)' }} />
-          <motion.p variants={staggerChild} style={{ fontFamily: 'DM Sans, sans-serif', fontSize: '11px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#d4af37', margin: '0 0 12px', opacity: 0.8 }}>EtherXMeet</motion.p>
-          <motion.h1 variants={staggerChild} style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-0.04em', color: '#eedca0', margin: '0 0 8px', textAlign: 'center' }}>
+          <motion.p variants={staggerChild} style={{ fontFamily: 'DM Sans, sans-serif', fontSize: '11px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--t-d4af37)', margin: '0 0 12px', opacity: 0.8 }}>EtherXMeet</motion.p>
+          <motion.h1 variants={staggerChild} style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-0.04em', color: 'var(--t-eedca0)', margin: '0 0 8px', textAlign: 'center' }}>
             Join Meeting
           </motion.h1>
-          <motion.p variants={staggerChild} style={{ fontSize: '14px', color: 'rgba(240,238,232,0.5)', margin: '0 0 28px', textAlign: 'center', lineHeight: 1.5 }}>
+          <motion.p variants={staggerChild} style={{ fontSize: '14px', color: 'color-mix(in srgb, var(--t-f0eee8) 50%, transparent)', margin: '0 0 28px', textAlign: 'center', lineHeight: 1.5 }}>
             Set up your camera and microphone before joining
           </motion.p>
 
@@ -219,7 +219,7 @@ export default function Join() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: stream ? 1 : 0.7 }}
                 transition={{ duration: 0.3 }}
-                style={{ position: 'relative', aspectRatio: '16/9', background: 'rgba(8,8,12,0.5)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(212,175,55,0.22)' }}
+                style={{ position: 'relative', aspectRatio: '16/9', background: 'color-mix(in srgb, var(--c-08080c) 50%, transparent)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(212,175,55,0.22)' }}
               >
                 {stream ? (
                   <>
@@ -231,7 +231,7 @@ export default function Join() {
                       className={`w-full h-full object-cover ${!isVideoEnabled ? 'hidden' : ''}`}
                     />
                     {!isVideoEnabled && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(8,8,12,0.6)' }}>
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--c-08080c) 60%, transparent)' }}>
                         <div className="text-center">
                           <div className={`w-20 h-20 rounded-full ${AVATAR_COLORS.find(c => c.name === avatarColor)?.bg} flex items-center justify-center text-white text-2xl font-bold mx-auto mb-2`}>
                             {displayName.charAt(0).toUpperCase() || 'U'}
@@ -365,7 +365,7 @@ export default function Join() {
                   onChange={handleCodeChange}
                   error={codeError}
                 />
-                <p style={{ marginTop: '6px', fontSize: '11px', color: 'rgba(212,175,55,0.5)' }}>
+                <p style={{ marginTop: '6px', fontSize: '11px', color: 'color-mix(in srgb, var(--t-d4af37) 50%, transparent)' }}>
                   Paste a meeting code or invite link
                 </p>
               </div>
@@ -385,7 +385,7 @@ export default function Join() {
               </motion.div>
 
               {/* Footer */}
-              <p style={{ fontSize: '11px', textAlign: 'center', color: 'rgba(240,238,232,0.3)', lineHeight: 1.6 }}>
+              <p style={{ fontSize: '11px', textAlign: 'center', color: 'color-mix(in srgb, var(--t-f0eee8) 30%, transparent)', lineHeight: 1.6 }}>
                 By joining, you agree to our Terms of Service
               </p>
             </motion.div>

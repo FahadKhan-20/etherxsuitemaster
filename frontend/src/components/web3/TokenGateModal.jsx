@@ -4,9 +4,9 @@ import { X, ShieldCheck } from 'lucide-react';
 import apiClient from '../../utils/apiClient';
 import { useWallet } from '../../context/WalletContext';
 
-const GOLD = '#d4af37';
+const GOLD = 'var(--c-d4af37)';
 const GOLD_BORDER = 'rgba(212,175,55,0.25)';
-const SURFACE = 'rgba(18,18,22,0.98)';
+const SURFACE = 'color-mix(in srgb, var(--c-121216) 98%, transparent)';
 
 export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) {
   const { account } = useWallet();
@@ -48,7 +48,7 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
           exit={{ opacity: 0 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(9,11,11,0.8)',
+            background: 'color-mix(in srgb, var(--c-090b0b) 80%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 20,
           }}
@@ -69,22 +69,22 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
           >
             <button
               onClick={onSkip}
-              style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}
+              style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: 'var(--t-666666)', cursor: 'pointer' }}
             >
               <X size={18} />
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <ShieldCheck size={20} color={GOLD} />
-              <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 17, color: '#f0e6d3', margin: 0 }}>
+              <ShieldCheck size={20} color={'var(--t-d4af37)'} />
+              <h2 style={{ fontFamily: 'Inter, sans-serif', fontSize: 17, color: 'var(--t-f0e6d3)', margin: 0 }}>
                 Token-gate this room?
               </h2>
             </div>
-            <p style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>
+            <p style={{ fontSize: 13, color: 'var(--t-888888)', marginBottom: 24 }}>
               Only wallets holding your token can join. Free — just a balance check.
             </p>
 
-            <label style={{ display: 'block', fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--t-888888)', marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Token contract address (ERC-20 or NFT)
             </label>
             <input
@@ -93,15 +93,15 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
               placeholder="0x..."
               style={{
                 width: '100%', boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.06)',
+                background: 'color-mix(in srgb, var(--c-ffffff) 6%, transparent)',
                 border: `1px solid ${GOLD_BORDER}`,
                 borderRadius: 8, padding: '10px 12px',
-                fontSize: 13, color: '#fff', outline: 'none',
+                fontSize: 13, color: 'var(--t-ffffff)', outline: 'none',
                 fontFamily: 'monospace', marginBottom: 12,
               }}
             />
 
-            <label style={{ display: 'block', fontSize: 11, color: '#888', marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--t-888888)', marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Minimum balance required
             </label>
             <input
@@ -111,16 +111,16 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
               onChange={e => setMinBalance(e.target.value)}
               style={{
                 width: '100%', boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.06)',
+                background: 'color-mix(in srgb, var(--c-ffffff) 6%, transparent)',
                 border: `1px solid ${GOLD_BORDER}`,
                 borderRadius: 8, padding: '10px 12px',
-                fontSize: 13, color: '#fff', outline: 'none',
+                fontSize: 13, color: 'var(--t-ffffff)', outline: 'none',
                 fontFamily: 'Inter, sans-serif', marginBottom: 16,
               }}
             />
 
             {error && (
-              <p style={{ fontSize: 12, color: '#f87171', marginBottom: 12 }}>{error}</p>
+              <p style={{ fontSize: 12, color: 'var(--t-f87171)', marginBottom: 12 }}>{error}</p>
             )}
 
             <button
@@ -128,8 +128,8 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
               disabled={saving}
               style={{
                 width: '100%',
-                background: saving ? 'rgba(212,175,55,0.3)' : 'linear-gradient(135deg,#d4af37,#b8860b)',
-                border: 'none', color: '#000',
+                background: saving ? 'rgba(212,175,55,0.3)' : 'linear-gradient(135deg,var(--c-d4af37),var(--c-b8860b))',
+                border: 'none', color: 'var(--t-000000)',
                 fontWeight: 700, fontSize: 14,
                 padding: 13, borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
                 marginBottom: 10,
@@ -141,7 +141,7 @@ export default function TokenGateModal({ isOpen, roomCode, onSkip, onGateSet }) 
               onClick={onSkip}
               style={{
                 width: '100%', background: 'transparent', border: 'none',
-                color: '#666', fontSize: 13, cursor: 'pointer', padding: 8,
+                color: 'var(--t-666666)', fontSize: 13, cursor: 'pointer', padding: 8,
               }}
             >
               Skip — open room without gate

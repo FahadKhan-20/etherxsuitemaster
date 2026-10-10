@@ -40,12 +40,12 @@ export default function Switch({
           animate={{
             backgroundColor: checked 
               ? 'rgba(212, 175, 55, 0.8)' 
-              : 'rgba(255, 255, 255, 0.1)'
+              : 'color-mix(in srgb, var(--c-ffffff) 10%, transparent)'
           }}
           className={`
             w-14 h-7 rounded-full 
             backdrop-blur-md border
-            ${checked ? 'border-[#d4af37]/30' : 'border-white/20'}
+            ${checked ? 'border-[var(--c-d4af37)]/30' : 'border-white/20'}
             transition-colors duration-200
           `}
         />
@@ -55,8 +55,8 @@ export default function Switch({
           animate={{
             x: checked ? 28 : 2,
             background: checked
-              ? 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)'
-              : 'rgba(255, 255, 255, 0.9)'
+              ? 'linear-gradient(135deg, var(--c-d4af37) 0%, var(--c-b8860b) 100%)'
+              : 'color-mix(in srgb, var(--c-ffffff) 90%, transparent)'
           }}
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           className="absolute top-1 left-0 w-5 h-5 rounded-full shadow-lg"

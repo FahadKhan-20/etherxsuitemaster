@@ -32,7 +32,7 @@ export default function SplashScreen({ onComplete }) {
             position: 'fixed',
             inset: 0,
             zIndex: 99999,
-            background: '#000000',
+            background: 'var(--c-000000)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -65,7 +65,7 @@ export default function SplashScreen({ onComplete }) {
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'radial-gradient(circle at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.85) 100%)',
+              background: 'radial-gradient(circle at center, color-mix(in srgb, var(--c-000000) 30%, transparent) 0%, color-mix(in srgb, var(--c-000000) 85%, transparent) 100%)',
               zIndex: 2,
             }}
           />
@@ -100,8 +100,8 @@ export default function SplashScreen({ onComplete }) {
               onClick={handleFinish}
               style={{
                 marginTop: 24,
-                background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)',
-                color: '#000000',
+                background: 'linear-gradient(135deg, var(--c-d4af37) 0%, var(--c-b8860b) 100%)',
+                color: 'var(--t-000000)',
                 border: 'none',
                 padding: '12px 28px',
                 borderRadius: '30px',
@@ -127,9 +127,9 @@ export default function SplashScreen({ onComplete }) {
               top: 24,
               right: 24,
               zIndex: 4,
-              background: 'rgba(0,0,0,0.6)',
-              color: 'rgba(255,255,255,0.8)',
-              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'color-mix(in srgb, var(--c-000000) 60%, transparent)',
+              color: 'color-mix(in srgb, var(--t-ffffff) 80%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--c-ffffff) 15%, transparent)',
               padding: '8px 18px',
               borderRadius: '20px',
               fontSize: 12,

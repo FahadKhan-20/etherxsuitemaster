@@ -269,7 +269,7 @@ export default function UIDemo() {
               <p className="text-xs text-white/70 mt-2">Dots</p>
             </div>
             <div className="text-center">
-              <Spinner variant="pulse" size="md" color="#06b6d4" />
+              <Spinner variant="pulse" size="md" color="var(--c-06b6d4)" />
               <p className="text-xs text-white/70 mt-2">Pulse</p>
             </div>
           </div>

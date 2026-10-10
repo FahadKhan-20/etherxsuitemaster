@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
  */
 export default function Spinner({
   size = 'md',
-  color = '#6366f1',
+  color = 'var(--c-6366f1)',
   variant = 'circle',
   className = '',
   ...props

@@ -1,6 +1,6 @@
 import useLocalStorage from './useLocalStorage';
 export const DEFAULT_MEETING_PREFERENCES = {
-  theme: 'dark', captionLanguage: 'en-US', outputDevice: 'default',
+  captionLanguage: 'en-US', outputDevice: 'default',
   devices: { audio: 'default', video: '' }, filter: 'none', background: 'none',
   notifications: { sound: false, banners: true, desktop: false },
 };

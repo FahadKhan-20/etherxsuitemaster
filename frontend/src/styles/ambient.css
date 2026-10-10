@@ -109,7 +109,7 @@ body::after {
     110deg,
     transparent 0%,
     rgba(212, 175, 55, 0.07) 45%,
-    rgba(255, 255, 255, 0.04) 50%,
+    color-mix(in srgb, var(--c-ffffff) 4%, transparent) 50%,
     transparent 100%
   );
   transform: skewX(-22deg);
@@ -136,7 +136,7 @@ body::after {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #d4af37;
+  background: var(--c-d4af37);
   pointer-events: none;
   z-index: 9999;
   transform: translate(-50%, -50%);
@@ -174,7 +174,7 @@ body::after {
 #cursor-dot.is-clicking {
   width: 8px;
   height: 8px;
-  background: #d4af37;
+  background: var(--c-d4af37);
 }
 
 /* Accessibility: respect reduced motion */

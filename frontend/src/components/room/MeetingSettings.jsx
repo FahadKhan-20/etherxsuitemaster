@@ -5,6 +5,7 @@ import { useStreamLevel } from '../../hooks/useStreamLevel';
 import { MEETING_BACKGROUNDS } from '../../utils/meetingBackgrounds';
 import { playSpeakerTest } from '../../utils/meetingMedia';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { useTheme } from '../../utils/theme';
 
 const TABS = [
   ['audio', 'Audio', Mic], ['video', 'Video', Video], ['backgrounds', 'Backgrounds', Image],
@@ -14,7 +15,8 @@ const TABS = [
 
 export default function MeetingSettings({ initialTab = 'audio', preferences, onSave, onClose, stream, audioEnabled, videoEnabled, devices, selectedDevices, switchDevice, name, onNameChange }) {
   const [tab, setTab] = useState(initialTab);
-  const [draft, setDraft] = useState(() => ({ ...preferences, devices: { ...preferences.devices, ...selectedDevices }, notifications: { ...preferences.notifications } }));
+  const { theme, setTheme } = useTheme();
+  const [draft, setDraft] = useState(() => ({ ...preferences, theme, devices: { ...preferences.devices, ...selectedDevices }, notifications: { ...preferences.notifications } }));
   const [draftName, setDraftName] = useState(name || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -37,6 +39,7 @@ export default function MeetingSettings({ initialTab = 'audio', preferences, onS
       for (const kind of ['audio', 'video']) {
         if (draft.devices[kind] != null && draft.devices[kind] !== selectedDevices?.[kind]) await switchDevice(kind, draft.devices[kind]);
       }
+      setTheme(draft.theme);
       onSave(draft);
       if (onNameChange && draftName.trim()) onNameChange(draftName.trim());
       onClose();
@@ -65,7 +68,7 @@ export default function MeetingSettings({ initialTab = 'audio', preferences, onS
   };
 
   return <div className="meeting-modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-    <section ref={ref} className="meeting-settings" role="dialog" aria-modal="true" aria-labelledby={titleId} data-meeting-theme={preferences.theme}>
+    <section ref={ref} className="meeting-settings" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <header className="meeting-settings-header"><div><p className="meeting-eyebrow">MAKE IT YOURS</p><h2 id={titleId}>Meeting settings</h2></div><button type="button" aria-label="Close settings" onClick={onClose} disabled={saving}><X size={24} /></button></header>
       <nav className="meeting-settings-tabs" aria-label="Settings sections">{TABS.map(([id, label, Icon]) => <button type="button" key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}><Icon size={21}/><span>{label}</span></button>)}</nav>
       <div className="meeting-settings-content">
@@ -75,7 +78,7 @@ export default function MeetingSettings({ initialTab = 'audio', preferences, onS
         {tab === 'notifications' && <><h3>Stay in the loop</h3>{[['sound','Play sound when people join or leave'],['banners','Show join and leave banners'],['desktop','Notify me when this tab is in the background']].map(([key,label])=><label className="meeting-checkbox" key={key}><input type="checkbox" checked={draft.notifications[key]} onChange={e=>patch({notifications:{...draft.notifications,[key]:e.target.checked}})}/><span>{label}</span></label>)}</>}
         {tab === 'profile' && <><h3>Your profile</h3><label>Display name<input value={draftName} onChange={e=>setDraftName(e.target.value)} readOnly={!onNameChange} maxLength={80}/></label><p className="meeting-help">{onNameChange ? 'This name appears when you join.' : 'Your current meeting name.'}</p></>}
         {tab === 'shortcuts' && <><h3>Keep your hands on the keyboard</h3>{[['M','Mute or unmute'],['V','Toggle camera'],['Hold Space','Push to talk while muted'],['Ctrl/⌘ + E','Leave meeting']].map(([key,label])=><div className="meeting-shortcut" key={key}><span>{label}</span><kbd>{key}</kbd></div>)}<p className="meeting-help">Shortcuts pause while you type or open a dialog.</p></>}
-        {tab === 'general' && <><h3>A comfortable view</h3><label>Theme<select value={draft.theme} onChange={e=>patch({theme:e.target.value})}><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Spoken language for live captions<select value={draft.captionLanguage} onChange={e=>patch({captionLanguage:e.target.value})}><option value="en-US">English</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="hi-IN">हिन्दी</option></select></label><p className="meeting-help">Your browser uses this language to recognize your speech.</p></>}
+        {tab === 'general' && <><h3>A comfortable view</h3><label>Theme<select value={draft.theme} onChange={e=>patch({theme:e.target.value})}><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></label><label>Spoken language for live captions<select value={draft.captionLanguage} onChange={e=>patch({captionLanguage:e.target.value})}><option value="en-US">English</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="hi-IN">हिन्दी</option></select></label><p className="meeting-help">Your browser uses this language to recognize your speech.</p></>}
         {error && <p className="meeting-settings-error" role="alert">{error}</p>}
       </div>
       <footer className="meeting-settings-footer"><p>Saved on this device</p><button type="button" className="meeting-secondary" onClick={onClose} disabled={saving}>Cancel</button><button type="button" className="meeting-primary" onClick={apply} disabled={saving}>{saving ? 'Applying…' : 'Apply settings'}</button></footer>

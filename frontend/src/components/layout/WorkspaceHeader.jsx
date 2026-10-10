@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { House, LayoutDashboard, Settings } from 'lucide-react';
+import { House, LayoutDashboard, Moon, Settings, Sun } from 'lucide-react';
 import { useUser } from '../../context/UserContext';
 import { useWallet } from '../../context/WalletContext';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
 import { ROUTES } from '../../utils/constants';
+import { useTheme } from '../../utils/theme';
 import Dropdown from '../ui/Dropdown';
 import ProfileAvatar from '../ui/ProfileAvatar';
 import etherxLogo from '../../assets/etherx_transparent.png';
@@ -19,6 +20,7 @@ export default function WorkspaceHeader() {
   const [now, setNow] = useState(Date.now());
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState('');
+  const { resolved: theme, setTheme } = useTheme();
   const isHome = pathname === ROUTES.HOME;
   const LinkIcon = isHome ? LayoutDashboard : House;
   const linkLabel = isHome ? 'Dashboard' : 'Home';
@@ -50,6 +52,7 @@ export default function WorkspaceHeader() {
       <div className="workspace-header-controls">
         <span className="workspace-clock">{new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>
         <button type="button" className="workspace-nav-button" onClick={() => navigate(isHome ? ROUTES.DASHBOARD : ROUTES.HOME)}><LinkIcon size={14} aria-hidden="true" />{linkLabel}</button>
+        <button type="button" className="workspace-theme" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'} title={theme === 'light' ? 'Dark theme' : 'Light theme'}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>
         <button type="button" className="workspace-logout" onClick={handleLogout} disabled={loggingOut}>{loggingOut ? 'Signing out…' : 'Logout'}</button>
         <Dropdown position="bottom-right" items={[{ label: 'Settings', icon: <Settings size={16} />, onClick: () => navigate(ROUTES.SETTINGS) }]} trigger={
           <button type="button" className="workspace-account" aria-label="Account menu">

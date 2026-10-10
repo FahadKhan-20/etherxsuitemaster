@@ -5,17 +5,17 @@ import axios from 'axios'
 import etherxLogo from '../assets/etherx_transparent.png'
 
 const C = {
-  bg:               '#141414',
-  surface:          '#111313',
-  border:           '#2a2a2a',
-  borderFocus:      '#d4af37',
-  onBackground:     '#e5e1e4',
-  onSurfaceVariant: '#9a9a9a',
-  gold:             '#d4af37',
-  goldShadow:       '#b8860b',
-  error:            '#ffb4ab',
+  bg:               'var(--c-141414)',
+  surface:          'var(--c-111313)',
+  border:           'var(--c-2a2a2a)',
+  borderFocus:      'var(--c-d4af37)',
+  onBackground:     'var(--c-e5e1e4)',
+  onSurfaceVariant: 'var(--c-9a9a9a)',
+  gold:             'var(--c-d4af37)',
+  goldShadow:       'var(--c-b8860b)',
+  error:            'var(--c-ffb4ab)',
   errorCont:        'rgba(147,0,10,0.35)',
-  success:          '#6fcf97',
+  success:          'var(--c-6fcf97)',
   successCont:      'rgba(16,80,40,0.4)',
 }
 
@@ -56,8 +56,8 @@ export default function ResetPassword() {
   return (
     <>
       <style>{`
-        .rp-glow { background: radial-gradient(circle at center top, rgba(212,175,55,0.10) 0%, rgba(20,20,20,0) 60%); }
-        .rp-submit:hover:not(:disabled) { background: ${C.goldShadow} !important; color: #eedca0 !important; }
+        .rp-glow { background: radial-gradient(circle at center top, rgba(212,175,55,0.10) 0%, color-mix(in srgb, var(--c-141414) 0%, transparent) 60%); }
+        .rp-submit:hover:not(:disabled) { background: ${C.goldShadow} !important; color: var(--t-eedca0) !important; }
         .rp-input::placeholder { color: ${C.onSurfaceVariant}; }
       `}</style>
 

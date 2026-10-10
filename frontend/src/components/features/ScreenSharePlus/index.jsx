@@ -59,7 +59,7 @@ export default function ScreenSharePlus({ isOpen, onClose }) {
         initial={{ opacity: 0, scale: 0.97, y: 24 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 24 }}
-        className="w-full max-w-6xl rounded-[34px] border border-white/10 bg-[rgba(13,13,26,0.95)] p-6 shadow-[0_30px_90px_rgba(4,8,24,0.55)] backdrop-blur-2xl"
+        className="w-full max-w-6xl rounded-[34px] border border-white/10 bg-[color-mix(in_srgb,var(--c-0d0d1a)_95%,transparent)] p-6 shadow-[0_30px_90px_rgba(4,8,24,0.55)] backdrop-blur-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -73,8 +73,8 @@ export default function ScreenSharePlus({ isOpen, onClose }) {
         </div>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[32px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <div className="relative aspect-video overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(79,70,229,0.36),rgba(6,182,212,0.16),rgba(10,10,24,0.85))]">
+          <div className="rounded-[32px] border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
+            <div className="relative aspect-video overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(79,70,229,0.36),rgba(6,182,212,0.16),color-mix(in_srgb,var(--c-0a0a18)_85%,transparent))]">
               <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%22400%22 height=%22240%22 viewBox=%220 0 400 240%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 stroke=%22rgba(255,255,255,0.08)%22 stroke-width=%221%22%3E%3Crect x=%2224%22 y=%2224%22 width=%22144%22 height=%2288%22 rx=%2216%22/%3E%3Crect x=%22192%22 y=%2224%22 width=%22184%22 height=%22144%22 rx=%2218%22/%3E%3Crect x=%2224%22 y=%22128%22 width=%22144%22 height=%2288%22 rx=%2216%22/%3E%3C/g%3E%3C/svg%3E')] opacity-70" />
               <canvas
                 ref={canvasRef}
@@ -89,7 +89,7 @@ export default function ScreenSharePlus({ isOpen, onClose }) {
                   <polyline
                     key={strokeIndex}
                     fill="none"
-                    stroke="rgba(255,80,80,0.95)"
+                    stroke="color-mix(in srgb, var(--t-ff5050) 95%, transparent)"
                     strokeWidth="3"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -108,7 +108,7 @@ export default function ScreenSharePlus({ isOpen, onClose }) {
             </div>
           </div>
 
-          <div className="space-y-4 rounded-[32px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="space-y-4 rounded-[32px] border border-white/10 bg-white/5 p-5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--c-ffffff)_8%,transparent)]">
             <div className="grid gap-2">
               {shareSources.map((shareSource) => (
                 <button

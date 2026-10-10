@@ -83,7 +83,7 @@ function Toast({ toast, onClose }) {
       {/* Close Button */}
       <button
         onClick={onClose}
-        className="text-[#d4af37] hover:text-white transition-colors flex-shrink-0"
+        className="text-[var(--t-d4af37)] hover:text-white transition-colors flex-shrink-0"
         aria-label="Close notification"
       >
         <X className="w-4 h-4" />

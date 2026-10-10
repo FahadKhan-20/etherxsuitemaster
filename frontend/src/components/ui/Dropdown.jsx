@@ -100,7 +100,7 @@ export default function Dropdown({
               {items.map((item, index) => (
                 <motion.button
                   key={index}
-                  whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                  whileHover={{ backgroundColor: 'color-mix(in srgb, var(--c-ffffff) 10%, transparent)' }}
                   onClick={() => {
                     if (!item.disabled) {
                       item.onClick?.();

@@ -25,7 +25,7 @@ const Register = lazy(() => import('./pages/Register'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
-const PageLoading = () => <div role="status" aria-label="Loading" style={{ minHeight: '100dvh', background: '#000' }} />;
+const PageLoading = () => <div role="status" aria-label="Loading" style={{ minHeight: '100dvh', background: 'var(--c-000000)' }} />;
 
 /** Inner component so useLocation can be called inside BrowserRouter. */
 function AppRoutes() {

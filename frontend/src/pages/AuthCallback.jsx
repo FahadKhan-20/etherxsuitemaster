@@ -45,12 +45,12 @@ export default function AuthCallback() {
         minHeight: '100vh',
         display: 'grid',
         placeItems: 'center',
-        background: '#202124',
-        color: '#e8eaed',
+        background: 'var(--c-202124)',
+        color: 'var(--t-e8eaed)',
         fontFamily: 'Roboto, sans-serif',
       }}
     >
-      <p style={{ fontSize: '14px', color: '#9aa0a6' }}>{status}</p>
+      <p style={{ fontSize: '14px', color: 'var(--t-9aa0a6)' }}>{status}</p>
     </div>
   );
 }
