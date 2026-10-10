@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Film, House, LayoutDashboard, Moon, Settings, Sun } from 'lucide-react';
+import { Film, House, LayoutDashboard, Moon, Settings, Sun } from 'lucide-react';
 import { useUser } from '../../context/UserContext';
 import { useWallet } from '../../context/WalletContext';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
@@ -55,7 +55,6 @@ export default function WorkspaceHeader() {
         <button type="button" className="workspace-logout" onClick={handleLogout} disabled={loggingOut}>{loggingOut ? 'Signing out…' : 'Logout'}</button>
         <Dropdown position="bottom-right" items={[
           { label: 'Recordings', icon: <Film size={16} />, onClick: () => navigate(ROUTES.RECORDINGS) },
-          { label: 'Analytics', icon: <BarChart3 size={16} />, onClick: () => navigate(ROUTES.ANALYTICS) },
           { label: 'Settings', icon: <Settings size={16} />, onClick: () => navigate(ROUTES.SETTINGS) },
         ]} trigger={
           <button type="button" className="workspace-account" aria-label="Account menu">

@@ -19,7 +19,6 @@ const Join = lazy(() => import('./pages/Join'));
 const Room = lazy(() => import('./pages/Room'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Recordings = lazy(() => import('./pages/Recordings'));
-const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
@@ -51,7 +50,6 @@ function AppRoutes() {
           <Route path={ROUTES.ROOM}        element={<Room />} />
           <Route path={ROUTES.DASHBOARD}   element={<Dashboard />} />
           <Route path={ROUTES.RECORDINGS}  element={<Recordings />} />
-          <Route path={ROUTES.ANALYTICS}   element={<Analytics />} />
           <Route path={ROUTES.SETTINGS}    element={<Settings />} />
         </Route>
       </Routes>

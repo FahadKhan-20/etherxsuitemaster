@@ -8,7 +8,6 @@ export const ROUTES = {
   ROOM: '/room/:code',
   DASHBOARD: '/dashboard',
   RECORDINGS: '/recordings',
-  ANALYTICS: '/analytics',
   SETTINGS: '/settings',
   TERMS: '/terms',
   PRIVACY: '/privacy',

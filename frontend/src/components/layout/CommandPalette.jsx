@@ -17,7 +17,6 @@ export default function CommandPalette() {
     { type: 'page', label: 'Dashboard', path: ROUTES.DASHBOARD, icon: '📊' },
     { type: 'page', label: 'Join Meeting', path: ROUTES.JOIN, icon: '🎥' },
     { type: 'page', label: 'Recordings', path: ROUTES.RECORDINGS, icon: '🎬' },
-    { type: 'page', label: 'Analytics', path: ROUTES.ANALYTICS, icon: '📈' },
     { type: 'page', label: 'Settings', path: ROUTES.SETTINGS, icon: '⚙️' },
     
     // Features
