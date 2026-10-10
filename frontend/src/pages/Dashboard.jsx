@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, Check,
+  ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, Check,
   Clock3, Film, RefreshCw, Repeat2, Trash2, Video, X,
 } from 'lucide-react';
 import AnimatedPage from '../components/layout/AnimatedPage';
@@ -12,6 +12,7 @@ import { nextStart } from '../components/layout/MeetingReminders';
 import { useUser } from '../context/UserContext';
 import { scheduleTimezone } from '../utils/scheduleValidation';
 import { ROUTES } from '../utils/constants';
+import { googleCalendarUrl } from '../utils/googleCalendar';
 import '../styles/dashboard.css';
 
 export default function Dashboard() {
@@ -130,6 +131,7 @@ export default function Dashboard() {
                         </>
                       ) : (
                         <>
+                          <a className="dashboard-icon-button" href={googleCalendarUrl(meeting)} target="_blank" rel="noopener noreferrer" title="Add to Google Calendar" aria-label={`Add ${meeting.title} to Google Calendar`}><CalendarPlus size={17} aria-hidden="true" /></a>
                           <button className="dashboard-icon-button dashboard-delete" aria-label={`Delete ${meeting.title}`} onClick={() => setConfirmDeleteId(meeting.id)}><Trash2 size={17} /></button>
                           <button className="dashboard-join-button" onClick={() => openRoom(meeting.roomCode)} aria-label={`Join ${meeting.title}`}>Join<ArrowUpRight size={16} aria-hidden="true" /></button>
                         </>

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { CalendarClock, Download, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Download, X } from 'lucide-react';
+import { googleCalendarUrl } from '../../../utils/googleCalendar';
 import { getApiErrorMessage } from '../../../utils/apiClient';
 import { useDialogFocus } from '../../../hooks/useDialogFocus';
 import { useUser } from '../../../context/UserContext';
@@ -77,6 +78,7 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
   };
   const fieldError = (key) => fieldErrors[key] && <p className="scheduler-field-error" id={`scheduler-${key}-error`} role="alert">{fieldErrors[key]}</p>;
   const fieldA11y = (key) => ({ 'aria-invalid': !!fieldErrors[key], 'aria-describedby': fieldErrors[key] ? `scheduler-${key}-error` : undefined });
+  // withInvite: 'ics' downloads an invite file, 'google' opens Google Calendar with the meeting filled in.
   const save = async (withInvite) => {
     if (saving) return;
     const result = validateSchedule(form, timezone);
@@ -88,12 +90,16 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
     }
     setSaving(true);
     setError('');
+    // Open the tab during the click; browsers block pop-ups opened after waiting for the server.
+    const calendarTab = withInvite === 'google' ? window.open('', '_blank') : null;
     try {
       const meeting = await onSchedule(result.input);
-      if (withInvite) downloadInvite(meeting);
+      if (withInvite === 'ics') downloadInvite(meeting);
+      if (calendarTab) { calendarTab.opener = null; calendarTab.location.href = googleCalendarUrl(meeting); }
       setForm((previous) => ({ ...previous, title: '', participants: '' }));
       onClose();
     } catch (err) {
+      calendarTab?.close();
       setError(getApiErrorMessage(err, 'Could not save this meeting.'));
     } finally {
       setSaving(false);
@@ -183,8 +189,11 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
                 <button type="submit" className="scheduler-save" disabled={!form.title.trim() || saving}>
                   <CalendarClock size={17} aria-hidden="true" />{saving ? 'Saving…' : 'Save schedule'}
                 </button>
-                <button type="button" className="scheduler-invite" disabled={!form.title.trim() || saving} onClick={() => save(true)} title="Save and download a calendar invite">
+                <button type="button" className="scheduler-invite" disabled={!form.title.trim() || saving} onClick={() => save('ics')} title="Save and download a calendar invite">
                   <Download size={17} aria-hidden="true" />Save + invite
+                </button>
+                <button type="button" className="scheduler-invite" disabled={!form.title.trim() || saving} onClick={() => save('google')} title="Save and add it to Google Calendar">
+                  <CalendarPlus size={17} aria-hidden="true" />Save + Google
                 </button>
               </footer>
             </form>
