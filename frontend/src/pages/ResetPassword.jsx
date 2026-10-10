@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import axios from 'axios'
-import etherxLogo from '../assets/etherx_transparent.png'
+import EtherXLogo from '../components/brand/EtherXLogo'
 
 const C = {
   bg:               'var(--c-141414)',
@@ -64,7 +64,7 @@ export default function ResetPassword() {
       <div style={s.page}>
         <div className="rp-glow" style={s.glow} />
         <div style={s.logoCorner}>
-          <img src={etherxLogo} alt="EtherXMeet" style={s.logoImg} />
+          <EtherXLogo style={s.logo} />
         </div>
 
         <div style={s.center}>
@@ -192,12 +192,7 @@ const s = {
     zIndex: 10,
     background: 'none',
   },
-  logoImg: {
-    height: 130,
-    width: 'auto',
-    display: 'block',
-    background: 'none',
-  },
+  logo: { height: 48, width: 'auto', display: 'block' },
   glow: {
     position: 'absolute',
     inset: 0,

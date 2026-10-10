@@ -8,8 +8,7 @@ import { ROUTES } from '../../utils/constants';
 import { useTheme } from '../../utils/theme';
 import Dropdown from '../ui/Dropdown';
 import ProfileAvatar from '../ui/ProfileAvatar';
-import etherxLogo from '../../assets/etherx_transparent.png';
-import compactLogo from '../../assets/etherx_logo_header.png';
+import EtherXLogo from '../brand/EtherXLogo';
 import './workspace-header.css';
 
 export default function WorkspaceHeader() {
@@ -47,7 +46,7 @@ export default function WorkspaceHeader() {
   return (
     <header className="workspace-header">
       <button type="button" className="workspace-brand" aria-label="EtherX Meet home" onClick={() => navigate(ROUTES.HOME)}>
-        <picture><source media="(max-width: 768px)" srcSet={compactLogo} /><img src={etherxLogo} alt="EtherX Meet" /></picture>
+        <EtherXLogo className="workspace-logo" />
       </button>
       <div className="workspace-header-controls">
         <span className="workspace-clock">{new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>

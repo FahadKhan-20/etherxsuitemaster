@@ -62,9 +62,9 @@ export function LogoLetter({ face }) {
 }
 
 /** The full logo, static. */
-export default function EtherXLogo({ className, title = 'EtherX Meet' }) {
+export default function EtherXLogo({ className, style, title = 'EtherX Meet' }) {
   return (
-    <svg className={className} viewBox={LOGO_VIEWBOX} role="img" aria-label={title}>
+    <svg className={className} style={style} viewBox={LOGO_VIEWBOX} role="img" aria-label={title}>
       <LogoDefs />
       <path d={SHIELD_PATHS.join(' ')} fill="url(#exm-logo-shield)" />
       {LOGO_LETTERS.map((letter, i) => (

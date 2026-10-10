@@ -1,6 +1,6 @@
 // Generated from design-artifacts/EtherX Meet Room.dc.html. Regenerate with node scripts/port-meeting-reference.cjs.
 import { Fragment } from "react";
-import etherxLogo from '../../assets/etherx_logo_header.png';
+import EtherXLogo from '../brand/EtherXLogo';
 import ReferenceTile from "./ReferenceTile";
 import ProfileAvatar from "../ui/ProfileAvatar";
 import "../../styles/reference-room.css";
@@ -238,7 +238,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <div style={{"height": "100vh","display": "flex","flexDirection": "column","background": "var(--c-0b0a08)"}}>
 <header style={{"flexShrink": "0","display": "grid","gridTemplateColumns": "1fr auto 1fr","alignItems": "center","gap": "16px","padding": "12px " + String(v.headerPadR) + " 12px 20px","opacity": v.chromeOp,"transition": "opacity 300ms ease"}}>
 <div style={{"display": "flex","alignItems": "center"}}>
-<img src={etherxLogo} alt="EtherX Meet" style={{"height": "32px","width": "auto","display": "block"}} />
+<EtherXLogo className="exmeet-reference-logo" />
 </div>
 <div style={{"display": "flex","alignItems": "center","gap": "10px"}}>
 <div style={{"display": "flex","alignItems": "center","gap": "12px","height": "40px","padding": "0 8px 0 16px","borderRadius": "999px","background": "var(--c-13110e)","border": "1px solid var(--c-2e2a21)","fontSize": "14px"}}>

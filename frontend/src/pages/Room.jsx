@@ -6,7 +6,7 @@ import { useUser } from '../context/UserContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import VideoRoom from '../components/room/ReferenceVideoRoom';
 import VideoCanvasProcessor from '../components/video/VideoCanvasProcessor';
-import etherxLogo from '../assets/etherx_logo_header.png';
+import EtherXLogo from '../components/brand/EtherXLogo';
 import { ROUTES } from '../utils/constants';
 import apiClient from '../utils/apiClient';
 import { clearAuthSession, getAuthToken } from '../utils/auth';
@@ -164,7 +164,7 @@ export default function Room() {
   return (
     <div className="meeting-prejoin">
       <header className="prejoin-header">
-        <a href={ROUTES.HOME} aria-label="EtherX Meet home"><img src={etherxLogo} alt="EtherX Meet" /></a>
+        <a href={ROUTES.HOME} aria-label="EtherX Meet home"><EtherXLogo className="prejoin-logo" /></a>
         <div className="prejoin-header-meta"><button type="button" onClick={() => navigate(ROUTES.HOME)}><ArrowLeft size={16} /> Back to home</button></div>
       </header>
 

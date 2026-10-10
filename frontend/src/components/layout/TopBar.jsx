@@ -15,8 +15,7 @@ import { useUser } from '../../context/UserContext';
 import { useWallet } from '../../context/WalletContext';
 import { ROUTES } from '../../utils/constants';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
-import etherxLogo from '../../assets/etherx_transparent.png';
-import etherxHeaderLogo from '../../assets/etherx_logo_header.png';
+import EtherXLogo from '../brand/EtherXLogo';
 
 function buildMeetingCode(meetingId) {
   if (!meetingId) {
@@ -245,11 +244,9 @@ export default function TopBar({ showMeetingInfo = false, compactLogo = false })
 
 function EtherxMark({ compact = false }) {
   return (
-    <img
-      src={compact ? etherxHeaderLogo : etherxLogo}
-      alt="EtherX Meet"
-      style={{ width: 'clamp(125px, 28vw, 160px)', height: 'auto', display: 'block' }}
-    />
+    <span style={{ display: 'block', width: compact ? 'clamp(125px, 28vw, 160px)' : 'clamp(107px, 24vw, 137px)' }}>
+      <EtherXLogo className="block h-auto w-full" />
+    </span>
   );
 }
 

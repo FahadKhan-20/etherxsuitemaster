@@ -11,7 +11,7 @@ import { useUserContext } from '../context/UserContext';
 import { useWallet } from '../context/WalletContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import AudioVisualizer from '../components/meeting/AudioVisualizer';
-import etherxLogo from '../assets/etherx_transparent.png';
+import EtherXLogo from '../components/brand/EtherXLogo';
 import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
 
 const AVATAR_COLORS = [
@@ -161,7 +161,7 @@ export default function Join() {
       {/* Nav */}
       <nav className="flex items-center justify-between px-4 sm:px-7 h-16 sm:h-20 bg-transparent relative z-10">
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img src={etherxLogo} alt="EtherXMeet" className="h-12 sm:h-16 w-auto block" />
+          <EtherXLogo className="h-5 sm:h-6 w-auto block" />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>

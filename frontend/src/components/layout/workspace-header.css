@@ -1,7 +1,6 @@
 .workspace-header { height: 130px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 40; background: var(--c-000000); color: var(--t-ffffff); font-family: 'Inter', sans-serif; }
 .workspace-brand { display: inline-flex; align-items: center; flex-shrink: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.workspace-brand picture { display: block; }
-.workspace-brand img { display: block; width: auto; height: 120px; }
+.workspace-logo { display: block; width: auto; height: 44px; }
 .workspace-header-controls { display: flex; align-items: center; gap: 10px; }
 .workspace-clock { min-width: 88px; text-align: right; font-size: 13px; color: var(--t-c8c1af); font-variant-numeric: tabular-nums; }
 .workspace-header-controls button { display: inline-flex; align-items: center; justify-content: center; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
@@ -18,7 +17,7 @@
 .workspace-header-error { position: absolute; right: 24px; bottom: 5px; color: var(--t-ffaaaa); font-size: 12px; }
 @media (max-width: 768px) {
   .workspace-header { height: 72px; padding: 0 16px; gap: 10px; }
-  .workspace-brand img { width: 125px; height: 42px; object-fit: contain; }
+  .workspace-logo { height: 40px; }
   .workspace-clock { display: none; }
   .workspace-header-controls { gap: 8px; }
   .workspace-header-controls button { min-height: 44px; }
@@ -29,7 +28,7 @@
 }
 @media (max-width: 380px) {
   .workspace-header { padding: 0 12px; gap: 6px; }
-  .workspace-brand img { width: 104px; }
+  .workspace-logo { height: 34px; }
   .workspace-header-controls { gap: 5px; }
   .workspace-nav-button { padding: 8px; font-size: 12px !important; }
   .workspace-nav-button > svg { display: none; }
