@@ -45,14 +45,14 @@ export default function ForgotPassword() {
                 <h1>Check your email</h1>
                 <p>If an account uses <strong>{sentTo}</strong>, a reset link is on its way. It works for one hour. Check spam if it does not arrive in a few minutes.</p>
               </div>
-              {error && <p className="exm-auth-error" role="alert">{error}</p>}
-              <button type="button" className="exm-auth-submit" onClick={send} disabled={busy}>
-                {busy && <span className="exm-auth-spinner" aria-hidden="true" />}
-                <span>{busy ? 'Sending…' : 'Send the link again'}</span>
-              </button>
-              <p className="exm-auth-switch">
-                Wrong address? <button type="button" className="exm-auth-link-inline" onClick={() => { setSentTo(''); setError(''); }}>Use another email</button>
-              </p>
+              <div className="exm-auth-form">
+                {error && <p className="exm-auth-error" role="alert">{error}</p>}
+                <button type="button" className="exm-auth-submit" onClick={send} disabled={busy}>
+                  {busy && <span className="exm-auth-spinner" aria-hidden="true" />}
+                  <span>{busy ? 'Sending…' : 'Send the link again'}</span>
+                </button>
+                <button type="button" className="exm-auth-secondary" onClick={() => { setSentTo(''); setError(''); }}>Use a different email</button>
+              </div>
             </>
           ) : (
             <>
