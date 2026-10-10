@@ -250,6 +250,17 @@ test('a co-host who reconnects keeps the role and can still edit the whiteboard'
   back.trigger('whiteboard-op', { roomCode: f.code, op: { type: 'STROKE_START', id: 'l1', tool: 'pen', color: '#fff', size: 4, point: { x: 1, y: 1 } } });
   assert.ok(back.roomEvents.some(e => e.event === 'whiteboard-op'), 'stroke is broadcast'); assert.ok(host.clientEvents.length >= before);
 });
+test('participants draw on the whiteboard only when the host allows it, and never clear it', async t => {
+  const f = fixture(t); const host = await f.host(); const guest = await f.guest(host, 'drawer');
+  const stroke = id => ({ type: 'STROKE_START', id, tool: 'pen', color: '#fff', size: 4, point: { x: 1, y: 1 } });
+  const sent = () => guest.roomEvents.filter(e => e.event === 'whiteboard-op').length;
+  guest.trigger('whiteboard-op', { roomCode: f.code, op: stroke('before') }); assert.equal(sent(), 0, 'off by default');
+  let reply; host.trigger('meeting-policy-set', { roomCode: f.code, allowDrawing: true }, r => reply = r); assert.equal(reply.ok, true);
+  guest.trigger('whiteboard-op', { roomCode: f.code, op: stroke('after') }); assert.equal(sent(), 1);
+  for (const type of ['CLEAR', 'IMAGE_ADD', 'UNDO', 'LASER']) guest.trigger('whiteboard-op', { roomCode: f.code, op: { type, url: 'data:,x' } });
+  assert.equal(sent(), 1, 'board-wide actions stay with hosts');
+  guest.trigger('meeting-policy-set', { roomCode: f.code, allowDrawing: true }, r => reply = r); assert.equal(reply.ok, false, 'only hosts change the policy');
+});
 test('joiners learn the current co-host', async t => {
   const f = fixture(t); const host = await f.host(); const co = await f.guest(host, 'co-a', 'co-a');
   host.trigger('make-co-host', { roomCode: f.code, socketId: co.id });

@@ -12,8 +12,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * @param {boolean}    opts.socketReady   - Whether the socket is connected.
  * @param {string}     opts.roomCode      - The meeting room code.
  * @param {boolean}    opts.isHost        - Whether the local user is the host/presenter.
+ * @param {boolean}    opts.canDraw       - Whether the local user may draw (host, or a participant the host allowed).
  */
-export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
+export function useWhiteboardSync({ socket, socketReady, roomCode, isHost, canDraw = isHost }) {
   const [lines, setLines] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -100,13 +101,13 @@ export function useWhiteboardSync({ socket, socketReady, roomCode, isHost }) {
     };
   }, [socket, socketReady, roomCode, applyOp]);
 
-  // ── Emit an operation (host only) ──────────────────────────────────────────
+  // ── Emit an operation (host, or a participant allowed to draw; the server re-checks) ──
   const emitOp = useCallback((op) => {
-    if (!isHost) return;
+    if (!canDraw) return;
     // Apply locally first so the host sees the change immediately
     applyOp(op);
     socket?.emit('whiteboard-op', { roomCode, op });
-  }, [isHost, socket, roomCode, applyOp]);
+  }, [canDraw, socket, roomCode, applyOp]);
 
   // ── Drawing operations ─────────────────────────────────────────────────────
   const startStroke = useCallback((id, tool, color, size, point) => {

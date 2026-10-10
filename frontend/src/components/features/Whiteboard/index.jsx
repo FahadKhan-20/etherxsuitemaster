@@ -24,7 +24,7 @@ const templates = ['blank', 'kanban', 'mindmap', 'retro', 'flow'];
 const outlineBtn = 'flex items-center justify-center gap-2 rounded-lg border border-[#d4af37]/25 bg-transparent px-4 py-2 text-base font-medium text-[#f0e6d3] transition-all hover:bg-[#d4af37]/10 hover:text-[#e5c76b]';
 const goldBtn = 'flex items-center justify-center gap-2 rounded-lg border border-[#e5c76b]/40 bg-[linear-gradient(135deg,#d4af37,#b8860b)] px-4 py-2 text-base font-bold text-[#050505] shadow-lg shadow-[#d4af37]/20 transition-all hover:brightness-110';
 
-export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomCode, isHost }) {
+export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomCode, isHost, canDraw = isHost }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, onClose, isOpen);
   const canvasRef = useRef(null);
@@ -48,9 +48,10 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
     startStroke, extendStroke, endStroke,
     addSticky, updateSticky, moveSticky, deleteSticky,
     undo, redo, clearBoard, addImage, removeImage, moveLaser,
-  } = useWhiteboardSync({ socket, socketReady, roomCode, isHost });
+  } = useWhiteboardSync({ socket, socketReady, roomCode, isHost, canDraw });
 
-  const canEdit = !!isHost;
+  // Participants the host allowed can draw and add notes; board-wide actions stay with the host.
+  const canEdit = !!canDraw;
 
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, visible: false });
 
@@ -153,7 +154,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       return;
     }
 
-    const id = `line-${Date.now()}`;
+    const id = `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     currentStrokeIdRef.current = id;
     setIsDrawing(true);
     startStroke(id, tool, color, strokeSize, point);
@@ -278,6 +279,9 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             {!canEdit && (
               <p className="mt-0.5 text-[11px] sm:text-xs text-[#a89878]">View-only — the host is presenting this board.</p>
             )}
+            {canEdit && !isHost && (
+              <p className="mt-0.5 text-[11px] sm:text-xs text-[#a89878]">The host has allowed you to draw.</p>
+            )}
           </div>
           <button
             type="button"
@@ -295,10 +299,10 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
             <ToolButton active={tool === 'highlighter'} icon={Highlighter} label="Marker" onClick={() => selectTool('highlighter')} />
             <ToolButton active={tool === 'eraser'} icon={Eraser} label="Erase" onClick={() => selectTool('eraser')} />
             <ToolButton active={tool === 'sticky'} icon={StickyNote} label="Sticky" onClick={() => selectTool('sticky')} />
-            <ToolButton active={tool === 'laser'} icon={MousePointer2} label="Laser" onClick={() => selectTool('laser')} />
-            <ToolButton active={false} icon={RotateCcw} label="Undo" onClick={undo} />
-            <ToolButton active={false} icon={RotateCw} label="Redo" onClick={redo} />
-            {canEdit && <ToolButton active={false} icon={Trash2} label="Clear" onClick={clearBoard} />}
+            {isHost && <ToolButton active={tool === 'laser'} icon={MousePointer2} label="Laser" onClick={() => selectTool('laser')} />}
+            {isHost && <ToolButton active={false} icon={RotateCcw} label="Undo" onClick={undo} />}
+            {isHost && <ToolButton active={false} icon={RotateCw} label="Redo" onClick={redo} />}
+            {isHost && <ToolButton active={false} icon={Trash2} label="Clear" onClick={clearBoard} />}
           </div>
 
           <div className="relative overflow-hidden rounded-[32px] border border-[#d4af37]/15 bg-[#0a0a0a] shadow-[inset_0_1px_0_rgba(212,175,55,0.1)]">
@@ -494,7 +498,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
               </div>
             </div>
 
-            {canEdit && (
+            {isHost && (
               <label className="cursor-pointer rounded-[22px] border border-[#d4af37]/15 bg-black/20 px-4 py-3 text-sm text-[#c9bda2] transition-all hover:border-[#d4af37]/40 hover:text-[#e5c76b]">
                 <div className="flex items-center gap-2">
                   <ImagePlus className="h-4 w-4" />
@@ -521,7 +525,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                 />
               </label>
             )}
-            {canEdit && uploadedImage && (
+            {isHost && uploadedImage && (
               <button type="button" className={outlineBtn} onClick={removeImage}>
                 <X className="h-4 w-4" />
                 Remove image

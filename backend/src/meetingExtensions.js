@@ -2,7 +2,7 @@ const { meetingMetrics } = require('./meetingMetrics');
 const { safeAck, guardedOn } = require('./socketGuard');
 // Server-authoritative policies and subgroup membership for the reference meeting UI.
 const policies = new Map(), breakouts = new Map(), ended = new Set();
-const defaults = { waitingRoom: true, allowChat: true, allowShare: true };
+const defaults = { waitingRoom: true, allowChat: true, allowShare: true, allowDrawing: false };
 const getMeetingPolicy = code => ({ ...defaults, ...policies.get(code) });
 const getGroup = (code, id) => breakouts.get(code)?.assignments?.[id] || 'main';
 function registerMeetingExtensions(io, socket, context) {

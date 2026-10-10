@@ -91,6 +91,10 @@ function isPrivileged(roomCode, userId) {
   return !!(co && String(co.userId) === String(userId));
 }
 
+// Whiteboard operations a participant may send when the host allows drawing. Clearing, images, undo/redo
+// (which act on everyone's strokes) and the laser stay with the host and co-host.
+const PARTICIPANT_WHITEBOARD_OPS = new Set(['STROKE_START', 'STROKE_EXTEND', 'STROKE_END', 'STICKY_ADD', 'STICKY_UPDATE', 'STICKY_MOVE', 'STICKY_DELETE']);
+
 // roomCode -> { lines, notes, uploadedImage, laser } (whiteboard state)
 const roomWhiteboards = new Map();
 
@@ -888,8 +892,9 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     onMember('whiteboard-op', ({ roomCode, op }) => {
       const room = rooms.get(roomCode);
       const member = room?.get(socket.id);
-      if (!member) return; // not a room member
-      if (!isPrivileged(roomCode, member.userId)) return; // not host/co-host
+      if (!member || !op || typeof op !== 'object') return; // not a room member
+      // Host/co-host do anything; participants only draw and add notes, and only once the host allows it.
+      if (!isPrivileged(roomCode, member.userId) && !(getMeetingPolicy(roomCode).allowDrawing && PARTICIPANT_WHITEBOARD_OPS.has(op.type))) return;
 
       if (!roomWhiteboards.has(roomCode)) {
         roomWhiteboards.set(roomCode, { lines: [], notes: [], uploadedImage: '', laser: { x: 0, y: 0, visible: false } });
