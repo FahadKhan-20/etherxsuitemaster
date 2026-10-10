@@ -118,3 +118,13 @@ alter table meeting_agendas enable row level security;
 alter table meeting_sessions enable row level security;
 alter table recordings enable row level security;
 alter table scheduled_meetings enable row level security;
+
+-- Web Push subscriptions: one per browser or phone a user turned notifications on in.
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id uuid not null references users (id) on delete cascade,
+  keys jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user_idx on push_subscriptions (user_id);
+alter table push_subscriptions enable row level security;

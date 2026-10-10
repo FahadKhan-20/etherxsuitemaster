@@ -32,9 +32,9 @@ class FakeServer {
   }
 }
 const events = (socket, event) => socket.clientEvents.filter(e => e.event === event);
-function fixture(t, owner = 'host-user', avatars = {}) {
+function fixture(t, owner = 'host-user', avatars = {}, extra = {}) {
   const code = `test-${t.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
-  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => owner, resolveUserAvatar: id => avatars[id] || null });
+  const io = setupSignaling(null, '*', FakeServer, { resolveRoomOwner: () => owner, resolveUserAvatar: id => avatars[id] || null, ...extra });
   registerRoomHost(code, owner);
   t.after(() => { [...io.sockets.sockets.values()].forEach(s => s.disconnect()); rooms.delete(code); });
   const connect = async (id, userId = id, token) => { const socket = new FakeSocket(id, io, code, userId, token); await io.connect(socket); return socket; };
@@ -271,6 +271,17 @@ test('the host spotlights one person for everyone; it clears when they leave', a
   guest.disconnect();
   assert.deepEqual(f.io.emittedEvents.filter(e => e.event === 'spotlight-state').at(-1).payload, { socketId: null });
   host.trigger('spotlight-set', { roomCode: f.code, socketId: 'gone' }, r => reply = r); assert.equal(reply.ok, false);
+});
+test('a join request is pushed to the host and co-host phones', async t => {
+  const pushed = [];
+  const f = fixture(t, 'host-user', {}, { notifyUsers: async (ids, message) => { pushed.push({ ids, message }); } });
+  const host = await f.host(); const co = await f.guest(host, 'co', 'co-user');
+  host.trigger('make-co-host', { roomCode: f.code, socketId: co.id });
+  pushed.length = 0;
+  const waiting = await f.connect('knock', 'knocker'); waiting.trigger('request-join', { roomCode: f.code, userName: 'Asha' });
+  assert.deepEqual(pushed[0].ids, ['host-user', 'co-user']);
+  assert.equal(pushed[0].message.title, 'Asha wants to join');
+  assert.equal(pushed[0].message.url, `/room/${f.code}`);
 });
 test('joiners learn the current co-host', async t => {
   const f = fixture(t); const host = await f.host(); const co = await f.guest(host, 'co-a', 'co-a');

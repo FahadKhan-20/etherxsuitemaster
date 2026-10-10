@@ -9,6 +9,7 @@ import { useUserContext } from '../context/UserContext';
 import { useTheme } from '../utils/theme';
 import { useMeetingPreferences } from '../hooks/useMeetingPreferences';
 import { listMeetingDevices } from '../utils/meetingMedia';
+import { disablePush, enablePush, needsHomeScreen, pushEnabled, pushSupported } from '../utils/push';
 import '../styles/dashboard.css';
 import '../styles/settings.css';
 
@@ -107,6 +108,21 @@ export default function Settings() {
     } catch (error) {
       setResetState('idle');
       flash(getApiErrorMessage(error, 'Could not send the reset link. Try again.'));
+    }
+  };
+
+  // Push to this phone or computer, even when EtherX Meet is closed.
+  const [push, setPush] = useState({ on: false, busy: false });
+  useEffect(() => { pushEnabled().then((on) => setPush((p) => ({ ...p, on }))).catch(() => {}); }, []);
+  const togglePush = async (on) => {
+    setPush((p) => ({ ...p, busy: true }));
+    try {
+      if (on) await enablePush(); else await disablePush();
+      setPush({ on, busy: false });
+      flash(on ? 'Notifications are on for this device.' : 'Notifications are off for this device.');
+    } catch (error) {
+      setPush((p) => ({ ...p, busy: false }));
+      flash(getApiErrorMessage(error, error.message || 'Could not change notifications.'));
     }
   };
 
@@ -237,6 +253,15 @@ export default function Settings() {
 
               {activeTab === 'notifications' && (
                 <>
+                  <Panel title="This device" description="Notifications on this phone or computer, even when EtherX Meet is closed">
+                    {!pushSupported() ? (
+                      <p className="settings-text">This browser cannot show notifications.</p>
+                    ) : needsHomeScreen() ? (
+                      <p className="settings-text">On iPhone, first add EtherX Meet to your Home Screen (Share → Add to Home Screen), open it from there, then turn this on.</p>
+                    ) : (
+                      <Toggle label="Notifications on this device" description="Someone asks to join your meeting, and reminders before scheduled meetings." checked={push.on} onChange={(v) => !push.busy && togglePush(v)} />
+                    )}
+                  </Panel>
                   <Panel title="During meetings" description="Saved on this browser. The same switches are in the meeting's settings.">
                     <Toggle label="Join and leave alerts" description="Show a notice when people enter or leave." checked={roomPref('sounds', true)} onChange={(v) => setRoomPref('sounds', v)} />
                     <Toggle label="Chat alerts" description="Show a preview when a message arrives." checked={roomPref('chatNotif', true)} onChange={(v) => setRoomPref('chatNotif', v)} />

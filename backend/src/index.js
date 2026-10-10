@@ -90,6 +90,7 @@ app.use('/api/recordings', recordingRoutes);
 
 
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/push', require('./routes/push'));
 
 // Meeting Agenda Routes
 app.use('/api/meeting-agenda', meetingAgendaRoutes);
@@ -158,6 +159,7 @@ const startServer = async () => {
       console.warn('R2_* is not set: recordings are kept on this server\'s disk, which Render wipes on every redeploy and restart.');
     }
     require('./retention').scheduleRetention();
+    require('./reminders').scheduleReminders();
 
     // Create HTTP server
     const httpServer = http.createServer(app);

@@ -188,6 +188,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
     return room?.hostUserId ? String(room.hostUserId) : null;
   },
   resolveRecordingAllowed = require('./recordingPolicy').hostAllowsRecording,
+  notifyUsers = (...args) => require('./push').notifyUsers(...args),
   resolveUserAvatar = async id => {
     const user = await require('./models/User').findById(id);
     return user?.avatar || null;
@@ -550,6 +551,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         userName,
         roomCode,
       });
+      // Reaches the host and co-host on their phone even when the meeting tab is in the background.
+      const hosts = [roomHosts.get(roomCode), roomCoHosts.get(roomCode)?.userId].filter(Boolean);
+      Promise.resolve(notifyUsers(hosts, { title: `${userName} wants to join`, body: `Open the meeting to admit them (${roomCode}).`, url: `/room/${roomCode}`, tag: `join-${roomCode}-${userId}` }))
+        .catch(error => console.error('Join request push failed:', error.message));
     });
 
     onMember('admit-user', ({ toSocketId, roomCode: clientRoomCode }) => {
