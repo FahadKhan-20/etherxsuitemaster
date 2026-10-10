@@ -203,6 +203,7 @@ export const REFERENCE_BINDINGS=[
   "roomTitle",
   "roomy",
   "pip",
+  "stackStage",
   "rxRef",
   "chatListRef",
   "sendChat",
@@ -275,7 +276,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </div>
 </header>
 <div style={{"flex": "1","minHeight": "0","position": "relative","padding": "0 " + String(v.stagePadR) + " 0 16px"}}>
-<div data-pip={v.pip} style={{"position": "relative","height": "100%","display": "grid","gridTemplateColumns": v.gridCols,"gridTemplateRows": v.gridRows,"gap": "10px"}}>
+<div data-pip={v.pip} data-stack={v.stackStage} style={{"position": "relative","height": "100%","display": "grid","gridTemplateColumns": v.gridCols,"gridTemplateRows": v.gridRows,"gap": "10px"}}>
 {(v.tiles || []).map(t=><ReferenceTile key={t.key} person={t}>{t=><>
 <div data-tile={t.key} onClick={t.click} style={{"position": "relative","minHeight": "0","minWidth": "0","gridColumn": t.col,"gridRow": t.row,"borderRadius": t.radius,"overflow": "hidden","background": t.bg,"border": "2px solid " + String(t.ring),"boxShadow": t.glow,"filter": t.freeze,"display": "flex","flexDirection": "column","gap": "18px","alignItems": "center","justifyContent": "center","cursor": "pointer","transition": "border-color 200ms, box-shadow 160ms ease, filter 400ms ease"}}>
 {(t.isScreen) && <>
