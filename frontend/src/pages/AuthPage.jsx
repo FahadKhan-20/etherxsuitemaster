@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import apiClient, { getApiErrorMessage } from '../utils/apiClient';
 import { isAuthenticated, persistAuthSession } from '../utils/auth';
 import { ROUTES } from '../utils/constants';
+import { apiBase } from '../utils/apiBase';
 import EtherXLogo from '../components/brand/EtherXLogo';
 import GoogleMark from '../components/ui/GoogleMark';
 import '../styles/auth.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+const API_BASE = apiBase();
 const REMEMBER_KEY = 'etherxmeet_remember_email';
 const VALID_EMAIL = /^\S+@\S+\.\S+$/;
 const STRENGTH_COLORS = ['var(--c-26231c)', 'var(--c-d8443d)', 'var(--c-d9b54a)', 'var(--c-b5c75a)', 'var(--c-6fcf8f)'];

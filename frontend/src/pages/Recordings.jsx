@@ -8,6 +8,7 @@ import transcripts from '../data/transcripts';
 
 import apiClient, { getApiErrorMessage } from '../utils/apiClient';
 import { copyMeetingText } from '../utils/meetingClipboard';
+import { apiBase } from '../utils/apiBase';
 
 const GOLD = 'var(--c-d4af37)';
 const GOLD_DIM = 'rgba(212,175,55,0.08)';
@@ -16,7 +17,7 @@ const CARD = 'color-mix(in srgb, var(--c-0d0e12) 92%, transparent)';
 const CARD2 = 'color-mix(in srgb, var(--c-12141a) 85%, transparent)';
 const BORDER = 'color-mix(in srgb, var(--c-ffffff) 7%, transparent)';
 
-const API = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
+const API = apiBase();
 
 // Recording durations are stored in seconds.
 const formatDuration = (seconds) => {

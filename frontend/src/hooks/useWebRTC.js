@@ -5,6 +5,7 @@ import { acquireMeetingMedia, audioConstraint, deviceConstraint, listMeetingDevi
 import { useWallet } from '../context/WalletContext';
 import apiClient from '../utils/apiClient';
 import { newId } from '../utils/id';
+import { apiBase } from '../utils/apiBase';
 
 // Used until (or if) the backend's /api/rooms/ice-servers answers with the configured relay.
 const FALLBACK_ICE_SERVERS = [
@@ -294,11 +295,8 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       } catch { /* Keep the fallback servers. */ }
       if (cancelled || generation !== mediaGenerationRef.current) return;
 
-      const socketUrl =
-        import.meta.env.VITE_SOCKET_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        (typeof window !== 'undefined' ? window.location.origin : '');
-      const socket = io(socketUrl || undefined, { transports: ['websocket', 'polling'], auth: { token: getAuthToken(), roomCode: normalizedCode } });
+      const socketUrl = apiBase(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL);
+      const socket = io(socketUrl, { transports: ['websocket', 'polling'], auth: { token: getAuthToken(), roomCode: normalizedCode } });
       socketRef.current = socket;
       setSocketReady(false);
 

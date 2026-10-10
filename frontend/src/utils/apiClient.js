@@ -1,12 +1,9 @@
 import axios from 'axios';
 import { getAuthToken } from './auth';
-
-const defaultBaseUrl = typeof window !== 'undefined'
-  ? window.location.origin
-  : 'http://localhost:5000';
+import { apiBase } from './apiBase';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || defaultBaseUrl,
+  baseURL: apiBase(),
   headers: {
     'Content-Type': 'application/json',
   },
