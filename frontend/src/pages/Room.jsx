@@ -130,7 +130,7 @@ export default function Room() {
     updateUser({ name: displayName.trim() });
     
     // Hand off these exact tracks and disabled states; no capture reset on join.
-    setJoinedMedia({ userName: displayName.trim(), stream: releaseStream(), audioEnabled: isAudioEnabled, videoEnabled: isVideoEnabled, devices: selectedDevices });
+    setJoinedMedia({ userName: displayName.trim(), stream: releaseStream(), audioEnabled: isAudioEnabled, videoEnabled: isVideoEnabled, devices: selectedDevices, mirror });
 
     // Set join state
     setHasJoined(true);
@@ -141,6 +141,8 @@ export default function Room() {
     catch { setJoinError('Could not copy the link. Copy it from your browser address bar.'); }
   };
 
+  const [mirror, setMirror] = useState(false);
+  const toggleMirror = () => setMirror(on => !on);
   const avatarTone = useAvatarTone(user?.avatar, displayName);
 
   // Render the WebRTC Meeting Room once joined
@@ -149,8 +151,6 @@ export default function Room() {
   }
 
   const initial = (displayName.trim()[0] || '?').toUpperCase();
-  const mirror = preferences.reference?.mirror ?? false;
-  const toggleMirror = () => savePreferences({ ...preferences, reference: { ...preferences.reference, mirror: !mirror } });
   const peopleText = activeParticipants.length
     ? `${activeParticipants.length} ${activeParticipants.length === 1 ? 'person is' : 'people are'} already here`
     : 'Be the first to join';

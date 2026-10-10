@@ -92,6 +92,14 @@ beforeEach(() => {
 afterEach(()=>{ for(const {root,container} of roots) { act(()=>root.unmount());container.remove(); }roots=[];vi.restoreAllMocks();vi.unstubAllGlobals(); });
 
 describe('media ownership and live device choices',()=>{
+  it('starts the lobby with the microphone muted and the camera never opened',async()=>{
+    renderHook(()=>useMediaDevices());
+    expect(hook.isAudioEnabled).toBe(false);expect(hook.isVideoEnabled).toBe(false);
+    await act(async()=>hook.requestPermission());
+    expect(navigator.mediaDevices.getUserMedia.mock.calls.map(([c])=>Object.keys(c))).toEqual([['audio']]);
+    expect(hook.stream.getAudioTracks()[0].enabled).toBe(false);expect(hook.stream.getVideoTracks()).toHaveLength(0);
+    expect(hook.isAudioEnabled).toBe(false);expect(hook.isVideoEnabled).toBe(false);
+  });
   it('preserves fast prejoin mute choices while camera and microphone permission is pending',async()=>{
     const pending=[],tracks=[];
     navigator.mediaDevices.getUserMedia.mockImplementation(constraints=>new Promise(resolve=>{
@@ -100,7 +108,7 @@ describe('media ownership and live device choices',()=>{
         tracks.push(track);resolve(new Stream([track]));
       });
     }));
-    renderHook(()=>useMediaDevices());let permission;
+    renderHook(()=>useMediaDevices({audio:true,video:true}));let permission;
     act(()=>{permission=hook.requestPermission();});
     await act(async()=>{await hook.toggleAudio();await hook.toggleVideo();});
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
@@ -111,7 +119,7 @@ describe('media ownership and live device choices',()=>{
     expect(tracks.find(track=>track.kind==='video').readyState).toBe('ended');
   });
   it('releases the lobby camera and defers device capture until camera is enabled again',async()=>{
-    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());
+    renderHook(()=>useMediaDevices({audio:true,video:true}));await act(async()=>hook.requestPermission());
     const camera=hook.stream.getVideoTracks()[0],mic=hook.stream.getAudioTracks()[0];
     await act(async()=>hook.toggleVideo());
     expect(camera.readyState).toBe('ended');expect(hook.stream.getVideoTracks()).toHaveLength(0);
@@ -123,7 +131,7 @@ describe('media ownership and live device choices',()=>{
     expect(hook.isVideoEnabled).toBe(true);expect(hook.stream.getVideoTracks()[0].label).toBe('cam-2');
   });
   it('stops a lobby camera capture that resolves after camera is turned off',async()=>{
-    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
+    renderHook(()=>useMediaDevices({audio:true,video:true}));await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
     const camera=new Track('video');let resolve;
     navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
     let enable;act(()=>{enable=hook.toggleVideo();});await act(async()=>hook.toggleVideo());
@@ -131,7 +139,7 @@ describe('media ownership and live device choices',()=>{
     expect(camera.readyState).toBe('ended');expect(hook.isVideoEnabled).toBe(false);expect(hook.stream.getVideoTracks()).toHaveLength(0);
   });
   it('does not restore a lobby camera when a device switch resolves after camera off',async()=>{
-    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());
+    renderHook(()=>useMediaDevices({audio:true,video:true}));await act(async()=>hook.requestPermission());
     const camera=new Track('video','cam-2');let resolve;
     navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(done=>{resolve=done;}));
     let change;act(()=>{change=hook.switchDevice('video','cam-2');});await act(async()=>hook.toggleVideo());
@@ -139,7 +147,7 @@ describe('media ownership and live device choices',()=>{
     expect(camera.readyState).toBe('ended');expect(hook.isVideoEnabled).toBe(false);expect(hook.stream.getVideoTracks()).toHaveLength(0);
   });
   it('keeps the latest lobby camera enabled when device selection changes during capture',async()=>{
-    renderHook(()=>useMediaDevices());await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
+    renderHook(()=>useMediaDevices({audio:true,video:true}));await act(async()=>hook.requestPermission());await act(async()=>hook.toggleVideo());
     const pending=[];navigator.mediaDevices.getUserMedia.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)));
     let enable,change;act(()=>{enable=hook.toggleVideo();});act(()=>{change=hook.switchDevice('video','cam-2');});
     const camera=new Track('video','cam-2'),stale=new Track('video');
@@ -159,20 +167,20 @@ describe('media ownership and live device choices',()=>{
     const result=await acquireMeetingMedia(); expect(result.stream.getAudioTracks()).toHaveLength(1);expect(result.error).toContain('Camera: device not found');
   });
   it('stops all owned tracks under StrictMode',async()=>{
-    const rendered=renderHook(()=>useMediaDevices(),true);
+    const rendered=renderHook(()=>useMediaDevices({audio:true,video:true}),true);
     await act(async()=>{await hook.requestPermission();});
     const owned=hook.stream.getTracks();rendered.unmount();expect(owned.every(t=>t.readyState==='ended')).toBe(true);
   });
   it('stops tracks when permission resolves after navigation',async()=>{
     const pending = [], tracks = [];
     navigator.mediaDevices.getUserMedia.mockImplementation(c => new Promise(resolve => pending.push(() => { const track = new Track(c.video ? 'video' : 'audio'); tracks.push(track); resolve(new Stream([track])); })));
-    const rendered=renderHook(()=>useMediaDevices(),true);
+    const rendered=renderHook(()=>useMediaDevices({audio:true,video:true}),true);
     let request;act(()=>{request=hook.requestPermission();});rendered.unmount();
     await act(async()=>{pending.forEach(resolve=>resolve());await request;});
     expect(tracks).toHaveLength(2);expect(tracks.every(t=>t.readyState==='ended')).toBe(true);
   });
   it('releases a disabled lobby stream without stopping transferred tracks',async()=>{
-    const rendered=renderHook(()=>useMediaDevices());await act(async()=>{await hook.requestPermission();await hook.toggleAudio();await hook.toggleVideo();});
+    const rendered=renderHook(()=>useMediaDevices({audio:true,video:true}));await act(async()=>{await hook.requestPermission();await hook.toggleAudio();await hook.toggleVideo();});
     let stream;act(()=>{stream=hook.releaseStream();});rendered.unmount();
     expect(stream.getTracks().every(t=>!t.enabled && t.readyState==='live')).toBe(true);
     expect(stream.getAudioTracks()).toHaveLength(1);expect(stream.getVideoTracks()).toHaveLength(0);

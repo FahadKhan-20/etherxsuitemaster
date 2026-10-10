@@ -28,7 +28,7 @@ function RemoteVoice({stream,output}){const ref=useRef(null);useEffect(()=>{if(r
 export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,preferences,savePreferences}) {
   const [s,setS]=useState(()=>({panel:null,modal:null,menu:null,tab:'Audio',grid:true,spot:null,speaker:null,secs:0,fs:false,idle:false,ptt:false,left:false,ended:false,recAck:false,recStarted:null,
     name:initialMedia?.userName||getStoredUser()?.name||'Guest',q:'',openP:null,allStats:false,messages:[],draft:'',unread:false,previews:[],agendaPops:[],toasts:[],agendaDraft:'',pollQ:'',pollOpts:['',''],mediaKind:'video',mediaUrl:'',mediaErr:'',rating:0,fbText:'',fbSent:false,notes:'',inviteEmail:'',invited:[],copied:'',brCount:2,brMins:10,brSeed:0,breakout:null,roster:[],policy:{waitingRoom:true,allowChat:true,allowShare:true},captionDemand:false,capLines:[],capNotice:'',stats:{},
-    captions:false,bg:['blur','half-blur'].includes(preferences.filter)?'blur':BGS.some(b=>b.id===preferences.background)||/^data:image\/|^https?:\/\//i.test(preferences.background||'')?preferences.background:'none',filter:FILTERS.some(f=>f.id===preferences.filter)?preferences.filter:'none',selfHidden:false,lowBw:false,sounds:true,soundCues:true,chatNotif:true,handNotif:true,mirror:false,hd:true,showNames:true,rounded:true,...preferences.reference}));
+    captions:false,bg:['blur','half-blur'].includes(preferences.filter)?'blur':BGS.some(b=>b.id===preferences.background)||/^data:image\/|^https?:\/\//i.test(preferences.background||'')?preferences.background:'none',filter:FILTERS.some(f=>f.id===preferences.filter)?preferences.filter:'none',selfHidden:false,lowBw:false,sounds:true,soundCues:true,chatNotif:true,handNotif:true,mirror:false,hd:true,showNames:true,rounded:true,...preferences.reference,mirror:!!initialMedia?.mirror}));
   const previousRoster=useRef(null);
   const stateRef=useRef(s);stateRef.current=s;
   const [photoTones,setPhotoTones]=useState({});
@@ -128,7 +128,7 @@ export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,prefere
     if(/(^|\.)(youtube\.com|youtu\.be|vimeo\.com|instagram\.com|tiktok\.com|facebook\.com|drive\.google\.com)$/i.test(url.hostname))return patch({mediaErr:"That site can't be played here. YouTube links work; for other sites use a direct .mp4/.webm/.mp3 link, or Share screen."});
     try{rtc.shareMedia(url.href,s.mediaKind);patch({modal:null,mediaErr:'',spot:null});}catch{patch({mediaErr:'Enter a full link starting with http:// or https://'});}};
   const onFiles=async event=>{const files=[...(event.target.files||[])];event.target.value='';for(const file of files){if(file.size>10*1024*1024){toast('Files must be under 10 MB.');continue;}try{await rtc.shareFile(file);}catch(e){toast(e.response?.data?.message||`${file.name} could not be uploaded.`);}}};
-  const changePreference=(key,value)=>{patch({[key]:value});const next={...preferences,reference:{...preferences.reference,[key]:value}};savePreferences(next);};
+  const changePreference=(key,value)=>{patch({[key]:value});if(key==='mirror')return;const next={...preferences,reference:{...preferences.reference,[key]:value}};savePreferences(next);};
   const chooseDevice=async(kind,id)=>{try{await rtc.switchDevice(kind,id);savePreferences({...preferences,devices:{...preferences.devices,[kind]:id}});}catch(e){toast('Could not switch device: '+e.message);}};
   const toggleNoise=()=>rtc.toggleNoiseSuppression();
   const toggleRecording=()=>rec.isRecording?rec.stopRecording():rec.startRecording();
