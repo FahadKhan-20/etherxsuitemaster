@@ -191,8 +191,31 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
     }
   };
 
-  const exportPng = () => {
-    const dataUrl = canvasRef.current?.toDataURL('image/png');
+  // The uploaded image is its own <img> layer under the drawing canvas, so exports compose both:
+  // the image fitted like object-contain, then the strokes on top.
+  const exportDataUrl = async () => {
+    const strokes = canvasRef.current;
+    if (!strokes) return null;
+    const board = document.createElement('canvas');
+    board.width = strokes.width;
+    board.height = strokes.height;
+    const ctx = board.getContext('2d');
+    if (layers.upload && uploadedImage) {
+      const image = new Image();
+      image.src = uploadedImage;
+      try {
+        await image.decode();
+        const scale = Math.min(board.width / image.naturalWidth, board.height / image.naturalHeight);
+        const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+        ctx.drawImage(image, (board.width - width) / 2, (board.height - height) / 2, width, height);
+      } catch { /* an unreadable image still exports the drawing */ }
+    }
+    ctx.drawImage(strokes, 0, 0);
+    return board.toDataURL('image/png');
+  };
+
+  const exportPng = async () => {
+    const dataUrl = await exportDataUrl();
     if (!dataUrl) {
       return;
     }
@@ -203,13 +226,13 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
   };
 
   const exportPdf = async () => {
-    const dataUrl = canvasRef.current?.toDataURL('image/png');
+    const dataUrl = await exportDataUrl();
     if (!dataUrl) {
       return;
     }
     const { jsPDF } = await import('jspdf'); // loaded only when someone exports
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
-    pdf.addImage(dataUrl, 'PNG', 0, 0, 1280, 720);
+    pdf.addImage(dataUrl, 'PNG', 0, 0, 1280, 720, undefined, 'FAST');
     pdf.save('etherxmeet-whiteboard.pdf');
   };
 
