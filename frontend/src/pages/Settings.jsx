@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../utils/apiClient';
 import { motion } from 'framer-motion';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild } from '../utils/animationVariants';
 import {
+  ArrowLeft,
   Bell,
   ChevronRight,
   Moon,
@@ -21,6 +23,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import TopBar from '../components/layout/TopBar';
+import { ROUTES } from '../utils/constants';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Switch from '../components/ui/Switch';
@@ -42,6 +45,8 @@ const KEYBOARD_SHORTCUTS = [
 ];
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user, updateUser } = useUserContext();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
@@ -120,6 +125,9 @@ export default function Settings() {
     setTheme(newTheme);
   };
 
+  // Back to the page that opened Settings; a direct visit has no such page, so go to the dashboard.
+  const goBack = () => (location.key !== 'default' ? navigate(-1) : navigate(ROUTES.DASHBOARD));
+
   return (
     <AnimatedPage>
     <div className="min-h-[100dvh] bg-black text-app-text" style={{ position: 'relative', background: 'var(--c-000000)' }}>
@@ -132,6 +140,13 @@ export default function Settings() {
           transition={{ duration: 0.5 }}
           className="mb-10"
         >
+          <button
+            type="button"
+            onClick={goBack}
+            className="mb-4 inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-white/60 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <ArrowLeft size={16} aria-hidden="true" /> Back
+          </button>
           <div className="flex items-center gap-3 mb-2">
             <SettingsIcon className="h-8 w-8 text-indigo-400" />
             <h1 className="text-4xl font-bold font-syne">Settings</h1>
