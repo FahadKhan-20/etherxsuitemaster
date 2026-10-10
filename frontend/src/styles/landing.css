@@ -108,15 +108,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(212,175,55,0.55) 0%, rgba(201,138,30,0.40) 100%);
-  border: 1.5px solid var(--gold-border);
-  color: var(--gold);
+  color: #fff;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 32px;
-  font-weight: 700;
+  font-weight: 500;
   position: relative;
   z-index: 2;
-  box-shadow: 0 0 40px rgba(212,175,55,0.15);
 }
 
 .meet-label {

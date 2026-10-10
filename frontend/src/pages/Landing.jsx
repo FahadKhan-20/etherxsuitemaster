@@ -7,6 +7,7 @@ import { getUserInitials } from '../utils/auth';
 import { useUser } from '../context/UserContext';
 import WorkspaceHeader from '../components/layout/WorkspaceHeader';
 import ProfileAvatar from '../components/ui/ProfileAvatar';
+import { useAvatarTone } from '../utils/avatarTone';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
 import '../styles/landing.css';
@@ -74,6 +75,7 @@ export default function Landing() {
   const streamRef = useRef(null);
   const displayName = user.name || 'Participant';
   const displayInitial = getUserInitials(displayName).charAt(0);
+  const avatarTone = useAvatarTone(user.avatar, displayName);
 
   const [meetingCode, setMeetingCode] = useState('');
   const [micMuted, setMicMuted] = useState(true);
@@ -297,11 +299,11 @@ export default function Landing() {
         <main className="meet-main">
           <div className="meet-content">
             <section className="meet-preview-column">
-              <div className="meet-preview-box">
+              <div className="meet-preview-box" style={cameraOn ? undefined : { background: avatarTone.tile }}>
                 {cameraOn ? (
                   <video ref={videoRef} autoPlay muted playsInline className="meet-video" />
                 ) : (
-                  <ProfileAvatar className="meet-preview-avatar" src={user.avatar} name={displayName} initials={displayInitial} />
+                  <ProfileAvatar className="meet-preview-avatar" style={{ background: avatarTone.circle }} src={user.avatar} name={displayName} initials={displayInitial} />
                 )}
 
                 <span className="meet-label meet-name-label">{displayName}</span>
