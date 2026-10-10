@@ -143,7 +143,7 @@ router.post('/:code/invitations', auth, async (req,res,next)=>{
     const member=findRoomMember(code,req.user.id);
     if(!member)return res.status(403).json({success:false,message:'Join this meeting before inviting people.'});
     if(email.length>254||!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({success:false,message:'Enter a valid email address.'});
-    const origin=String(process.env.FRONTEND_URL||'http://localhost:3000').split(',')[0].replace(/\/$/,'');
+    const origin=String(process.env.FRONTEND_URL||process.env.CLIENT_URL||'http://localhost:3000').split(',')[0].replace(/\/$/,'');
     const link=origin+'/room/'+encodeURIComponent(code),subject='Join '+member.userName+' on EtherX Meet';
     const draft=()=>res.json({success:true,mode:'draft',mailto:'mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent('Join the meeting: '+link+'\nRoom code: '+code)});
     if(!process.env.EMAILJS_INVITE_TEMPLATE_ID||!process.env.EMAILJS_SERVICE_ID||!process.env.EMAILJS_PUBLIC_KEY)return draft();

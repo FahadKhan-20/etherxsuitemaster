@@ -36,3 +36,14 @@ test('invitations are sent through EmailJS when it is configured', async t => {
   assert.equal(params.to_email, 'guest@example.com');
   assert.match(params.meeting_link, /\/room\/invite-sent$/);
 });
+
+test('invite links use CLIENT_URL when FRONTEND_URL is not set', async t => {
+  const code = 'invite-origin', saved = KEYS.map(k => process.env[k]), env = { FRONTEND_URL: process.env.FRONTEND_URL, CLIENT_URL: process.env.CLIENT_URL }; let params;
+  rooms.set(code, new Map([['socket', { userId: 'member', userName: 'Host' }]]));
+  KEYS.forEach(k => { process.env[k] = 'configured'; });
+  delete process.env.FRONTEND_URL; process.env.CLIENT_URL = 'https://meet.example.com/';
+  const restore = stubSend(async (_service, _template, values) => { params = values; return { status: 200 }; });
+  t.after(() => { rooms.delete(code); restore(); KEYS.forEach((k, i) => { if (saved[i] === undefined) delete process.env[k]; else process.env[k] = saved[i]; }); for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  await invite(code, 'member', 'guest@example.com');
+  assert.equal(params.meeting_link, 'https://meet.example.com/room/invite-origin');
+});
