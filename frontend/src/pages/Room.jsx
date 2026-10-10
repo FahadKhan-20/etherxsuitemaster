@@ -46,6 +46,11 @@ export default function Room() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [modalTab, setModalTab] = useState('backgrounds'); // 'audio' | 'video' | 'backgrounds' | 'notifications' | 'profile' | 'shortcuts' | 'general'
   const selectedBgImage = preferences.background;
+  // A background chosen here replaces the one remembered from the last meeting, so the meeting opens with it.
+  const saveLobbyPreferences = next => {
+    const { bg: _bg, ...reference } = next.reference || {};
+    savePreferences({ ...next, reference });
+  };
 
   // Initialize media devices for pre-join preview
   const {
@@ -211,7 +216,7 @@ export default function Room() {
           <button type="button" className="prejoin-copy" onClick={handleCopyLink}>{copied ? <Check size={17} /> : <Link2 size={17} />}<span aria-live="polite">{copied ? 'Meeting link copied' : 'Copy meeting link'}</span></button>
         </section>
       </main>
-      {showSettingsModal && <MeetingSettings initialTab={modalTab} preferences={preferences} onSave={savePreferences} onClose={() => setShowSettingsModal(false)} stream={stream} audioEnabled={isAudioEnabled} videoEnabled={isVideoEnabled} devices={devices} selectedDevices={selectedDevices} switchDevice={switchDevice} name={displayName} onNameChange={setDisplayName} />}
+      {showSettingsModal && <MeetingSettings initialTab={modalTab} preferences={preferences} onSave={saveLobbyPreferences} onClose={() => setShowSettingsModal(false)} stream={stream} audioEnabled={isAudioEnabled} videoEnabled={isVideoEnabled} devices={devices} selectedDevices={selectedDevices} switchDevice={switchDevice} name={displayName} onNameChange={setDisplayName} />}
     </div>
   );
 }

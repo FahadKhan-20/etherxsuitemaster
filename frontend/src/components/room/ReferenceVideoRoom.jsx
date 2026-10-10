@@ -137,7 +137,10 @@ export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,prefere
     if(/(^|\.)(youtube\.com|youtu\.be|vimeo\.com|instagram\.com|tiktok\.com|facebook\.com|drive\.google\.com)$/i.test(url.hostname))return patch({mediaErr:"That site can't be played here. YouTube links work; for other sites use a direct .mp4/.webm/.mp3 link, or Share screen."});
     try{rtc.shareMedia(url.href,s.mediaKind);patch({modal:null,mediaErr:'',spot:null});}catch{patch({mediaErr:'Enter a full link starting with http:// or https://'});}};
   const onFiles=async event=>{const files=[...(event.target.files||[])];event.target.value='';for(const file of files){if(file.size>10*1024*1024){toast('Files must be under 10 MB.');continue;}try{await rtc.shareFile(file);}catch(e){toast(e.response?.data?.message||`${file.name} could not be uploaded.`);}}};
-  const changePreference=(key,value)=>{patch({[key]:value});if(key==='mirror')return;const next={...preferences,reference:{...preferences.reference,[key]:value}};savePreferences(next);};
+  const changePreference=(key,value)=>{patch({[key]:value});if(key==='mirror')return;const next={...preferences,reference:{...preferences.reference,[key]:value}};
+    // Keep the lobby's background in step, so the next lobby preview shows what the meeting uses.
+    if(key==='bg')Object.assign(next,{background:value==='none'||value==='blur'?'none':bgImage(value),filter:value==='blur'?'half-blur':'none'});
+    savePreferences(next);};
   const chooseDevice=async(kind,id)=>{try{await rtc.switchDevice(kind,id);savePreferences({...preferences,devices:{...preferences.devices,[kind]:id}});}catch(e){toast('Could not switch device: '+e.message);}};
   const toggleNoise=()=>rtc.toggleNoiseSuppression();
   const toggleRecording=()=>rec.isRecording?rec.stopRecording():rec.startRecording();
