@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import { TOAST_TYPES } from '../utils/constants';
+import { newId } from '../utils/id';
 
 const UIContext = createContext(null);
 
@@ -15,7 +16,7 @@ export function UIProvider({ children }) {
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   const addToast = (message, type = TOAST_TYPES.INFO, duration = 4000) => {
-    const id = crypto.randomUUID();
+    const id = newId();
     setToasts((previousToasts) => [...previousToasts, { id, message, type, duration }]);
     return id;
   };

@@ -4,6 +4,7 @@ import { getStoredUser, getAuthToken } from '../utils/auth';
 import { acquireMeetingMedia, audioConstraint, deviceConstraint, listMeetingDevices } from '../utils/meetingMedia';
 import { useWallet } from '../context/WalletContext';
 import apiClient from '../utils/apiClient';
+import { newId } from '../utils/id';
 
 // Used until (or if) the backend's /api/rooms/ice-servers answers with the configured relay.
 const FALLBACK_ICE_SERVERS = [
@@ -37,7 +38,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   const userNameRef = useRef(initialMedia?.userName || storedUser?.name || (account ? `${account.slice(0, 6)}…` : 'Anonymous'));
   const userName = userNameRef.current;
   const fallbackIdRef = useRef(null);
-  if (!fallbackIdRef.current) fallbackIdRef.current = crypto.randomUUID();
+  if (!fallbackIdRef.current) fallbackIdRef.current = newId();
   const userIdRef = useRef(storedUser?.id || account || fallbackIdRef.current);
   const userId = userIdRef.current;
 

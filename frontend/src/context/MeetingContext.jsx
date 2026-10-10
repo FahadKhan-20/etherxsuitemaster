@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import mockParticipants from '../data/participants';
 import { agendaTemplates } from '../data/agenda';
 import { useUserContext } from './UserContext';
+import { newId } from '../utils/id';
 
 const INITIAL_CHAT = [
   {
@@ -202,7 +203,7 @@ export function MeetingProvider({ children }) {
     setChatMessages((previousMessages) => [
       ...previousMessages,
       {
-        id: crypto.randomUUID(),
+        id: newId(),
         sender: user.name,
         text,
         translated: `${text} [translated]`,
@@ -214,7 +215,7 @@ export function MeetingProvider({ children }) {
 
   const addReaction = (emoji) => {
     const reaction = {
-      id: crypto.randomUUID(),
+      id: newId(),
       emoji,
       timestamp: Date.now(),
     };

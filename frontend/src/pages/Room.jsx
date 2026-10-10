@@ -19,6 +19,7 @@ import '../styles/meeting.css';
 import '../styles/prejoin.css';
 import { Mic, MicOff, Video, VideoOff, Image as ImageIcon, Settings, Check,
   ArrowLeft, ArrowRight, ChevronDown, FlipHorizontal2, Link2, LockKeyhole, X, Plus } from 'lucide-react';
+import { newId } from '../utils/id';
 
 export default function Room() {
 
@@ -157,7 +158,7 @@ export default function Room() {
   const addTopic = () => {
     const input = document.getElementById('agenda-input');
     if (!input?.value.trim()) return;
-    handleAgendaChange([...agendaTopics, { id: crypto.randomUUID(), title: input.value.trim(), completed: false }]);
+    handleAgendaChange([...agendaTopics, { id: newId(), title: input.value.trim(), completed: false }]);
     input.value = '';
   };
 
