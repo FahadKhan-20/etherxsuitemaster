@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, Film, Play, RefreshCw, Search, Share2, Video, X } from 'lucide-react';
+import { Check, Download, Film, Play, RefreshCw, Search, Share2, Trash2, Video, X } from 'lucide-react';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import WorkspaceHeader from '../components/layout/WorkspaceHeader';
 import apiClient, { getApiErrorMessage } from '../utils/apiClient';
@@ -30,6 +30,7 @@ export default function Recordings() {
   const [playUrl, setPlayUrl] = useState('');
   const [busy, setBusy] = useState('');
   const [copiedId, setCopiedId] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState('');
   const [actionError, setActionError] = useState('');
   const playerRef = useRef(null);
 
@@ -105,6 +106,22 @@ export default function Recordings() {
       setActionError(getApiErrorMessage(error, 'Could not create a share link.'));
     } finally {
       setBusy('');
+    }
+  };
+
+  // Deleting removes the file and voids every play, download and share link.
+  const remove = async (recording) => {
+    setActionError('');
+    setBusy(`delete-${recording.id}`);
+    try {
+      await apiClient.delete(`/api/recordings/${recording.id}`);
+      setRecordings((list) => list.filter((r) => r.id !== recording.id));
+      if (selected?.id === recording.id) { setSelected(null); setPlayUrl(''); }
+    } catch (error) {
+      setActionError(getApiErrorMessage(error, 'Could not delete this recording.'));
+    } finally {
+      setBusy('');
+      setConfirmDeleteId('');
     }
   };
 
@@ -215,6 +232,14 @@ export default function Recordings() {
                           {copiedId === recording.id ? <Check size={16} aria-hidden="true" /> : <Share2 size={16} aria-hidden="true" />}
                         </button>
                         <button type="button" className="dashboard-join-button" onClick={() => play(recording)} disabled={busy === `play-${recording.id}`}><Play size={15} aria-hidden="true" />Play</button>
+                        {confirmDeleteId === recording.id ? (
+                          <>
+                            <button type="button" className="dashboard-button rec-delete-confirm" onClick={() => remove(recording)} disabled={busy === `delete-${recording.id}`}>{busy === `delete-${recording.id}` ? 'Deleting…' : 'Delete'}</button>
+                            <button type="button" className="dashboard-icon-button" onClick={() => setConfirmDeleteId('')} title="Keep recording" aria-label={`Keep ${recording.title}`}><X size={16} aria-hidden="true" /></button>
+                          </>
+                        ) : (
+                          <button type="button" className="dashboard-icon-button rec-delete" onClick={() => setConfirmDeleteId(recording.id)} title="Delete" aria-label={`Delete ${recording.title}`}><Trash2 size={16} aria-hidden="true" /></button>
+                        )}
                       </div>
                     </li>
                   ))}

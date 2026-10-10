@@ -35,3 +35,8 @@
   .rec-player-foot .dashboard-meeting-actions { width: 100%; }
   .rec-player-foot .dashboard-button { flex: 1; }
 }
+
+/* Delete: quiet until hovered, then an explicit red confirm. */
+.rec-delete:hover { border-color: var(--c-ff4b42); color: var(--t-ff8a83); }
+.rec-delete-confirm { min-height: 42px; padding: 0 14px; background: var(--c-3a1716); border-color: var(--c-ff4b42); color: var(--t-ff8a83); }
+.rec-delete-confirm:hover { background: var(--c-ff4b42); color: #fff; }
