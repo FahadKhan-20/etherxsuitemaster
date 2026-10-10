@@ -11,10 +11,10 @@ const path = require('path');
 const SRC = path.resolve(__dirname, '../src');
 const OUT = path.join(SRC, 'styles/theme-palette.css');
 // Canvas drawing, user-picked colours and avatar tones must keep literal values.
-const SKIP = [/\/Whiteboard\//, /ColorPicker\.jsx$/, /VideoCanvasProcessor\.jsx$/, /VirtualVideoCanvas\.jsx$/,
-  /AudioVisualizer\.jsx$/, /GoldGlitter\.jsx$/, /useMeetingRecording\.js$/, /meetingBackgrounds\.js$/,
+const SKIP = [/\/Whiteboard\//, /VideoCanvasProcessor\.jsx$/, 
+  /AudioVisualizer\.jsx$/, /useMeetingRecording\.js$/, /meetingBackgrounds\.js$/,
   /context\/UserContext\.jsx$/, /effects\/SplashScreen\.jsx$/, /splash-screen\.css$/, /ui\/GoogleMark\.jsx$/, /brand\/EtherXLogo\.jsx$/, /utils\/avatarTone\.js$/, /utils\/theme\.js$/, /\/data\//,
-  /components\/ui\/dist\//, /styles\/theme-palette\.css$/];
+  /styles\/theme-palette\.css$/];
 // Same colour in both themes: dark text on gold, video letterbox.
 const FIXED = new Set(['1a1608', '1a1405', '050504']);
 
