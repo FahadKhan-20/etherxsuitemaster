@@ -11,7 +11,7 @@ const auth = require('../src/middleware/auth');
 
 const route = (p, method) => router.stack.find(l => l.route?.path === p && l.route.methods[method]).route;
 const uploads = path.join(__dirname, '../uploads');
-const ownerId = '507f1f77bcf86cd799439011', recId = '507f1f77bcf86cd799439022';
+const ownerId = '11111111-1111-4111-8111-111111111111', recId = '22222222-2222-4222-8222-222222222222';
 
 // Response double that collects headers and a streamed body.
 function response() {
@@ -25,11 +25,11 @@ function fixture(t) {
   const filename = `test-${Date.now()}.webm`;
   fs.mkdirSync(uploads, { recursive: true });
   fs.writeFileSync(path.join(uploads, filename), Buffer.from('0123456789'));
-  const doc = { _id: recId, id: recId, filename, originalName: 'Team "sync"\r\nX: y.webm', size: 10, roomCode: 'abc', duration: 3, uploadedBy: { toString: () => ownerId } };
-  const { findById, findOne } = Recording;
+  const doc = { _id: recId, id: recId, filename, originalName: 'Team "sync"\r\nX: y.webm', size: 10, roomCode: 'abc', duration: 3, uploadedBy: { _id: ownerId } };
+  const { findById, findOwned } = Recording;
   Recording.findById = async id => (String(id) === recId ? doc : null);
-  Recording.findOne = async q => (String(q._id) === recId && String(q.uploadedBy) === ownerId ? doc : null);
-  t.after(() => { Recording.findById = findById; Recording.findOne = findOne; fs.rmSync(path.join(uploads, filename), { force: true }); });
+  Recording.findOwned = async (id, owner) => (String(id) === recId && String(owner) === ownerId ? doc : null);
+  t.after(() => { Recording.findById = findById; Recording.findOwned = findOwned; fs.rmSync(path.join(uploads, filename), { force: true }); });
   return doc;
 }
 
@@ -48,7 +48,7 @@ test('only the owner can mint a recording link, and it expires', async t => {
   assert.equal(link.stack[0].handle, auth);
   const handle = link.stack.at(-1).handle;
   const other = response();
-  await handle({ params: { id: recId }, user: { id: '507f1f77bcf86cd799439099' }, body: {} }, other, e => { throw e; });
+  await handle({ params: { id: recId }, user: { id: '99999999-9999-4999-8999-999999999999' }, body: {} }, other, e => { throw e; });
   assert.equal(other.statusCode, 404);
   const mine = response();
   await handle({ params: { id: recId }, user: { id: ownerId }, body: { share: true } }, mine, e => { throw e; });

@@ -1,32 +1,8 @@
-const mongoose = require('mongoose');
+const { query } = require('../config/db');
 
-const feedbackSchema = new mongoose.Schema(
-  {
-    rating: { type: Number, min: 1, max: 5, default: null },
-    roomCode: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    submittedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null,
-    },
-    text: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 2000,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    versionKey: false,
-  }
+const create = ({ text, rating = null, roomCode = null, submittedBy = null }) => query(
+  'insert into feedback (text, rating, room_code, submitted_by) values ($1, $2, $3, $4)',
+  [String(text).trim(), rating, roomCode ? String(roomCode).trim() : null, submittedBy]
 );
 
-module.exports = mongoose.model('Feedback', feedbackSchema);
+module.exports = { create };

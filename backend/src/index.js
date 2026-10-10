@@ -152,7 +152,7 @@ app.on('error', (error) => {
 // =====================================================
 const startServer = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to Postgres (Supabase)
     await connectDB();
     require('./retention').scheduleRetention();
 

@@ -23,7 +23,7 @@ module.exports = function configurePassport() {
             return done(new Error('Google account email is required for login.'));
           }
 
-          let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
+          let user = await User.findByProviderOrEmail('google', profile.id, email);
 
           if (!user) {
             user = await User.create({
@@ -34,19 +34,11 @@ module.exports = function configurePassport() {
               avatar: profile.photos?.[0]?.value || null,
             });
           } else {
-            if (!user.googleId) {
-              user.googleId = profile.id;
-            }
-
-            if (user.authProvider !== 'google') {
-              user.authProvider = 'google';
-            }
-
-            if (!user.avatar && profile.photos?.[0]?.value) {
-              user.avatar = profile.photos[0].value;
-            }
-
-            await user.save();
+            user = await User.update(user._id, {
+              googleId: user.googleId || profile.id,
+              authProvider: 'google',
+              avatar: user.avatar || profile.photos?.[0]?.value || null,
+            });
           }
 
           return done(null, user);

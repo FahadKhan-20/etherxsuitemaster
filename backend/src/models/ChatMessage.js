@@ -1,36 +1,22 @@
-const mongoose = require('mongoose');
+const { query } = require('../config/db');
 
-const chatMessageSchema = new mongoose.Schema(
-    {
-        roomCode: {
-            type: String,
-            required: true,
-            trim: true,
-            lowercase: true,
-            index: true,
-        },
-        address: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        senderId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-        },
-        message: {
-            type: String,
-            required: true,
-            trim: true,
-            maxlength: 1000,
-        },
-    },
-    {
-        timestamps: true,
-        versionKey: false,
-    }
-);
+const toMessage = row => ({
+  _id: row.id,
+  roomCode: row.room_code,
+  address: row.address,
+  senderId: row.sender_id,
+  message: row.message,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
 
-chatMessageSchema.index({ roomCode: 1, createdAt: 1 });
+const create = async ({ roomCode, address, senderId, message }) => toMessage((await query(
+  'insert into chat_messages (room_code, address, sender_id, message) values ($1, $2, $3, $4) returning *',
+  [roomCode, String(address).trim(), senderId || null, String(message).trim()]
+)).rows[0]);
 
-module.exports = mongoose.model('ChatMessage', chatMessageSchema);
+/** A room's messages sent at or after `since`, oldest first. */
+const findSince = async (roomCode, since) =>
+  (await query('select * from chat_messages where room_code = $1 and created_at >= $2 order by created_at', [roomCode, since])).rows.map(toMessage);
+
+module.exports = { create, findSince };

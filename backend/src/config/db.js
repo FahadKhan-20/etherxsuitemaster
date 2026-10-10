@@ -1,39 +1,53 @@
-const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const pg = require('pg');
 
-let mongodInstance = null;
+// bigint columns (recording sizes) fit in a JS number.
+pg.types.setTypeParser(20, Number);
 
-const connectDB = async () => {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Whether a value can be a row id. Ids from old tokens or URLs must not reach a uuid column (Postgres would throw). */
+const isId = value => typeof value === 'string' && UUID.test(value);
+
+let client = null; // pg Pool, or an in-memory PGlite outside production
+
+/** Runs one parameterized statement; resolves to { rows, rowCount }. */
+const query = async (text, params = []) => {
+  if (!client) throw new Error('Database is not connected.');
+  const result = await client.query(text, params);
+  return { rows: result.rows, rowCount: result.rowCount ?? result.affectedRows ?? 0 };
+};
+
+const isConnected = () => client !== null;
+
+const connectDB = async ({ Pool = pg.Pool } = {}) => {
   try {
-    let uri = process.env.MONGO_URI;
+    const url = process.env.DATABASE_URL;
     try {
-      await mongoose.connect(uri, { serverSelectionTimeoutMS: 2000 });
-      console.log(`MongoDB connected: ${mongoose.connection.host}`);
+      if (!url) throw new Error('DATABASE_URL is not set');
+      const pool = new Pool({ connectionString: url, connectionTimeoutMillis: 15000, ssl: /sslmode=disable|localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false } });
+      await pool.query('select 1');
+      client = pool;
+      console.log(`Postgres connected: ${new URL(url).host}`);
     } catch (err) {
       // Production must never silently run on a throwaway database: every account and recording would vanish on restart.
       if (process.env.NODE_ENV === 'production') {
-        throw new Error(`Cannot reach MongoDB at MONGO_URI (${err.message}). Set MONGO_URI to a running MongoDB.`);
+        throw new Error(`Cannot reach Postgres at DATABASE_URL (${err.message}). Set DATABASE_URL to your Supabase connection string.`);
       }
-      console.warn(`Could not connect to external MongoDB at ${uri}. Starting embedded in-memory MongoDB: all data is lost when the server restarts.`);
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      mongodInstance = await MongoMemoryServer.create();
-      uri = mongodInstance.getUri();
-      await mongoose.connect(uri);
-      console.log(`Embedded MongoDB connected at: ${uri}`);
+      console.warn(`Could not connect to Postgres (${err.message}). Starting embedded in-memory Postgres: all data is lost when the server restarts.`);
+      const { PGlite } = require('@electric-sql/pglite');
+      client = new PGlite();
     }
-
-    // Sync indexes with the current schema on startup. autoIndex only
-    // creates missing indexes on a fresh DB - it won't alter an existing
-    // index in place. User.email moved from a non-sparse to a sparse
-    // unique index (so multiple wallet-only users with no email don't
-    // collide); on a pre-existing DB still carrying the old non-sparse
-    // email_1 index, a second email-less user would hit an E11000
-    // duplicate-key error without this.
-    const User = require('../models/User');
-    await User.syncIndexes();
+    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+    if (client.exec) await client.exec(schema);
+    else await client.query(schema);
   } catch (error) {
-    console.error('MongoDB connection error:', error.message);
+    console.error('Database connection error:', error.message);
     process.exit(1);
   }
 };
 
 module.exports = connectDB;
+module.exports.query = query;
+module.exports.isConnected = isConnected;
+module.exports.isId = isId;

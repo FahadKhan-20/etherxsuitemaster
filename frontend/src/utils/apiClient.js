@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { getAuthToken } from './auth';
+import { clearAuthSession, getAuthToken } from './auth';
+import { ROUTES } from './constants';
 import { apiBase } from './apiBase';
 
 const apiClient = axios.create({
@@ -21,6 +22,15 @@ apiClient.interceptors.request.use((config) => {
   }
 
   return config;
+});
+
+// A rejected sign-in token (expired, or from an account that no longer exists) ends the session.
+apiClient.interceptors.response.use(undefined, (error) => {
+  if (error?.response?.status === 401 && error.config?.headers?.Authorization) {
+    clearAuthSession();
+    if (window.location.pathname !== ROUTES.LOGIN) window.location.assign(ROUTES.LOGIN);
+  }
+  return Promise.reject(error);
 });
 
 export function getApiErrorMessage(error, fallback = 'Something went wrong. Please try again.') {

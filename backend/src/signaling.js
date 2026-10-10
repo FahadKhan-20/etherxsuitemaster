@@ -180,13 +180,12 @@ function applyWhiteboardOp(board, op) {
 
 function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
   resolveRoomOwner = async code => {
-    const MeetingRoom = require('./models/MeetingRoom');
-    const room = await MeetingRoom.findOne({ roomCode: code }).lean();
+    const room = await require('./models/MeetingRoom').findByCode(code);
     return room?.hostUserId ? String(room.hostUserId) : null;
   },
   resolveRecordingAllowed = require('./recordingPolicy').hostAllowsRecording,
   resolveUserAvatar = async id => {
-    const user = await require('./models/User').findById(id).select('avatar').lean();
+    const user = await require('./models/User').findById(id);
     return user?.avatar || null;
   },
 } = {}) {

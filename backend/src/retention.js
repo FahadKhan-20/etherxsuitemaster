@@ -12,16 +12,16 @@ const DAY = 24 * 60 * 60 * 1000;
  * Users who keep the default (no period) are never touched.
  */
 async function sweepRetention({ now = () => new Date(), removeFile = name => fs.promises.rm(path.join(uploadsDir, path.basename(name)), { force: true }) } = {}) {
-  const users = await User.find({ 'preferences.privacy.retentionDays': { $in: [30, 90, 365] } }).select('preferences.privacy.retentionDays').lean();
+  const users = await User.findWithRetention();
   let recordings = 0, sessions = 0;
   for (const user of users) {
-    const cutoff = new Date(now().getTime() - user.preferences.privacy.retentionDays * DAY);
-    for (const recording of await Recording.find({ uploadedBy: user._id, createdAt: { $lt: cutoff } })) {
+    const cutoff = new Date(now().getTime() - user.retentionDays * DAY);
+    for (const recording of await Recording.findByOwner(user._id, { before: cutoff })) {
       await removeFile(recording.filename);
-      await recording.deleteOne();
+      await Recording.remove(recording._id);
       recordings += 1;
     }
-    sessions += (await MeetingSession.deleteMany({ host: user._id, endedAt: { $lt: cutoff } })).deletedCount || 0;
+    sessions += await MeetingSession.deleteHostedBefore(user._id, cutoff);
   }
   return { recordings, sessions };
 }

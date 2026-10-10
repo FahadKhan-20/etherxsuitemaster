@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { isId } = require('../config/db');
 
 module.exports = (req, res, next) => {
   const authHeader = req.headers.authorization || '';
@@ -15,7 +16,8 @@ module.exports = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     // Purpose tokens (e.g. signed recording links) are not sign-in sessions.
-    if (decoded.purpose || !decoded.id) throw new Error('Not a sign-in token.');
+    // Ids that are not uuids come from sessions issued before the move to Postgres: those accounts are gone.
+    if (decoded.purpose || !isId(decoded.id)) throw new Error('Not a sign-in token.');
     req.user = decoded;
     return next();
   } catch (error) {

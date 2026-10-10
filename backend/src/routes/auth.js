@@ -54,11 +54,7 @@ const signToken = (user) =>
     }
   );
 
-const sanitizeUser = (user) => {
-  const plainUser = user.toObject ? user.toObject() : { ...user };
-  delete plainUser.password;
-  return plainUser;
-};
+const sanitizeUser = ({ password, ...user }) => user;
 
 // ── Password auth ────────────────────────────────────────────────────────────
 
@@ -74,7 +70,7 @@ router.post('/register', accountLimiter, async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    const existingUser = await User.findByEmail(normalizedEmail);
 
     if (existingUser) {
       return res.status(400).json({
@@ -117,7 +113,7 @@ router.post('/login', signInLimiter, async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    const user = await User.findByEmail(normalizedEmail, { withPassword: true });
 
     if (!user) {
       return res.status(401).json({
@@ -161,7 +157,7 @@ router.post('/forgot-password', accountLimiter, async (req, res, next) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
 
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    const user = await User.findByEmail(email);
     if (!user) {
       // Return success regardless to avoid email enumeration
       return res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
@@ -170,9 +166,10 @@ router.post('/forgot-password', accountLimiter, async (req, res, next) => {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
 
-    user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-    await user.save();
+    await User.update(user._id, {
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+    });
 
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
     const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
@@ -208,19 +205,17 @@ router.post('/reset-password/:token', signInLimiter, async (req, res, next) => {
 
     const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
 
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: Date.now() },
-    });
+    const user = await User.findByResetToken(hashedToken);
 
     if (!user) {
       return res.status(400).json({ success: false, message: 'Reset link is invalid or has expired.' });
     }
 
-    user.password = await bcrypt.hash(password, 10);
-    user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
-    await user.save();
+    await User.update(user._id, {
+      password: await bcrypt.hash(password, 10),
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+    });
 
     return res.json({ success: true, message: 'Password reset successfully.' });
   } catch (error) {
@@ -276,7 +271,7 @@ router.post('/apple', accountLimiter, async (req, res, next) => {
     const userEmail = (decoded.email || email || `${appleSub}@privaterelay.appleid.com`).toLowerCase();
     const userName = name || (decoded.email ? decoded.email.split('@')[0] : 'Apple User');
 
-    let user = await User.findOne({ $or: [{ appleId: appleSub }, { email: userEmail }] });
+    let user = await User.findByProviderOrEmail('apple', appleSub, userEmail);
 
     if (!user) {
       user = await User.create({
@@ -286,9 +281,7 @@ router.post('/apple', accountLimiter, async (req, res, next) => {
         authProvider: 'apple',
       });
     } else {
-      if (!user.appleId) user.appleId = appleSub;
-      if (user.authProvider !== 'apple') user.authProvider = 'apple';
-      await user.save();
+      user = await User.update(user._id, { appleId: user.appleId || appleSub, authProvider: 'apple' });
     }
 
     const token = signToken(user);
@@ -351,7 +344,7 @@ router.post('/apple/callback', accountLimiter, async (req, res, next) => {
     const appleSub = decoded.sub;
     const userEmail = (decoded.email || `${appleSub}@privaterelay.appleid.com`).toLowerCase();
 
-    let user = await User.findOne({ $or: [{ appleId: appleSub }, { email: userEmail }] });
+    let user = await User.findByProviderOrEmail('apple', appleSub, userEmail);
 
     if (!user) {
       user = await User.create({
@@ -360,9 +353,8 @@ router.post('/apple/callback', accountLimiter, async (req, res, next) => {
         appleId: appleSub,
         authProvider: 'apple',
       });
-    } else {
-      if (!user.appleId) user.appleId = appleSub;
-      await user.save();
+    } else if (!user.appleId) {
+      user = await User.update(user._id, { appleId: appleSub });
     }
 
     const token = signToken(user);
@@ -424,13 +416,13 @@ router.post('/web3auth', signInLimiter, async (req, res, next) => {
     const normalizedAuthProvider = VALID_LOGIN_METHODS.includes(loginMethod) ? loginMethod : 'wallet';
 
     // Identity is the (cryptographically proven) wallet address.
-    let user = await User.findOne({ walletAddress: normalizedWallet });
+    let user = await User.findByWallet(normalizedWallet);
 
     if (!user) {
       // New wallet user. Only attach the (unverified) email as profile data if
       // no other account already uses it — never link/take-over by email.
       const emailFree = normalizedEmail
-        ? !(await User.findOne({ email: normalizedEmail }))
+        ? !(await User.findByEmail(normalizedEmail))
         : false;
 
       user = await User.create({
@@ -481,17 +473,17 @@ router.get('/me', auth, async (req, res, next) => {
 router.put('/me/preferences', auth, async (req, res, next) => {
   try {
     const { reminders = {}, privacy = {} } = req.body || {};
-    const updates = {};
-    if ('enabled' in reminders) updates['preferences.reminders.enabled'] = reminders.enabled;
-    if ('minutes' in reminders) updates['preferences.reminders.minutes'] = reminders.minutes;
-    if ('retentionDays' in privacy) updates['preferences.privacy.retentionDays'] = privacy.retentionDays;
-    if ('allowRecording' in privacy) updates['preferences.privacy.allowRecording'] = privacy.allowRecording;
-    const valid = Object.keys(updates).length > 0
-      && [updates['preferences.reminders.enabled'], updates['preferences.privacy.allowRecording']].every(v => v === undefined || typeof v === 'boolean')
-      && [undefined, 5, 15, 30, 60].includes(updates['preferences.reminders.minutes'])
-      && [undefined, null, 30, 90, 365].includes(updates['preferences.privacy.retentionDays']);
+    const updates = { reminders: {}, privacy: {} };
+    if ('enabled' in reminders) updates.reminders.enabled = reminders.enabled;
+    if ('minutes' in reminders) updates.reminders.minutes = reminders.minutes;
+    if ('retentionDays' in privacy) updates.privacy.retentionDays = privacy.retentionDays;
+    if ('allowRecording' in privacy) updates.privacy.allowRecording = privacy.allowRecording;
+    const valid = Object.keys(updates.reminders).length + Object.keys(updates.privacy).length > 0
+      && [updates.reminders.enabled, updates.privacy.allowRecording].every(v => v === undefined || typeof v === 'boolean')
+      && [undefined, 5, 15, 30, 60].includes(updates.reminders.minutes)
+      && [undefined, null, 30, 90, 365].includes(updates.privacy.retentionDays);
     if (!valid) return res.status(400).json({ success: false, message: 'Invalid preferences.' });
-    const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true, runValidators: true });
+    const user = await User.updatePreferences(req.user.id, updates);
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
     return res.json({ success: true, data: { preferences: user.preferences } });
   } catch (error) {
@@ -506,11 +498,7 @@ router.put('/me', auth, async (req, res, next) => {
     if (name && name.trim()) updates.name = name.trim();
     if (email && email.trim()) updates.email = email.trim().toLowerCase();
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: updates },
-      { new: true, runValidators: true },
-    );
+    const user = await User.update(req.user.id, updates);
 
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 

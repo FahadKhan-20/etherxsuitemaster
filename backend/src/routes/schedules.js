@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const { randomInt } = require('crypto');
 const auth = require('../middleware/auth');
 const ScheduledMeeting = require('../models/ScheduledMeeting');
@@ -14,7 +13,7 @@ const newRoomCode = () => 'etherx-' + Array.from({ length: 10 }, () => CODE_CHAR
 
 router.get('/', auth, async (req, res, next) => {
   try {
-    const meetings = await ScheduledMeeting.find({ owner: req.user.id }).sort({ startAt: 1 }).lean();
+    const meetings = await ScheduledMeeting.findByOwner(req.user.id);
     return res.json({ success: true, data: { meetings } });
   } catch (error) {
     return next(error);
@@ -42,7 +41,7 @@ router.post('/', auth, async (req, res, next) => {
     if (!['none', 'daily', 'weekly'].includes(recurring)) return res.status(400).json({ success: false, message: 'Repeat must be none, daily or weekly.' });
 
     const roomCode = newRoomCode();
-    await MeetingRoom.create({ roomCode, hostUserId: req.user.id, hostName: req.user.name || 'Host', lastActiveAt: new Date() });
+    await MeetingRoom.create({ roomCode, hostUserId: req.user.id, hostName: req.user.name || 'Host' });
     registerRoomHost(roomCode, req.user.id, req.app?.get?.('io'));
     const meeting = await ScheduledMeeting.create({ owner: req.user.id, title, startAt, duration, recurring, participants, roomCode });
     return res.status(201).json({ success: true, data: { meeting } });
@@ -53,8 +52,7 @@ router.post('/', auth, async (req, res, next) => {
 
 router.delete('/:id', auth, async (req, res, next) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ success: false, message: 'Scheduled meeting not found.' });
-    const meeting = await ScheduledMeeting.findOneAndDelete({ _id: req.params.id, owner: req.user.id });
+    const meeting = await ScheduledMeeting.deleteOwned(req.params.id, req.user.id);
     if (!meeting) return res.status(404).json({ success: false, message: 'Scheduled meeting not found.' });
     return res.json({ success: true });
   } catch (error) {

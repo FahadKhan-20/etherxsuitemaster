@@ -2,8 +2,7 @@
 function createMeetingMetrics({
   now = Date.now,
   save = doc => {
-    const mongoose = require('mongoose');
-    if (mongoose.connection.readyState !== 1) return Promise.resolve(); // no database (e.g. unit tests)
+    if (!require('./config/db').isConnected()) return Promise.resolve(); // no database (e.g. unit tests)
     return require('./models/MeetingSession').create(doc);
   },
   log = console.error,

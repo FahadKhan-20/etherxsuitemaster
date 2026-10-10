@@ -7,9 +7,7 @@ const MeetingAgenda = require("../models/MeetingAgenda");
 // =====================================================
 router.get("/:roomCode", async (req, res) => {
   try {
-    const agenda = await MeetingAgenda.findOne({
-      roomCode: req.params.roomCode,
-    });
+    const agenda = await MeetingAgenda.findByRoom(req.params.roomCode);
 
     if (!agenda) {
       return res.status(404).json({
@@ -76,19 +74,11 @@ router.post("/", async (req, res) => {
       });
 
     // Update existing agenda or create a new one
-    const agenda = await MeetingAgenda.findOneAndUpdate(
-      { roomCode },
-      {
-        roomCode,
-        topics: formattedTopics,
-        createdBy,
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-      }
-    );
+    const agenda = await MeetingAgenda.upsert({
+      roomCode,
+      topics: formattedTopics,
+      createdBy: String(createdBy),
+    });
 
     res.status(200).json({
       success: true,
@@ -120,18 +110,7 @@ router.post("/:roomCode/topics", async (req, res) => {
       });
     }
 
-    const agenda = await MeetingAgenda.findOneAndUpdate(
-      { roomCode: req.params.roomCode },
-      {
-        $push: {
-          topics: {
-            title: title.trim(),
-            completed: false,
-          },
-        },
-      },
-      { new: true }
-    );
+    const agenda = await MeetingAgenda.addTopic(req.params.roomCode, title.trim());
 
     if (!agenda) {
       return res.status(404).json({
@@ -170,20 +149,7 @@ router.patch("/:roomCode/topics/:topicId", async (req, res) => {
       });
     }
 
-    const agenda = await MeetingAgenda.findOneAndUpdate(
-      {
-        roomCode: req.params.roomCode,
-        "topics._id": req.params.topicId,
-      },
-      {
-        $set: {
-          "topics.$.completed": completed,
-        },
-      },
-      {
-        new: true,
-      }
-    );
+    const agenda = await MeetingAgenda.setTopicCompleted(req.params.roomCode, req.params.topicId, completed);
 
     if (!agenda) {
       return res.status(404).json({
@@ -215,21 +181,7 @@ router.patch("/:roomCode/topics/:topicId", async (req, res) => {
 // =====================================================
 router.delete("/:roomCode/topics/:topicId", async (req, res) => {
   try {
-    const agenda = await MeetingAgenda.findOneAndUpdate(
-      {
-        roomCode: req.params.roomCode,
-      },
-      {
-        $pull: {
-          topics: {
-            _id: req.params.topicId,
-          },
-        },
-      },
-      {
-        new: true,
-      }
-    );
+    const agenda = await MeetingAgenda.removeTopic(req.params.roomCode, req.params.topicId);
 
     if (!agenda) {
       return res.status(404).json({

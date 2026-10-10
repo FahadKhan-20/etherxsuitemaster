@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const multer = require('multer');
-const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const Recording = require('../models/Recording');
@@ -138,15 +137,10 @@ router.post('/upload', auth, handleUpload, async (req, res, next) => {
       duration: Number(duration) || 0,
     });
 
-    const populatedRecording = await Recording.findById(recording._id).populate(
-      'uploadedBy',
-      'name email avatar'
-    );
-
     return res.status(201).json({
       success: true,
       data: {
-        recording: populatedRecording,
+        recording,
       },
     });
   } catch (error) {
@@ -157,9 +151,7 @@ router.post('/upload', auth, handleUpload, async (req, res, next) => {
 
 router.get('/', auth, async (req, res, next) => {
   try {
-    const recordings = await Recording.find({ uploadedBy: req.user.id })
-      .populate('uploadedBy', 'name email avatar')
-      .sort({ createdAt: -1 });
+    const recordings = await Recording.findByOwner(req.user.id);
 
     return res.json({
       success: true,
@@ -178,10 +170,7 @@ router.get('/', auth, async (req, res, next) => {
  */
 router.post('/:id/link', auth, async (req, res, next) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ success: false, message: 'Recording not found.' });
-    }
-    const recording = await Recording.findOne({ _id: req.params.id, uploadedBy: req.user.id });
+    const recording = await Recording.findOwned(req.params.id, req.user.id);
     if (!recording) {
       return res.status(404).json({ success: false, message: 'Recording not found.' });
     }
@@ -220,17 +209,7 @@ router.get('/:id/stream', async (req, res, next) => {
 
 router.get('/:id', auth, async (req, res, next) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Recording not found.',
-      });
-    }
-
-    const recording = await Recording.findOne({
-      _id: req.params.id,
-      uploadedBy: req.user.id,
-    }).populate('uploadedBy', 'name email avatar');
+    const recording = await Recording.findOwned(req.params.id, req.user.id);
 
     if (!recording) {
       return res.status(404).json({
@@ -247,13 +226,6 @@ router.get('/:id', auth, async (req, res, next) => {
 
 router.delete('/:id', auth, async (req, res, next) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Recording not found.',
-      });
-    }
-
     const recording = await Recording.findById(req.params.id);
 
     if (!recording) {
@@ -263,7 +235,7 @@ router.delete('/:id', auth, async (req, res, next) => {
       });
     }
 
-    if (recording.uploadedBy.toString() !== req.user.id) {
+    if (String(recording.uploadedBy._id) !== String(req.user.id)) {
       return res.status(403).json({
         success: false,
         message: 'You are not allowed to delete this recording.',
@@ -271,7 +243,7 @@ router.delete('/:id', auth, async (req, res, next) => {
     }
 
     await cleanupUploadedFile(recording.filename);
-    await recording.deleteOne();
+    await Recording.remove(recording._id);
 
     return res.json({
       success: true,

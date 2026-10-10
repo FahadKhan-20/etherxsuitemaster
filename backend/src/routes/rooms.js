@@ -91,7 +91,7 @@ router.get('/chat/:roomCode', auth, async (req, res, next) => {
       return res.json({ success: true, data: [] });
     }
 
-    const messages = await ChatMessage.find({ roomCode, createdAt: { $gte: sessionStart } }).sort({ createdAt: 1 }).lean();
+    const messages = await ChatMessage.findSince(roomCode, new Date(sessionStart));
 
     return res.json({ success: true, data: messages });
   } catch (error) {
@@ -170,19 +170,17 @@ router.post('/', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'roomCode is required.' });
     }
 
-    const existingRoom = await MeetingRoom.findOne({ roomCode });
+    const ownedRoom = await MeetingRoom.findByCode(roomCode);
 
-    if (existingRoom) {
-      if (String(existingRoom.hostUserId) !== String(req.user.id)) {
+    if (ownedRoom) {
+      if (String(ownedRoom.hostUserId) !== String(req.user.id)) {
         return res.status(409).json({
           success: false,
           message: 'This room is already owned by another host.',
         });
       }
 
-      existingRoom.hostName = hostName;
-      existingRoom.lastActiveAt = new Date();
-      await existingRoom.save();
+      const existingRoom = await MeetingRoom.touch(roomCode, hostName);
       registerRoomHost(roomCode, req.user.id, req.app.get('io'));
 
       return res.json({
@@ -201,7 +199,6 @@ router.post('/', auth, async (req, res, next) => {
       roomCode,
       hostUserId: req.user.id,
       hostName,
-      lastActiveAt: new Date(),
     });
     registerRoomHost(roomCode, req.user.id, req.app.get('io'));
 
@@ -216,7 +213,7 @@ router.post('/', auth, async (req, res, next) => {
       },
     });
   } catch (error) {
-    if (error?.code === 11000) {
+    if (error?.code === '23505') {
       return res.status(409).json({
         success: false,
         message: 'This room code has already been claimed.',
@@ -235,7 +232,7 @@ router.get('/:roomCode', auth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid room code.' });
     }
 
-    const room = await MeetingRoom.findOne({ roomCode }).lean();
+    const room = await MeetingRoom.findByCode(roomCode);
 
     if (!room) {
       return res.status(404).json({ success: false, message: 'Room not found.' });
