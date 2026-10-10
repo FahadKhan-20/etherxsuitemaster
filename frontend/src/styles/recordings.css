@@ -1,0 +1,37 @@
+/* Recordings page: dashboard layout plus search, player and empty state. */
+.rec-tools { align-items: center; flex-wrap: nowrap; }
+.rec-search { display: flex; align-items: center; gap: 10px; min-height: 46px; width: min(360px, 60vw); padding: 0 14px; border: 1px solid var(--c-343026); border-radius: 8px; background: var(--c-0c0c0c); color: var(--t-bdbdbd); }
+.rec-search:focus-within { border-color: var(--c-ffd029); }
+.rec-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--t-ffffff); font: inherit; font-size: 14px; }
+.rec-search input::placeholder { color: var(--t-8a8a8a); }
+.rec-spin { animation: rec-spin .8s linear infinite; }
+@keyframes rec-spin { to { transform: rotate(360deg); } }
+
+.rec-player { margin-bottom: 24px; }
+.rec-player .dashboard-panel-heading h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-close { width: 36px; height: 36px; }
+.rec-stage { aspect-ratio: 16 / 9; max-height: 62vh; width: 100%; display: flex; align-items: center; justify-content: center; background: var(--c-000000); }
+.rec-stage video { width: 100%; height: 100%; object-fit: contain; background: var(--c-000000); }
+.rec-player-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 16px 24px; border-top: 1px solid var(--c-2d2819); }
+.rec-player-foot p { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; font-size: 13px; color: var(--t-cccccc); }
+.rec-action-error { margin: 0 0 24px; }
+.rec-stale { margin: 16px 24px 0; font-size: 12px; color: var(--t-ffaaaa); }
+
+.dashboard-meeting-row[data-selected='true'] .dashboard-meeting-info h3 { color: var(--t-ffd029); }
+
+.rec-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 52px 24px; text-align: center; }
+.rec-empty-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--c-584715); background: var(--c-151103); color: var(--t-ffd029); margin-bottom: 6px; }
+.rec-empty h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.rec-empty p { margin: 0 0 10px; max-width: 360px; color: var(--t-bdbdbd); font-size: 13px; line-height: 1.6; }
+
+@media (max-width: 720px) {
+  /* phone rows: date + title on top, actions on their own line below */
+  .rec-list .dashboard-meeting-info { flex-basis: calc(100% - 72px); }
+  .rec-list .dashboard-meeting-actions { width: 100%; justify-content: flex-end; margin-left: 0; }
+  .rec-list .dashboard-join-button { flex: 1; }
+  .rec-tools { width: 100%; }
+  .rec-search { flex: 1; width: auto; }
+  .rec-player-foot { padding: 14px 18px; }
+  .rec-player-foot .dashboard-meeting-actions { width: 100%; }
+  .rec-player-foot .dashboard-button { flex: 1; }
+}
