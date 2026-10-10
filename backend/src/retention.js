@@ -1,17 +1,14 @@
-const fs = require('fs');
-const path = require('path');
 const User = require('./models/User');
 const Recording = require('./models/Recording');
 const MeetingSession = require('./models/MeetingSession');
 
-const uploadsDir = path.join(__dirname, '../uploads');
 const DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Deletes recordings and hosted-meeting history older than each user's chosen retention period.
  * Users who keep the default (no period) are never touched.
  */
-async function sweepRetention({ now = () => new Date(), removeFile = name => fs.promises.rm(path.join(uploadsDir, path.basename(name)), { force: true }) } = {}) {
+async function sweepRetention({ now = () => new Date(), removeFile = name => require('./recordingStorage').remove(name) } = {}) {
   const users = await User.findWithRetention();
   let recordings = 0, sessions = 0;
   for (const user of users) {

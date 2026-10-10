@@ -7,15 +7,16 @@ const { randomUUID } = require('crypto');
 const Recording = require('../models/Recording');
 const auth = require('../middleware/auth');
 const { roomAllowsRecording } = require('../recordingPolicy');
+const storage = require('../recordingStorage');
 
 const router = express.Router();
-const uploadsDir = path.join(__dirname, '../../uploads');
+const { uploadsDir } = storage;
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
+const diskStorage = multer.diskStorage({
   destination: (_req, _file, callback) => {
     callback(null, uploadsDir);
   },
@@ -30,7 +31,7 @@ const PLAY_LINK_SECONDS = 60 * 60;
 const SHARE_LINK_SECONDS = 7 * 24 * 60 * 60;
 
 const upload = multer({
-  storage,
+  storage: diskStorage,
   limits: { fileSize: MAX_RECORDING_BYTES, files: 1, fields: 10 },
   fileFilter: (_req, file, callback) => {
     const allowedMimeTypes = ['video/webm', 'video/mp4'];
@@ -59,30 +60,28 @@ const handleUpload = (req, res, next) => {
   });
 };
 
+// A temp upload that never became a recording (rejected or failed).
 const cleanupUploadedFile = async (filename) => {
-  if (!filename) {
-    return;
-  }
-
-  const filePath = path.join(uploadsDir, filename);
-
-  if (fs.existsSync(filePath)) {
-    await fs.promises.unlink(filePath);
-  }
+  if (filename) await fs.promises.rm(storage.localPath(filename), { force: true });
 };
 
-// Streams a recording file; honours a single Range so players can seek. ?download=1 saves instead of playing.
-const sendRecording = (req, res, recording) => {
-  const filePath = path.join(uploadsDir, path.basename(recording.filename));
+// Sends a recording. On R2 the browser is redirected to a short-lived R2 link (which serves Range requests);
+// locally the file is streamed here, honouring a single Range so players can seek. ?download=1 saves instead.
+const sendRecording = async (req, res, recording) => {
+  const extension = path.extname(recording.filename).toLowerCase();
+  const contentType = extension === '.mp4' ? 'video/mp4' : 'video/webm';
+  const name = (recording.originalName || recording.filename).replace(/[^\w.\- ]+/g, '_');
+  const download = req.query?.download === '1';
+  const remote = await storage.signedUrl(recording.filename, { download, filename: name, contentType });
+  if (remote) return res.redirect(302, remote);
+  const filePath = storage.localPath(recording.filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ success: false, message: 'Recording file not found.' });
   }
   const size = fs.statSync(filePath).size;
-  const extension = path.extname(recording.filename).toLowerCase();
-  const name = (recording.originalName || recording.filename).replace(/[^\w.\- ]+/g, '_');
-  res.setHeader('Content-Type', extension === '.mp4' ? 'video/mp4' : 'video/webm');
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Content-Disposition', `${req.query?.download === '1' ? 'attachment' : 'inline'}; filename="${name}"`);
+  res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${name}"`);
   res.setHeader('X-Recording-Duration', String(recording.duration || 0));
 
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers?.range || '');
@@ -103,6 +102,7 @@ const sendRecording = (req, res, recording) => {
 };
 
 router.post('/upload', auth, handleUpload, async (req, res, next) => {
+  let stored = null;
   try {
     const { roomCode, duration } = req.body;
 
@@ -127,6 +127,8 @@ router.post('/upload', auth, handleUpload, async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'The host has turned recording off for their meetings.' });
     }
 
+    await storage.save(req.file.filename, req.file.mimetype.split(';', 1)[0]);
+    stored = req.file.filename;
     const recording = await Recording.create({
       roomCode: roomCode.trim().toLowerCase(),
       uploadedBy: req.user.id,
@@ -145,6 +147,7 @@ router.post('/upload', auth, handleUpload, async (req, res, next) => {
     });
   } catch (error) {
     await cleanupUploadedFile(req.file?.filename);
+    if (stored) await storage.remove(stored).catch(() => {}); // saved, but no recording row points at it
     return next(error);
   }
 });
@@ -174,6 +177,10 @@ router.post('/:id/link', auth, async (req, res, next) => {
     if (!recording) {
       return res.status(404).json({ success: false, message: 'Recording not found.' });
     }
+    // A link to a missing file would open a bare error page; say so here instead.
+    if (!(await storage.exists(recording.filename))) {
+      return res.status(410).json({ success: false, message: 'This recording\'s file is no longer on the server. You can delete it.' });
+    }
     const expiresIn = req.body?.share ? SHARE_LINK_SECONDS : PLAY_LINK_SECONDS;
     const token = jwt.sign({ purpose: 'recording', rid: String(recording._id) }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn });
     return res.json({
@@ -201,7 +208,7 @@ router.get('/:id/stream', async (req, res, next) => {
     if (!recording) {
       return res.status(404).json({ success: false, message: 'Recording not found.' });
     }
-    return sendRecording(req, res, recording);
+    return await sendRecording(req, res, recording);
   } catch (error) {
     return next(error);
   }
@@ -218,7 +225,7 @@ router.get('/:id', auth, async (req, res, next) => {
       });
     }
 
-    return sendRecording(req, res, recording);
+    return await sendRecording(req, res, recording);
   } catch (error) {
     return next(error);
   }
@@ -242,7 +249,7 @@ router.delete('/:id', auth, async (req, res, next) => {
       });
     }
 
-    await cleanupUploadedFile(recording.filename);
+    await storage.remove(recording.filename);
     await Recording.remove(recording._id);
 
     return res.json({

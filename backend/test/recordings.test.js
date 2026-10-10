@@ -91,3 +91,12 @@ test('streams reject missing, expired, foreign or login tokens', async t => {
     assert.equal(res.statusCode, 401);
   }
 });
+
+test('a recording whose file is gone gets a clear 410 instead of a dead link', async t => {
+  const doc = fixture(t);
+  fs.rmSync(path.join(uploads, doc.filename), { force: true });
+  const res = response();
+  await route('/:id/link', 'post').stack.at(-1).handle({ params: { id: recId }, user: { id: ownerId }, body: {} }, res, e => { throw e; });
+  assert.equal(res.statusCode, 410);
+  assert.match(res.body.message, /no longer on the server/);
+});

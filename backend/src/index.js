@@ -154,6 +154,9 @@ const startServer = async () => {
   try {
     // Connect to Postgres (Supabase)
     await connectDB();
+    if (process.env.NODE_ENV === 'production' && !require('./recordingStorage').usesR2()) {
+      console.warn('R2_* is not set: recordings are kept on this server\'s disk, which Render wipes on every redeploy and restart.');
+    }
     require('./retention').scheduleRetention();
 
     // Create HTTP server
