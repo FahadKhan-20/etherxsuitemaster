@@ -195,6 +195,8 @@ export const REFERENCE_BINDINGS=[
   "quickTiles",
   "reactLeft",
   "recLabel",
+  "canStopRec",
+  "stopRec",
   "reconnecting",
   "recording",
   "rejoin",
@@ -253,7 +255,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <span style={{"fontFamily": "'JetBrains Mono',monospace","fontSize": "13px","color": "var(--t-d8d1c1)","paddingRight": "8px"}}>{v.elapsed}</span>
 </div>
 {(v.recording) && <>
-<div style={{"display": "flex","alignItems": "center","gap": "7px","height": "32px","padding": "0 12px","borderRadius": "999px","whiteSpace": "nowrap","flexShrink": "0","background": "var(--c-3a1716)","color": "var(--t-ff8a83)","fontSize": "12px","fontWeight": "600","letterSpacing": "0.06em"}}><span style={{"width": "8px","height": "8px","borderRadius": "50%","background": "var(--c-ff4b42)"}}></span>{v.recLabel}</div>
+<div style={{"display": "flex","alignItems": "center","gap": "7px","height": "32px","padding": "0 12px","borderRadius": "999px","whiteSpace": "nowrap","flexShrink": "0","background": "var(--c-3a1716)","color": "var(--t-ff8a83)","fontSize": "12px","fontWeight": "600","letterSpacing": "0.06em"}}><span style={{"width": "8px","height": "8px","borderRadius": "50%","background": "var(--c-ff4b42)"}}></span>{v.recLabel}{(v.canStopRec) && <button onClick={v.stopRec} aria-label={"Stop recording"} style={{"marginLeft": "4px","height": "22px","padding": "0 10px","borderRadius": "999px","border": "0","background": "var(--c-ff4b42)","color": "#fff","font": "inherit","fontSize": "11px","fontWeight": "700","letterSpacing": "0.04em","cursor": "pointer"}}>{"Stop"}</button>}</div>
 </>}
 {(v.brOn) && <>
 <button onClick={v.openBreakout} style={{"whiteSpace": "nowrap","flexShrink": "0","display": "flex","alignItems": "center","gap": "7px","height": "32px","padding": "0 12px","borderRadius": "999px","border": "1px solid var(--c-3a3424)","background": "var(--c-1d1a12)","color": "var(--t-ecd389)","font": "inherit","fontSize": "12px","fontWeight": "600","cursor": "pointer"}}><svg width={"13"} height={"13"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}><rect x={"3"} y={"3"} width={"8"} height={"8"} rx={"1.5"}></rect><rect x={"13"} y={"3"} width={"8"} height={"8"} rx={"1.5"}></rect><rect x={"3"} y={"13"} width={"8"} height={"8"} rx={"1.5"}></rect><rect x={"13"} y={"13"} width={"8"} height={"8"} rx={"1.5"}></rect></svg>{v.brPill}</button>

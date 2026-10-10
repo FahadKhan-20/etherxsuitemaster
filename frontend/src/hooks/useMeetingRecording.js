@@ -36,6 +36,68 @@ function createVideoElement(stream) {
   return element;
 }
 
+const TILE_GAP = 12;
+const hasLiveVideo = video => video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0
+  && (video.srcObject?.getVideoTracks?.() || []).some(track => track.readyState === 'live' && track.enabled && !track.muted);
+const roundRect = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+
+// One tile as the meeting shows it: the camera (cropped to fill), or the person's initial in a circle,
+// with their name in the corner. Screen shares are letterboxed so nothing is cut off.
+function drawTile(ctx, { video, label, key }, x, y, w, h) {
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 14);
+  ctx.fillStyle = '#16140f';
+  ctx.fill();
+  ctx.clip();
+  const isScreen = key === 'screen-share';
+  if (hasLiveVideo(video)) {
+    const fit = isScreen ? Math.min : Math.max;
+    const scale = fit(w / video.videoWidth, h / video.videoHeight);
+    const vw = video.videoWidth * scale, vh = video.videoHeight * scale;
+    ctx.drawImage(video, x + (w - vw) / 2, y + (h - vh) / 2, vw, vh);
+  } else {
+    const radius = Math.max(18, Math.min(w, h) * 0.16);
+    ctx.fillStyle = '#0a84d0';
+    ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, radius, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `600 ${Math.round(radius)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const initials = label.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || '?';
+    ctx.font = `600 ${Math.round(radius * (initials.length > 1 ? 0.8 : 1))}px sans-serif`;
+    ctx.fillText(initials, x + w / 2, y + h / 2 + 1);
+  }
+  ctx.font = '500 15px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const text = isScreen ? label : label.slice(0, 40);
+  const pillW = ctx.measureText(text).width + 20;
+  roundRect(ctx, x + 10, y + h - 38, pillW, 28, 8);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
+  ctx.fillStyle = '#f0ece2';
+  ctx.fillText(text, x + 20, y + h - 24);
+  ctx.restore();
+}
+
+// Grid like the meeting; a shared screen takes the stage with cameras in a column beside it.
+function drawMeeting(ctx, canvas, tiles) {
+  ctx.fillStyle = '#0b0a08';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const screen = tiles.find(t => t.key === 'screen-share');
+  const others = tiles.filter(t => t !== screen);
+  const area = { x: TILE_GAP, y: TILE_GAP, w: canvas.width - TILE_GAP * 2, h: canvas.height - TILE_GAP * 2 };
+  if (screen) {
+    const sideW = others.length ? Math.round(area.w * 0.22) : 0;
+    drawTile(ctx, screen, area.x, area.y, area.w - (sideW ? sideW + TILE_GAP : 0), area.h);
+    const rows = Math.max(others.length, 3), tileH = (area.h - TILE_GAP * (rows - 1)) / rows;
+    others.forEach((tile, i) => drawTile(ctx, tile, area.x + area.w - sideW, area.y + i * (tileH + TILE_GAP), sideW, tileH));
+    return;
+  }
+  const count = Math.max(others.length, 1);
+  const columns = count <= 1 ? 1 : count <= 4 ? 2 : 3;
+  const rows = Math.ceil(count / columns);
+  const tileW = (area.w - TILE_GAP * (columns - 1)) / columns, tileH = (area.h - TILE_GAP * (rows - 1)) / rows;
+  others.forEach((tile, i) => drawTile(ctx, tile, area.x + (i % columns) * (tileW + TILE_GAP), area.y + Math.floor(i / columns) * (tileH + TILE_GAP), tileW, tileH));
+}
+
 export function useMeetingRecording({ roomCode, isHost, localStream, screenStream, peers, userName, socket, socketReady, onError }) {
   const [recordingState, setRecordingState] = useState('idle');
   const [recordingError, setRecordingError] = useState('');
@@ -53,7 +115,7 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
   const completeFinish = useCallback(() => { savingRef.current = false; finishWaitersRef.current.splice(0).forEach(resolve => resolve()); }, []);
 
   const cleanupCapture = useCallback(() => {
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current?.stop();
     animationFrameRef.current = null;
     videoElementsRef.current.forEach(video => {
       video.pause();
@@ -129,36 +191,18 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
     sessionRef.current = { canvas, context, canvasStream, audioContext, destination };
     recorderRef.current = recorder;
 
-    const render = () => {
-      const videos = Array.from(videoElementsRef.current.entries());
-      context.fillStyle = '#080808';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      const columns = videos.length <= 1 ? 1 : videos.length <= 4 ? 2 : 3;
-      const rows = Math.max(1, Math.ceil(Math.max(videos.length, 1) / columns));
-      const tileWidth = canvas.width / columns;
-      const tileHeight = canvas.height / rows;
-      videos.forEach(([key, video], index) => {
-        const x = (index % columns) * tileWidth;
-        const y = Math.floor(index / columns) * tileHeight;
-        const hasCurrentFrame = video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-          && video.videoWidth > 0 && video.videoHeight > 0;
-        if (hasCurrentFrame) {
-          const scale = Math.max(tileWidth / video.videoWidth, tileHeight / video.videoHeight);
-          const width = video.videoWidth * scale;
-          const height = video.videoHeight * scale;
-          context.drawImage(video, x + (tileWidth - width) / 2, y + (tileHeight - height) / 2, width, height);
-        } else {
-          context.fillStyle = '#151515';
-          context.fillRect(x, y, tileWidth, tileHeight);
-          context.fillStyle = '#d4af37';
-          context.font = 'bold 54px sans-serif';
-          context.textAlign = 'center';
-          context.textBaseline = 'middle';
-          context.fillText((videoLabelsRef.current.get(key) || '?').charAt(0).toUpperCase(), x + tileWidth / 2, y + tileHeight / 2);
-        }
-      });
-      animationFrameRef.current = requestAnimationFrame(render);
-    };
+    const render = () => drawMeeting(context, canvas, Array.from(videoElementsRef.current.entries()).map(([key, video]) => ({
+      key, video, label: videoLabelsRef.current.get(key) || 'Participant',
+    })));
+    // A worker timer keeps frames coming while the tab is in the background (requestAnimationFrame stops there).
+    if (typeof Worker === 'function') {
+      const ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 1000 / 30);'], { type: 'text/javascript' })));
+      ticker.onmessage = render;
+      animationFrameRef.current = { stop: () => ticker.terminate() };
+    } else {
+      const timer = setInterval(render, 1000 / 30);
+      animationFrameRef.current = { stop: () => clearInterval(timer) };
+    }
     render();
     recorder.ondataavailable = event => { if (event.data.size > 0) chunksRef.current.push(event.data); };
     recorder.onerror = () => {
@@ -199,7 +243,10 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
     if (localStream) streams.set('local-video', localStream);
     if (screenStream) streams.set('screen-share', screenStream);
     if (localStream) streams.set('local-audio', localStream);
-    Object.entries(peers || {}).forEach(([id, peer]) => { if (peer.stream) streams.set(id, peer.stream); });
+    Object.entries(peers || {}).forEach(([id, peer]) => {
+      if (peer.stream) streams.set(id, peer.stream);
+      if (peer.screenStream && !screenStream) streams.set('screen-share', peer.screenStream);
+    });
     const activeKeys = new Set(streams.keys());
     videoElementsRef.current.forEach((video, key) => {
       if (!activeKeys.has(key)) {
@@ -223,7 +270,7 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
         const label = key === 'local-video'
           ? userName || 'You'
           : key === 'screen-share'
-            ? 'Screen share'
+            ? (screenStream ? `${userName || 'You'} is presenting` : `${Object.values(peers).find(p => p.screenStream)?.userName || 'Participant'} is presenting`)
             : peers[key]?.userName || 'Participant';
         videoLabelsRef.current.set(key, label);
       }
