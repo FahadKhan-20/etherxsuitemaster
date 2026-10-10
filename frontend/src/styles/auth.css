@@ -96,3 +96,5 @@
 .exm-legal .exm-legal-nav { margin-top: 36px; font-size: 14px; }
 .exm-legal a { color: var(--t-d9b54a); text-decoration: none; }
 .exm-legal a:hover { color: var(--t-f0d27a); }
+.exm-auth-link-inline { border: 0; background: none; padding: 0; color: var(--t-d9b54a); font: inherit; font-weight: 600; cursor: pointer; }
+.exm-auth-link-inline:hover { text-decoration: underline; }

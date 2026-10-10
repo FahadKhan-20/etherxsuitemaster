@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AuthPage from '../src/pages/AuthPage';
+import ForgotPassword from '../src/pages/ForgotPassword';
 import apiClient from '../src/utils/apiClient';
 
 vi.mock('../src/utils/apiClient', () => ({
@@ -22,6 +23,7 @@ function mount(path) {
       <Routes>
         <Route path="/login" element={<AuthPage mode="signin" />} />
         <Route path="/register" element={<AuthPage mode="signup" />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/" element={<p id="home">home</p>} />
       </Routes>
     </MemoryRouter>,
@@ -89,15 +91,20 @@ describe('sign in', () => {
     expect($('#home')).not.toBeNull();
   });
 
-  it('sends a password reset link for the typed email', async () => {
+  it('Forgot password opens its own page, carries the typed email and confirms where the link went', async () => {
     mount('/login');
-    const forgot = () => [...document.querySelectorAll('.exm-auth-link-muted')].at(-1);
-    await act(async () => { forgot().click(); });
-    expect(errorText()).toBe('Enter your email first.');
+    type('Email', 'v@example.com');
+    await act(async () => { [...document.querySelectorAll('.exm-auth-link-muted')].at(-1).click(); });
+    expect($('h1').textContent).toBe('Reset your password');
+    expect($('input[placeholder="Email"]').value).toBe('v@example.com');
+    type('Email', '');
+    await submit();
+    expect(errorText()).toBe('Enter the email you sign in with.');
     type('Email', 'v@example.com');
     vi.mocked(apiClient.post).mockResolvedValue({ data: { success: true } });
-    await act(async () => { forgot().click(); await Promise.resolve(); });
+    await submit();
     expect(apiClient.post).toHaveBeenCalledWith('/api/auth/forgot-password', { email: 'v@example.com' });
-    expect(forgot().textContent).toBe('Reset link sent');
+    expect($('h1').textContent).toBe('Check your email');
+    expect(document.body.textContent).toContain('v@example.com');
   });
 });

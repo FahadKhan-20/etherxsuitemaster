@@ -34,10 +34,9 @@ export default function AuthPage({ mode }) {
   const [bad, setBad] = useState(''); // which field the error is about: email | pw | terms
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
-  const [resetState, setResetState] = useState('idle'); // idle | sending | sent
 
   useEffect(() => { if (isAuthenticated()) navigate(ROUTES.HOME, { replace: true }); }, [navigate]);
-  useEffect(() => { setError(''); setBad(''); setResetState('idle'); }, [mode]);
+  useEffect(() => { setError(''); setBad(''); }, [mode]);
 
   const score = passwordScore(password);
   const fail = (message, field = '') => { setError(message); setBad(field); };
@@ -81,20 +80,6 @@ export default function AuthPage({ mode }) {
     }
   };
 
-  const sendReset = async () => {
-    if (resetState === 'sending') return;
-    if (!VALID_EMAIL.test(email.trim())) return fail('Enter your email first.', 'email');
-    setResetState('sending');
-    clear();
-    try {
-      await apiClient.post('/api/auth/forgot-password', { email: email.trim() });
-      setResetState('sent');
-    } catch (err) {
-      setResetState('idle');
-      fail(getApiErrorMessage(err, 'Could not send a reset link. Try again.'));
-    }
-  };
-
   return (
     <div className="exm-auth">
       <header className="exm-auth-header">
@@ -122,7 +107,7 @@ export default function AuthPage({ mode }) {
             <input
               className="exm-auth-input" type="email" value={email} placeholder="Email" autoComplete="email" aria-label="Email"
               data-bad={bad === 'email'} aria-invalid={bad === 'email'}
-              onChange={(e) => { setEmail(e.target.value); clear(); setResetState('idle'); }}
+              onChange={(e) => { setEmail(e.target.value); clear(); }}
             />
             <div className="exm-auth-password">
               <input
@@ -148,9 +133,7 @@ export default function AuthPage({ mode }) {
                 <button type="button" className="exm-auth-check" onClick={() => setRemember((on) => !on)} aria-pressed={remember}>
                   <Tick on={remember} />Remember me
                 </button>
-                <button type="button" className="exm-auth-link-muted" onClick={sendReset} disabled={resetState !== 'idle'}>
-                  {resetState === 'sent' ? 'Reset link sent' : resetState === 'sending' ? 'Sending…' : 'Forgot password?'}
-                </button>
+                <Link className="exm-auth-link-muted" to={ROUTES.FORGOT_PASSWORD} state={{ email: email.trim() }}>Forgot password?</Link>
               </div>
             )}
 

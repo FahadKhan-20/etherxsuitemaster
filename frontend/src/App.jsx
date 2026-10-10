@@ -24,6 +24,7 @@ const AuthPage = lazy(() => import('./pages/AuthPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 
 const PageLoading = () => <div role="status" aria-label="Loading" style={{ minHeight: '100dvh', background: 'var(--c-000000)' }} />;
 
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route path={ROUTES.TERMS}           element={<LegalPage page="terms" />} />
         <Route path={ROUTES.PRIVACY}         element={<LegalPage page="privacy" />} />
         <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
+        <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPassword />} />
         <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
         <Route element={<ProtectedRoute />}>
           <Route path={ROUTES.HOME}        element={<Landing />} />
@@ -62,7 +64,7 @@ function AppRoutes() {
 const SPLASH_KEY = 'etherx_seen_splash';
 function shouldShowSplash() {
   try { if (sessionStorage.getItem(SPLASH_KEY)) return false; } catch { /* storage blocked: still show once */ }
-  return !/^\/(auth\/callback|reset-password|room\/|join|terms|privacy)/.test(window.location.pathname);
+  return !/^\/(auth\/callback|reset-password|forgot-password|room\/|join|terms|privacy)/.test(window.location.pathname);
 }
 
 function App() {
