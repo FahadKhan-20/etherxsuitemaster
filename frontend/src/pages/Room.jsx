@@ -12,6 +12,7 @@ import apiClient from '../utils/apiClient';
 import { clearAuthSession, getAuthToken } from '../utils/auth';
 import MeetingSettings from '../components/room/MeetingSettings';
 import ProfileAvatar from '../components/ui/ProfileAvatar';
+import { useAvatarTone } from '../utils/avatarTone';
 import { useMeetingPreferences } from '../hooks/useMeetingPreferences';
 import { copyMeetingText } from '../utils/meetingClipboard';
 import '../styles/meeting.css';
@@ -140,6 +141,8 @@ export default function Room() {
     catch { setJoinError('Could not copy the link. Copy it from your browser address bar.'); }
   };
 
+  const avatarTone = useAvatarTone(user?.avatar, displayName);
+
   // Render the WebRTC Meeting Room once joined
   if (hasJoined) {
     return <VideoRoom roomCode={code} isHost={isHost} initialMedia={joinedMedia} preferences={preferences} savePreferences={savePreferences} />;
@@ -171,8 +174,8 @@ export default function Room() {
             {stream && isVideoEnabled ? (
               <VideoCanvasProcessor stream={stream} activeFilter={activeFilter} selectedBgImage={selectedBgImage} mirror={mirror} style={{ objectFit: 'contain' }} />
             ) : (
-              <div className="prejoin-camera-off">
-                <ProfileAvatar className="prejoin-avatar" src={user?.avatar} name={displayName} initials={initial}/>
+              <div className="prejoin-camera-off" style={{ background: avatarTone.tile }}>
+                <ProfileAvatar className="prejoin-avatar" style={{ background: avatarTone.circle }} src={user?.avatar} name={displayName} initials={initial}/>
                 <h2>Your camera is off</h2>
                 <p>You can turn it on whenever you’re ready.</p>
               </div>
