@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import axios from 'axios'
+import apiClient from '../utils/apiClient'
 import EtherXLogo from '../components/brand/EtherXLogo'
 
 const C = {
@@ -42,7 +42,7 @@ export default function ResetPassword() {
 
     setLoading(true)
     try {
-      const res = await axios.post(`/api/auth/reset-password/${token}`, { password })
+      const res = await apiClient.post(`/api/auth/reset-password/${token}`, { password })
       if (res.data.success) {
         setSuccess(true)
         setTimeout(() => navigate('/login'), 3000)

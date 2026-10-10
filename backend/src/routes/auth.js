@@ -33,7 +33,6 @@ const sendResetEmail = async (toEmail, toName, resetUrl) => {
       privateKey: process.env.EMAILJS_PRIVATE_KEY,
     }
   );
-  console.log('✅ EMAILJS DISPATCH SUCCESS:', result.status, result.text);
   return result;
 };
 
@@ -158,6 +157,12 @@ router.post('/forgot-password', accountLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
+    // Checked before looking the account up, so the answer is the same whether or not the email exists.
+    const emailConfigured = !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID && process.env.EMAILJS_PUBLIC_KEY);
+    const production = process.env.NODE_ENV === 'production';
+    if (production && !emailConfigured) {
+      return res.status(503).json({ success: false, message: 'Password reset email is not set up yet. Contact support.' });
+    }
 
     const user = await User.findByEmail(email);
     if (!user) {
@@ -173,24 +178,20 @@ router.post('/forgot-password', accountLimiter, async (req, res, next) => {
       resetPasswordExpires: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
     });
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const clientUrl = String(process.env.CLIENT_URL || 'http://localhost:3000').split(',')[0].trim().replace(/\/$/, '');
     const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
+    // The link signs into the account, so it is printed only in development and never in production logs.
+    const printLink = () => { if (!production) console.log(`\nPassword reset link for ${user.email} (development only):\n${resetUrl}\n`); };
 
-    try {
-      if (process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID && process.env.EMAILJS_PUBLIC_KEY) {
+    if (!emailConfigured) printLink();
+    else {
+      try {
         await sendResetEmail(user.email, user.name, resetUrl);
-      } else {
-        console.log('\n==================================================');
-        console.log(`🔑 PASSWORD RESET LINK FOR ${user.email}:`);
-        console.log(resetUrl);
-        console.log('==================================================\n');
+      } catch (emailErr) {
+        // EmailJS answers with { status, text }, e.g. 403 when API access from servers is turned off.
+        console.error('Password reset email failed:', emailErr?.status || '', emailErr?.text || emailErr?.message || emailErr);
+        printLink();
       }
-    } catch (emailErr) {
-      console.warn('EmailJS dispatch notice:', emailErr?.message || emailErr);
-      console.log('\n==================================================');
-      console.log(`🔑 PASSWORD RESET LINK FOR ${user.email}:`);
-      console.log(resetUrl);
-      console.log('==================================================\n');
     }
 
     return res.json({ success: true, message: 'If that email exists, a password reset link has been sent!' });
