@@ -4,6 +4,8 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { CalendarClock, Download, X } from 'lucide-react';
 import { getApiErrorMessage } from '../../../utils/apiClient';
 import { useDialogFocus } from '../../../hooks/useDialogFocus';
+import { useUser } from '../../../context/UserContext';
+import { dateInTimezone, scheduleTimezone, tomorrowInTimezone, validateSchedule } from '../../../utils/scheduleValidation';
 
 import './scheduler.css';
 
@@ -42,15 +44,18 @@ function downloadInvite(meeting) {
 }
 
 export default function Scheduler({ isOpen, onClose, onSchedule }) {
+  const { user } = useUser();
+  const timezone = scheduleTimezone(user.timezone);
   const dialogRef = useRef(null);
   const formRef = useRef(null);
   const reduceMotion = useReducedMotion();
   useDialogFocus(dialogRef, onClose, isOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState({
     title: '',
-    date: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+    date: tomorrowInTimezone(timezone),
     time: '10:00',
     duration: '45',
     recurring: 'none',
@@ -65,19 +70,26 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
     return () => { document.body.style.overflow = previousOverflow; };
   }, [isOpen]);
 
-  const set = (key) => (event) => setForm((previous) => ({ ...previous, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((previous) => ({ ...previous, [key]: event.target.value }));
+    setFieldErrors((previous) => ({ ...previous, [key]: undefined, ...(['date', 'time'].includes(key) ? { date: undefined, time: undefined } : {}) }));
+    setError('');
+  };
+  const fieldError = (key) => fieldErrors[key] && <p className="scheduler-field-error" id={`scheduler-${key}-error`} role="alert">{fieldErrors[key]}</p>;
+  const fieldA11y = (key) => ({ 'aria-invalid': !!fieldErrors[key], 'aria-describedby': fieldErrors[key] ? `scheduler-${key}-error` : undefined });
   const save = async (withInvite) => {
-    if (saving || !form.title.trim() || !formRef.current?.reportValidity()) return;
+    if (saving) return;
+    const result = validateSchedule(form, timezone);
+    setFieldErrors(result.errors);
+    if (!result.input) {
+      const invalid = Object.keys(result.errors)[0];
+      document.getElementById(invalid === 'title' ? 'scheduler-meeting-title' : `scheduler-${invalid}`)?.focus();
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const meeting = await onSchedule({
-        title: form.title.trim(),
-        startAt: new Date(`${form.date}T${form.time}`).toISOString(),
-        duration: Number(form.duration),
-        participants: form.participants.split(',').map((email) => email.trim()).filter(Boolean),
-        recurring: form.recurring,
-      });
+      const meeting = await onSchedule(result.input);
       if (withInvite) downloadInvite(meeting);
       setForm((previous) => ({ ...previous, title: '', participants: '' }));
       onClose();
@@ -118,27 +130,33 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
               </button>
             </header>
 
-            <form ref={formRef} className="scheduler-form" onSubmit={(event) => { event.preventDefault(); save(false); }}>
+            <form ref={formRef} noValidate className="scheduler-form" onSubmit={(event) => { event.preventDefault(); save(false); }}>
               <div className="scheduler-field">
                 <label htmlFor="scheduler-meeting-title">Meeting title <span aria-hidden="true">*</span></label>
-                <input id="scheduler-meeting-title" required value={form.title} onChange={set('title')} placeholder="Meeting name" />
+                <input id="scheduler-meeting-title" required maxLength={120} value={form.title} onChange={set('title')} placeholder="Meeting name" {...fieldA11y('title')} />
+                {fieldError('title')}
               </div>
 
               <div className="scheduler-fields">
                 <div className="scheduler-field">
                   <label htmlFor="scheduler-date">Date</label>
-                  <input id="scheduler-date" type="date" required value={form.date} onChange={set('date')} />
+                  <input id="scheduler-date" type="date" required min={dateInTimezone(Date.now(), timezone)} value={form.date} onChange={set('date')} {...fieldA11y('date')} />
+                  {fieldError('date')}
                 </div>
                 <div className="scheduler-field">
                   <label htmlFor="scheduler-time">Time</label>
-                  <input id="scheduler-time" type="time" required value={form.time} onChange={set('time')} />
+                  <input id="scheduler-time" type="time" required value={form.time} onChange={set('time')} {...fieldA11y('time')} />
+                  {fieldError('time')}
                 </div>
               </div>
+
+              <p className="scheduler-timezone">Times in {timezone.replaceAll('_', ' ')}</p>
 
               <div className="scheduler-fields">
                 <div className="scheduler-field">
                   <label htmlFor="scheduler-duration">Duration (minutes)</label>
-                  <input id="scheduler-duration" type="number" required min="5" max="480" value={form.duration} onChange={set('duration')} />
+                  <input id="scheduler-duration" type="number" required min="5" max="480" value={form.duration} onChange={set('duration')} {...fieldA11y('duration')} />
+                  {fieldError('duration')}
                 </div>
                 <fieldset className="scheduler-field scheduler-recurrence">
                   <legend>Repeat</legend>
@@ -154,7 +172,8 @@ export default function Scheduler({ isOpen, onClose, onSchedule }) {
 
               <div className="scheduler-field">
                 <label htmlFor="scheduler-participants">Participants <span className="scheduler-optional">(optional)</span></label>
-                <input id="scheduler-participants" value={form.participants} onChange={set('participants')} placeholder="Email addresses" aria-describedby="scheduler-participant-help" />
+                <input id="scheduler-participants" value={form.participants} onChange={set('participants')} placeholder="Email addresses" aria-invalid={!!fieldErrors.participants} aria-describedby={`scheduler-participant-help${fieldErrors.participants ? ' scheduler-participants-error' : ''}`} />
+                {fieldError('participants')}
                 <p className="scheduler-help" id="scheduler-participant-help">Separate email addresses with commas.</p>
               </div>
 

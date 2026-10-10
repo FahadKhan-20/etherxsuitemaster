@@ -481,3 +481,21 @@ describe('YouTube links',()=>{
     for(const url of ['https://vimeo.com/123','https://www.youtube.com/@channel','https://evil.example/watch?v=-S_9Kuy8faU','not a url','https://youtu.be/short'])expect(youtubeId(url)).toBe(null);
   });
 });
+
+describe('large meeting reconnects',()=>{
+  it('replaces all 49 stale peer connections after socket reconnection',async()=>{
+    renderHook(()=>useWebRTC('test-room',{isHost:true}));await settle();
+    const socket=sockets[0];
+    await act(async()=>socket.trigger('existing-users',Array.from({length:49},(_,index)=>({socketId:`peer-${index}`,userName:`Peer ${index}`}))));
+    expect(Object.keys(hook.peers)).toHaveLength(49);
+    const old=pcs.slice();expect(old).toHaveLength(49);
+    act(()=>{socket.id='self-reconnected';socket.trigger('connect');});
+    expect(old.every(pc=>pc.connectionState==='closed')).toBe(true);
+    expect(Object.keys(hook.peers)).toHaveLength(0);
+    expect(socket.events.filter(event=>event.event==='join-room')).toHaveLength(2);
+    await act(async()=>socket.trigger('existing-users',Array.from({length:49},(_,index)=>({socketId:`fresh-${index}`,userName:`Peer ${index}`}))));
+    expect(Object.keys(hook.peers)).toHaveLength(49);
+    expect(Object.keys(hook.peers).every(id=>id.startsWith('fresh-'))).toBe(true);
+    expect(pcs).toHaveLength(98);
+  });
+});

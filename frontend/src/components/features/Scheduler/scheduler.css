@@ -69,3 +69,6 @@
 }
 @media (max-width: 380px) { .scheduler-fields { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .scheduler-dialog * { transition: none !important; } }
+.scheduler-timezone { margin: -12px 0 0; color: #ccc; font-size: 12px; line-height: 1.5; }
+.scheduler-field-error { margin: 7px 0 0; color: #ffb3b3; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.scheduler-field input[aria-invalid="true"] { border-color: #e77b7b; }

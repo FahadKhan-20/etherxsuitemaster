@@ -29,13 +29,15 @@ router.post('/', auth, async (req, res, next) => {
     const startAt = new Date(req.body?.startAt);
     const duration = Number(req.body?.duration);
     const recurring = req.body?.recurring || 'none';
-    const participants = (Array.isArray(req.body?.participants) ? req.body.participants : [])
-      .map(email => String(email).trim().toLowerCase())
-      .filter(email => email.length <= 254 && EMAIL.test(email))
-      .slice(0, 100);
+    const rawParticipants = req.body?.participants ?? [];
+    if (!Array.isArray(rawParticipants)) return res.status(400).json({ success: false, message: 'Provide participant email addresses as a list.' });
+    const participants = [...new Set(rawParticipants.map(email => String(email).trim().toLowerCase()))];
+    if (participants.some(email => email.length > 254 || !EMAIL.test(email))) return res.status(400).json({ success: false, message: 'Check the participant email addresses.' });
+    if (participants.length > 100) return res.status(400).json({ success: false, message: 'Invite up to 100 email addresses.' });
 
     if (!title) return res.status(400).json({ success: false, message: 'Give the meeting a title.' });
     if (Number.isNaN(startAt.getTime())) return res.status(400).json({ success: false, message: 'Choose a valid date and time.' });
+    if (startAt.getTime() <= Date.now()) return res.status(400).json({ success: false, message: 'Choose a future date and time.' });
     if (!Number.isInteger(duration) || duration < 1 || duration > 1440) return res.status(400).json({ success: false, message: 'Duration must be between 1 and 1440 minutes.' });
     if (!['none', 'daily', 'weekly'].includes(recurring)) return res.status(400).json({ success: false, message: 'Repeat must be none, daily or weekly.' });
 

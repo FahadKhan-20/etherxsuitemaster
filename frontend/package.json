@@ -11,6 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:stress": "node scripts/stress-meeting.cjs",
     "design:meet": "node scripts/port-meeting-reference.cjs",
     "test:reference": "node scripts/check-reference-room.cjs",
     "test:reference:extended": "node scripts/check-reference-room-extended.cjs"

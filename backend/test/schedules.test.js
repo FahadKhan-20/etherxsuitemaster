@@ -27,7 +27,7 @@ test('every schedule route requires sign-in', () => {
 test('scheduling registers a real room owned by the scheduler', async t => {
   const { store, rooms } = stubDb(t);
   const startAt = new Date(Date.now() + 3600e3).toISOString();
-  const res = await call('/', 'post', { user: { id: owner, name: 'Host' }, body: { title: ' Sprint review ', startAt, duration: 45, recurring: 'weekly', participants: ['a@example.com', 'bad', 'b@example.com'] } });
+  const res = await call('/', 'post', { user: { id: owner, name: 'Host' }, body: { title: ' Sprint review ', startAt, duration: 45, recurring: 'weekly', participants: [' A@example.com ', 'a@example.com', 'b@example.com'] } });
   assert.equal(res.statusCode, 201);
   const meeting = res.body.data.meeting;
   assert.match(meeting.roomCode, /^etherx-[a-z0-9]{10}$/);
@@ -51,4 +51,17 @@ test('schedules are listed and deleted per account', async t => {
   assert.equal((await call('/', 'get', { user: { id: owner } })).body.data.meetings.length, 1);
   assert.equal((await call('/:id', 'delete', { user: { id: '507f1f77bcf86cd799439099' }, params: { id } })).statusCode, 404);
   assert.equal((await call('/:id', 'delete', { user: { id: owner }, params: { id } })).statusCode, 200);
+});
+
+test('past starts and invalid participant lists do not create schedules or rooms', async t => {
+  const { store, rooms } = stubDb(t);
+  const valid = { title: 'Plan', startAt: new Date(Date.now() + 3600e3).toISOString(), duration: 30 };
+  for (const body of [
+    { ...valid, startAt: new Date(Date.now() - 60000).toISOString() },
+    { ...valid, participants: ['valid@example.com', 'invalid'] },
+    { ...valid, participants: [''] },
+    { ...valid, participants: 'valid@example.com' },
+    { ...valid, participants: Array.from({ length: 101 }, (_, index) => `user${index}@example.com`) },
+  ]) assert.equal((await call('/', 'post', { user: { id: owner }, body })).statusCode, 400);
+  assert.equal(store.length, 0); assert.equal(rooms.length, 0);
 });

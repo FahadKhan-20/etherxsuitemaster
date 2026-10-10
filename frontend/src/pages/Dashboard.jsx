@@ -2,26 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, Check,
-  Clock3, Repeat2, Trash2, Video, X,
+  Clock3, RefreshCw, Repeat2, Trash2, Video, X,
 } from 'lucide-react';
 import AnimatedPage from '../components/layout/AnimatedPage';
-import TopBar from '../components/layout/TopBar';
+import WorkspaceHeader from '../components/layout/WorkspaceHeader';
 import Scheduler from '../components/features/Scheduler';
 import { useSchedules } from '../hooks/useSchedules';
 import { nextStart } from '../components/layout/MeetingReminders';
 import { useUser } from '../context/UserContext';
+import { scheduleTimezone } from '../utils/scheduleValidation';
 import '../styles/dashboard.css';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { meetings, create, remove, error, loading } = useSchedules();
+  const { meetings, create, remove, error, loading, reload } = useSchedules();
   const [showScheduler, setShowScheduler] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [now, setNow] = useState(Date.now());
-  const timezone = user.timezone || 'Asia/Kolkata';
+  const timezone = scheduleTimezone(user.timezone);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -56,7 +57,7 @@ export default function Dashboard() {
     <AnimatedPage>
       <div className="dashboard-page">
         <a className="dashboard-skip-link" href="#dashboard-content">Skip to content</a>
-        <TopBar />
+        <WorkspaceHeader />
         <main className="dashboard-content" id="dashboard-content">
           <div className="dashboard-heading">
             <h1>Dashboard</h1>
@@ -90,7 +91,10 @@ export default function Dashboard() {
               {!loading && !error && upcoming.length > 0 && <span className="dashboard-count">{upcoming.length}</span>}
             </div>
             {error ? (
-              <p role="alert" className="dashboard-error">{error}</p>
+              <div className="dashboard-error">
+                <p role="alert">{error}</p>
+                <button type="button" onClick={reload} disabled={loading}><RefreshCw size={16} aria-hidden="true" />Retry</button>
+              </div>
             ) : loading ? (
               <p className="dashboard-empty" role="status">Loading your meetings…</p>
             ) : upcoming.length === 0 ? (

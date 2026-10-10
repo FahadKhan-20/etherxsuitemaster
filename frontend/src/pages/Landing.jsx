@@ -1,25 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
-import { LayoutDashboard, QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import etherxLogo from '../assets/etherx_transparent.png';
-import { clearAuthSession, getStoredUser, getUserInitials } from '../utils/auth';
-import { useWallet } from '../context/WalletContext';
-import { ROUTES } from '../utils/constants';
+import { getUserInitials } from '../utils/auth';
+import { useUser } from '../context/UserContext';
+import WorkspaceHeader from '../components/layout/WorkspaceHeader';
+import ProfileAvatar from '../components/ui/ProfileAvatar';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
 import '../styles/landing.css';
 import * as QRCode from 'qrcode';
 import Modal from '../components/ui/Modal';
 import apiClient from '../utils/apiClient';
-
-const formatTime = (date) =>
-  date.toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
 
 const normalizeMeetingCode = (value) => {
   const jitsiMatch = value.replace(/\s+/g, '').match(/(?:https?:\/\/)?meet\.jit\.si\/([^/?#]+)/i);
@@ -76,14 +69,12 @@ function CameraIcon() {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { logout } = useWallet();
+  const { user } = useUser();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const storedUser = getStoredUser();
-  const displayName = storedUser?.name || 'Alex';
-  const displayInitial = getUserInitials(displayName).charAt(0) || 'A';
+  const displayName = user.name || 'Participant';
+  const displayInitial = getUserInitials(displayName).charAt(0);
 
-  const [clock, setClock] = useState(formatTime(new Date()));
   const [meetingCode, setMeetingCode] = useState('');
   const [micMuted, setMicMuted] = useState(true);
   const [cameraOn, setCameraOn] = useState(false);
@@ -201,14 +192,6 @@ export default function Landing() {
   }, [scannerOpen, navigate]);
 
   useEffect(() => {
-    const timerId = setInterval(() => {
-      setClock(formatTime(new Date()));
-    }, 1000);
-
-    return () => clearInterval(timerId);
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -306,61 +289,10 @@ export default function Landing() {
     navigate(`/room/${createdQrCode.code}`);
   };
 
-  const handleLogout = async () => {
-    // Await the Web3Auth SDK teardown before clearing the app session and
-    // navigating away — otherwise the full-page navigation below can race
-    // the in-flight async disconnect, leaving a lingering Web3Auth session
-    // that re-hydrates on the next /login visit and strands the user behind
-    // a permanently-disabled sign-in button.
-    await logout();
-    clearAuthSession();
-    window.location.replace(ROUTES.LOGIN);
-  };
-
   return (
     <AnimatedPage style={{ position: 'relative' }}>
       <div className="meet-landing">
-        <header className="meet-nav">
-          <div className="meet-logo" role="img" aria-label="EtherXMeet logo">
-            <span className="meet-brand-logo">
-              <img src={etherxLogo} alt="EtherX Meet" style={{ height: '120px', width: 'auto' }} />
-            </span>
-          </div>
-
-          <div className="meet-nav-right">
-            <span className="meet-clock" aria-live="polite">{clock}</span>
-            <button
-              type="button"
-              onClick={() => navigate(ROUTES.DASHBOARD)}
-              aria-label="Dashboard"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)',
-                border: 'none',
-                color: '#eedca0',
-                fontWeight: 600,
-                fontSize: 13,
-                padding: '7px 16px',
-                borderRadius: 9,
-                cursor: 'pointer',
-                letterSpacing: '-0.01em',
-                boxShadow: '0 3px 14px rgba(212,175,55,0.28)',
-                fontFamily: 'DM Sans, sans-serif',
-              }}
-            >
-              <LayoutDashboard size={14} />
-              Dashboard
-            </button>
-            <button type="button" className="meet-help" onClick={handleLogout}>
-              Logout
-            </button>
-            <div className="meet-avatar" aria-label="User avatar">
-              {displayInitial}
-            </div>
-          </div>
-        </header>
+        <WorkspaceHeader />
 
         <main className="meet-main">
           <div className="meet-content">
@@ -369,9 +301,7 @@ export default function Landing() {
                 {cameraOn ? (
                   <video ref={videoRef} autoPlay muted playsInline className="meet-video" />
                 ) : (
-                  <div className="meet-preview-avatar" aria-hidden="true">
-                    {displayInitial}
-                  </div>
+                  <ProfileAvatar className="meet-preview-avatar" src={user.avatar} name={displayName} initials={displayInitial} />
                 )}
 
                 <span className="meet-label meet-name-label">{displayName}</span>
