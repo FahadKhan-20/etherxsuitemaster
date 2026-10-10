@@ -97,6 +97,19 @@ export default function Settings() {
     }
   };
 
+  // Password: the same emailed reset link as "Forgot password?", so it also lets Google-only accounts add one.
+  const [resetState, setResetState] = useState('idle'); // idle | sending | sent
+  const sendResetLink = async () => {
+    setResetState('sending');
+    try {
+      await apiClient.post('/api/auth/forgot-password', { email: saved.email });
+      setResetState('sent');
+    } catch (error) {
+      setResetState('idle');
+      flash(getApiErrorMessage(error, 'Could not send the reset link. Try again.'));
+    }
+  };
+
   // Device and in-meeting alert choices are per browser and shared with the meeting room's own settings.
   const [meetingPrefs, saveMeetingPrefs] = useMeetingPreferences();
   const roomPref = (key, fallback) => meetingPrefs.reference?.[key] ?? fallback;
@@ -150,6 +163,16 @@ export default function Settings() {
                       <button type="button" className="dashboard-button dashboard-button-secondary" onClick={() => setForm(null)} disabled={!dirty || saving}>Cancel</button>
                     </div>
                   </Panel>
+                  {saved.email && (
+                    <Panel title="Password" description={account?.authProvider === 'local' ? 'Change the password you sign in with' : 'Add a password so you can also sign in with your email'}>
+                      <p className="settings-text">We email a reset link to <strong>{saved.email}</strong>. It works for one hour.</p>
+                      <div className="settings-actions">
+                        <button type="button" className="dashboard-button dashboard-button-secondary" onClick={sendResetLink} disabled={resetState !== 'idle'}>
+                          {resetState === 'sent' ? 'Link sent — check your inbox' : resetState === 'sending' ? 'Sending…' : 'Email me a reset link'}
+                        </button>
+                      </div>
+                    </Panel>
+                  )}
                   <Panel title="Account" description="Read-only details of this account">
                     <dl className="settings-facts">
                       <div><dt>Sign-in method</dt><dd>{SIGN_IN_METHODS[account?.authProvider] || '—'}</dd></div>
