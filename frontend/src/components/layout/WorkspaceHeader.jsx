@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { House, LayoutDashboard, Moon, Settings, Sun } from 'lucide-react';
+import { BarChart3, Film, House, LayoutDashboard, Moon, Settings, Sun } from 'lucide-react';
 import { useUser } from '../../context/UserContext';
 import { useWallet } from '../../context/WalletContext';
 import { clearAuthSession, getUserInitials } from '../../utils/auth';
@@ -50,10 +50,14 @@ export default function WorkspaceHeader() {
       </button>
       <div className="workspace-header-controls">
         <span className="workspace-clock">{new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>
-        <button type="button" className="workspace-nav-button" onClick={() => navigate(isHome ? ROUTES.DASHBOARD : ROUTES.HOME)}><LinkIcon size={14} aria-hidden="true" />{linkLabel}</button>
+        <button type="button" className="workspace-nav-button" onClick={() => navigate(isHome ? ROUTES.DASHBOARD : ROUTES.HOME)} aria-label={linkLabel}><LinkIcon size={14} aria-hidden="true" /><span>{linkLabel}</span></button>
         <button type="button" className="workspace-theme" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'} title={theme === 'light' ? 'Dark theme' : 'Light theme'}>{theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}</button>
         <button type="button" className="workspace-logout" onClick={handleLogout} disabled={loggingOut}>{loggingOut ? 'Signing out…' : 'Logout'}</button>
-        <Dropdown position="bottom-right" items={[{ label: 'Settings', icon: <Settings size={16} />, onClick: () => navigate(ROUTES.SETTINGS) }]} trigger={
+        <Dropdown position="bottom-right" items={[
+          { label: 'Recordings', icon: <Film size={16} />, onClick: () => navigate(ROUTES.RECORDINGS) },
+          { label: 'Analytics', icon: <BarChart3 size={16} />, onClick: () => navigate(ROUTES.ANALYTICS) },
+          { label: 'Settings', icon: <Settings size={16} />, onClick: () => navigate(ROUTES.SETTINGS) },
+        ]} trigger={
           <button type="button" className="workspace-account" aria-label="Account menu">
             <ProfileAvatar src={user.avatar} name={user.name} initials={getUserInitials(user.name).charAt(0) || '?'} className="workspace-avatar" />
           </button>

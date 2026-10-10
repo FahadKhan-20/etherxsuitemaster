@@ -31,6 +31,7 @@
   .workspace-logo { height: 34px; }
   .workspace-header-controls { gap: 5px; }
   .workspace-nav-button { padding: 8px; font-size: 12px !important; }
-  .workspace-nav-button > svg { display: none; }
   .workspace-logout { padding: 0 8px; font-size: 12px !important; }
 }
+/* narrow phones: Home/Dashboard shows its icon only so the avatar stays on screen */
+@media (max-width: 440px) { .workspace-nav-button { width: 44px; padding: 0; } .workspace-nav-button > span { display: none; } }

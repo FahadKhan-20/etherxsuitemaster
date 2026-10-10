@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, Check,
-  Clock3, RefreshCw, Repeat2, Trash2, Video, X,
+  ArrowDown, ArrowUpRight, BarChart3, CalendarClock, CalendarDays, Check,
+  Clock3, Film, RefreshCw, Repeat2, Trash2, Video, X,
 } from 'lucide-react';
 import AnimatedPage from '../components/layout/AnimatedPage';
 import WorkspaceHeader from '../components/layout/WorkspaceHeader';
@@ -11,6 +11,7 @@ import { useSchedules } from '../hooks/useSchedules';
 import { nextStart } from '../components/layout/MeetingReminders';
 import { useUser } from '../context/UserContext';
 import { scheduleTimezone } from '../utils/scheduleValidation';
+import { ROUTES } from '../utils/constants';
 import '../styles/dashboard.css';
 
 export default function Dashboard() {
@@ -62,6 +63,12 @@ export default function Dashboard() {
           <div className="dashboard-heading">
             <h1>Dashboard</h1>
             <div className="dashboard-actions">
+              <button className="dashboard-button dashboard-button-secondary" onClick={() => navigate(ROUTES.RECORDINGS)}>
+                <Film size={18} aria-hidden="true" /> Recordings
+              </button>
+              <button className="dashboard-button dashboard-button-secondary" onClick={() => navigate(ROUTES.ANALYTICS)}>
+                <BarChart3 size={18} aria-hidden="true" /> Analytics
+              </button>
               <button className="dashboard-button dashboard-button-secondary" onClick={() => setShowScheduler(true)}>
                 <CalendarClock size={18} aria-hidden="true" /> Schedule
               </button>
