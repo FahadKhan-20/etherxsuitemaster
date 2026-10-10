@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { normalizeRoomCode, isValidRoomCode } from '../utils/roomCode';
-import { QrCode, Scan, Copy, Check, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { QrCode, Scan, Mic, MicOff, Video, VideoOff, Plus, Keyboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getUserInitials } from '../utils/auth';
@@ -9,10 +9,9 @@ import WorkspaceHeader from '../components/layout/WorkspaceHeader';
 import ProfileAvatar from '../components/ui/ProfileAvatar';
 import { useAvatarTone } from '../utils/avatarTone';
 import AnimatedPage from '../components/layout/AnimatedPage';
-import { staggerContainer, staggerChild, glowPulse } from '../utils/animationVariants';
+import { staggerContainer, staggerChild } from '../utils/animationVariants';
 import '../styles/landing.css';
 import * as QRCode from 'qrcode';
-import Modal from '../components/ui/Modal';
 import apiClient from '../utils/apiClient';
 
 const normalizeMeetingCode = (value) => {
@@ -33,41 +32,6 @@ function generateRoomCode() {
   return code;
 }
 
-function MicOnIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0z"
-      />
-    </svg>
-  );
-}
-
-function MicOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M15 11V8.41l2 2V11a5 5 0 0 1-7.73 4.18l1.46-1.46A3 3 0 0 0 15 11zM12 3a3 3 0 0 1 3 3v1.59l-6-6A3 3 0 0 1 12 3zM5.27 4L4 5.27 8.09 9.36V11a3.9 3.9 0 0 0 .04.54L6.31 9.72A5.9 5.9 0 0 0 6 11a6 6 0 0 0 6 6 5.8 5.8 0 0 0 2.43-.51L16 18.06V21h3a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h3v-2.07A8 8 0 0 1 4 11a7.9 7.9 0 0 1 .88-3.65L5.27 4zM20 20.73L6.54 7.27 5.13 5.86 3.27 4 2 5.27l1.86 1.86 1.41 1.41L18.73 22 20 20.73z"
-      />
-    </svg>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        fill="currentColor"
-        d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2l5 4V4l-5 4z"
-      />
-    </svg>
-  );
-}
-
-
-
 export default function Landing() {
   const navigate = useNavigate();
   const { user } = useUser();
@@ -75,6 +39,7 @@ export default function Landing() {
   const streamRef = useRef(null);
   const displayName = user.name || 'Participant';
   const displayInitial = getUserInitials(displayName).charAt(0);
+  const firstName = displayName.split(' ')[0];
   const avatarTone = useAvatarTone(user.avatar, displayName);
 
   const [meetingCode, setMeetingCode] = useState('');
@@ -298,38 +263,40 @@ export default function Landing() {
 
         <main className="meet-main">
           <div className="meet-content">
-            <section className="meet-preview-column">
-              <div className="meet-preview-box">
+            <section className="meet-preview-column" aria-label="Camera preview">
+              <div className={`meet-preview-box ${cameraOn ? 'is-live' : ''}`}>
                 {cameraOn ? (
                   <video ref={videoRef} autoPlay muted playsInline className="meet-video" />
                 ) : (
-                  <ProfileAvatar className="meet-preview-avatar" style={{ background: avatarTone.circle }} src={user.avatar} name={displayName} initials={displayInitial} />
+                  <div className="meet-preview-idle">
+                    <ProfileAvatar className="meet-preview-avatar" style={{ background: avatarTone.circle }} src={user.avatar} name={displayName} initials={displayInitial} />
+                    <span className="meet-preview-hint">Camera is off</span>
+                  </div>
                 )}
 
                 <span className="meet-label meet-name-label">{displayName}</span>
-                <span className="meet-label meet-camera-label">{cameraOn ? 'Camera is on' : 'Camera is off'}</span>
-              </div>
 
-              <div className="meet-controls">
-                <button
-                  type="button"
-                  className={`meet-control-btn ${micMuted ? 'is-muted' : ''}`}
-                  onClick={() => setMicMuted((value) => !value)}
-                  aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                >
-                  {micMuted ? <MicOff /> : <Mic />}
-                </button>
+                <div className="meet-controls">
+                  <button
+                    type="button"
+                    className={`meet-control-btn ${micMuted ? 'is-muted' : ''}`}
+                    onClick={() => setMicMuted((value) => !value)}
+                    aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  >
+                    {micMuted ? <MicOff /> : <Mic />}
+                  </button>
 
-                <button
-                  type="button"
-                  className={`meet-control-btn ${cameraOn ? '' : 'is-muted'}`}
-                  onClick={handleCameraToggle}
-                  aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
-                >
-                  {cameraOn ? <Video /> : <VideoOff />}
-                </button>
-
-
+                  <button
+                    type="button"
+                    className={`meet-control-btn ${cameraOn ? '' : 'is-muted'}`}
+                    onClick={handleCameraToggle}
+                    aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
+                    title={cameraOn ? 'Turn camera off' : 'Turn camera on'}
+                  >
+                    {cameraOn ? <Video /> : <VideoOff />}
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -339,10 +306,12 @@ export default function Landing() {
               initial="hidden"
               animate="visible"
             >
+              <motion.span variants={staggerChild} className="meet-eyebrow">Welcome back, {firstName}</motion.span>
               <motion.h1 variants={staggerChild}>Ready to join?</motion.h1>
               <motion.p variants={staggerChild}>No one else can see you until you join this meeting.</motion.p>
 
               <motion.div variants={staggerChild} className="meet-join-row">
+                <Keyboard className="meet-join-icon" size={18} aria-hidden="true" />
                 <input
                   type="text"
                   value={meetingCode}
@@ -359,70 +328,39 @@ export default function Landing() {
 
                 <button
                   type="button"
+                  className="meet-scan-btn"
                   onClick={() => setScannerOpen(true)}
-                  title="Scan QR Code to Join"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--t-d4af37)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 8px',
-                    cursor: 'pointer',
-                    marginRight: '4px',
-                    transition: 'opacity 0.2s',
-                    flexShrink: 0
-                  }}
+                  title="Scan QR code to join"
+                  aria-label="Scan QR code to join"
                 >
-                  <Scan size={20} />
+                  <Scan size={18} />
                 </button>
 
-                <motion.button type="button" className="join-btn" onClick={handleJoin} {...glowPulse}>
+                <button type="button" className="join-btn" onClick={handleJoin} disabled={!meetingCode}>
                   Join
-                </motion.button>
+                </button>
               </motion.div>
 
               <motion.div variants={staggerChild} className="meet-divider" aria-hidden="true">
                 <span>or</span>
               </motion.div>
 
-              <div className="new-meeting-group" style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                <motion.button
-                  type="button"
-                  className="new-meeting-btn"
-                  onClick={handleCreateMeeting}
-                  variants={staggerChild}
-                  {...glowPulse}
-                  style={{ flex: 1 }}
-                >
+              <motion.div variants={staggerChild} className="new-meeting-group">
+                <button type="button" className="new-meeting-btn" onClick={handleCreateMeeting}>
+                  <Plus size={18} aria-hidden="true" />
                   New meeting
-                </motion.button>
+                </button>
 
-                <motion.button
+                <button
                   type="button"
                   className="new-meeting-qr-btn"
                   onClick={handleCreateMeetingWithQR}
-                  variants={staggerChild}
-                  title="Create meeting and show QR Code"
-                  style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '12px',
-                    border: '1.5px solid color-mix(in srgb, var(--c-2d2a24) 70%, transparent)',
-                    color: 'var(--t-d4af37)',
-                    background: 'color-mix(in srgb, var(--c-000000) 97%, transparent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    boxShadow: '0 8px 40px color-mix(in srgb, var(--s-000000) 80%, transparent), 0 0 28px rgba(212, 175, 55, 0.16)',
-                    transition: 'background 0.15s, border-color 0.15s',
-                  }}
+                  title="Create meeting and show QR code"
+                  aria-label="Create meeting and show QR code"
                 >
                   <QrCode size={20} />
-                </motion.button>
-              </div>
+                </button>
+              </motion.div>
 
               {TERMS_URL && PRIVACY_URL && (
                 <motion.p variants={staggerChild} className="meet-privacy-note">
