@@ -39,7 +39,8 @@ test('scheduling registers a real room owned by the scheduler', async t => {
 
 test('invalid schedules are rejected', async t => {
   stubDb(t);
-  const bad = [{ title: '', startAt: new Date().toISOString(), duration: 30 }, { title: 'x', startAt: 'not a date', duration: 30 }, { title: 'x', startAt: new Date().toISOString(), duration: 0 }, { title: 'x', startAt: new Date().toISOString(), duration: 30, recurring: 'hourly' }];
+  const later = new Date(Date.now() + 3600e3).toISOString();
+  const bad = [{ title: 'x', startAt: later, duration: 4 }, { title: 'x', startAt: later, duration: 481 }, { title: '', startAt: new Date().toISOString(), duration: 30 }, { title: 'x', startAt: 'not a date', duration: 30 }, { title: 'x', startAt: new Date().toISOString(), duration: 0 }, { title: 'x', startAt: new Date().toISOString(), duration: 30, recurring: 'hourly' }];
   for (const body of bad) assert.equal((await call('/', 'post', { user: { id: owner }, body })).statusCode, 400, JSON.stringify(body));
 });
 

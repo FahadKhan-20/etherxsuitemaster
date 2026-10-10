@@ -38,7 +38,7 @@ router.post('/', auth, async (req, res, next) => {
     if (!title) return res.status(400).json({ success: false, message: 'Give the meeting a title.' });
     if (Number.isNaN(startAt.getTime())) return res.status(400).json({ success: false, message: 'Choose a valid date and time.' });
     if (startAt.getTime() <= Date.now()) return res.status(400).json({ success: false, message: 'Choose a future date and time.' });
-    if (!Number.isInteger(duration) || duration < 1 || duration > 1440) return res.status(400).json({ success: false, message: 'Duration must be between 1 and 1440 minutes.' });
+    if (!Number.isInteger(duration) || duration < 5 || duration > 480) return res.status(400).json({ success: false, message: 'Duration must be between 5 and 480 minutes.' });
     if (!['none', 'daily', 'weekly'].includes(recurring)) return res.status(400).json({ success: false, message: 'Repeat must be none, daily or weekly.' });
 
     const roomCode = newRoomCode();
