@@ -55,7 +55,7 @@
   aspect-ratio: 16 / 9;
   border-radius: 16px;
   background: color-mix(in srgb, var(--c-000000) 97%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c-2d2a24) 75%, transparent);
+  border: 1px solid rgba(212, 175, 55, 0.28);
   position: relative;
   overflow: hidden;
   display: flex;
