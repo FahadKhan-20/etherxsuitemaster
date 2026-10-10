@@ -38,8 +38,8 @@ const findById = id => (isId(String(id)) ? one('select * from users where id = $
 const findByEmail = (email, options) => one('select * from users where email = $1', [lower(email)], options);
 const findByWallet = address => one('select * from users where wallet_address = $1', [lower(address)]);
 /** Account linked to this provider id, else the account with this email. */
-const findByProviderOrEmail = (provider, providerId, email) =>
-  one(`select * from users where ${provider === 'apple' ? 'apple_id' : 'google_id'} = $1 or email = $2 order by (email = $2) limit 1`, [providerId, lower(email)]);
+const findByProviderOrEmail = (provider, providerId, email, options) =>
+  one(`select * from users where ${provider === 'apple' ? 'apple_id' : 'google_id'} = $1 or email = $2 order by (email = $2) limit 1`, [providerId, lower(email)], options);
 const findByResetToken = hashedToken =>
   one('select * from users where reset_password_token = $1 and reset_password_expires > now()', [hashedToken]);
 

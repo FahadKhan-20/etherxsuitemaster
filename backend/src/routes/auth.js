@@ -75,7 +75,9 @@ router.post('/register', accountLimiter, async (req, res, next) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'Email already exists.',
+        message: existingUser.authProvider === 'local'
+          ? 'Email already exists.'
+          : 'This email already has an account. Continue with Google, or use "Forgot password" to add a password.',
       });
     }
 
@@ -125,7 +127,7 @@ router.post('/login', signInLimiter, async (req, res, next) => {
     if (!user.password) {
       return res.status(400).json({
         success: false,
-        message: 'This account uses Google or Web3Auth sign-in. Continue with that method to log in.',
+        message: 'This account signs in with Google. Continue with Google, or use "Forgot password" to add a password.',
       });
     }
 

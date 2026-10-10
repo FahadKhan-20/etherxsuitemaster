@@ -22,8 +22,13 @@ module.exports = function configurePassport() {
           if (!email) {
             return done(new Error('Google account email is required for login.'));
           }
+          // Linking by email is only safe when Google has verified that the person owns the address.
+          if (profile._json?.email_verified === false) {
+            return done(new Error('Verify your Google account email before signing in.'));
+          }
 
-          let user = await User.findByProviderOrEmail('google', profile.id, email);
+          // Password sign-up and Google sign-in with the same email are one account.
+          let user = await User.findByProviderOrEmail('google', profile.id, email, { withPassword: true });
 
           if (!user) {
             user = await User.create({
@@ -34,7 +39,12 @@ module.exports = function configurePassport() {
               avatar: profile.photos?.[0]?.value || null,
             });
           } else {
+            // Registering with a password never proved the email was the registrant's. When Google first
+            // proves it, drop that password so whoever registered the address cannot keep a way in.
+            // The owner can add a password again through "Forgot password".
+            const firstGoogleLink = !user.googleId && user.password;
             user = await User.update(user._id, {
+              ...(firstGoogleLink ? { password: null, resetPasswordToken: null, resetPasswordExpires: null } : {}),
               googleId: user.googleId || profile.id,
               authProvider: 'google',
               avatar: user.avatar || profile.photos?.[0]?.value || null,
