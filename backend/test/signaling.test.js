@@ -114,6 +114,21 @@ test('admitted participants rejoin without a second approval', async t => {
   assert.equal(events(again, 'admitted').length, 1); assert.equal(again.roomEvents.length, 0);
   f.join(again); assert.ok(rooms.get(f.code).has(again.id));
 });
+test('an account is in the meeting once: joining again replaces the earlier tab or device', async t => {
+  const f = fixture(t); const host = await f.host(); const first = await f.guest(host, 'alice-phone', 'alice');
+  const second = await f.connect('alice-laptop', 'alice'); second.trigger('request-join', { roomCode: f.code }); f.join(second);
+  assert.equal(events(first, 'session-replaced').length, 1); assert.equal(first.connected, false);
+  assert.deepEqual([...rooms.get(f.code).values()].filter(p => p.userId === 'alice').map(p => p.socketId), ['alice-laptop']);
+  assert.ok(!events(second, 'existing-users')[0].payload.some(p => p.socketId === 'alice-phone'), 'no peer connection to the replaced tab');
+});
+test('the host replacing their own tab keeps host authority even with a co-host present', async t => {
+  const f = fixture(t); const host = await f.host(); const guest = await f.guest(host, 'guest');
+  host.trigger('make-co-host', { roomCode: f.code, socketId: guest.id });
+  const back = await f.connect('host-laptop', 'host-user'); back.trigger('request-join', { roomCode: f.code }); f.join(back);
+  assert.equal(host.connected, false);
+  assert.ok(!f.io.emittedEvents.some(e => e.event === 'host-transferred'));
+  assert.deepEqual(events(back, 'your-role').at(-1).payload, { isHost: true });
+});
 test('returning host receives its server role even without a local host flag', async t => {
   const f = fixture(t); const host = await f.host(); const guest = await f.guest(host, 'guest');
   host.disconnect(); // Without a co-host, the owner retains authority.

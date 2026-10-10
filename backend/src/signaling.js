@@ -279,7 +279,9 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         return;
       }
       if (rooms.get(roomCode)?.has(socket.id)) return;
-      if ((rooms.get(roomCode)?.size || 0) >= MAX_PARTICIPANTS) { socket.emit('room-full', { max: MAX_PARTICIPANTS }); return; }
+      // One place in the meeting per account: joining again (another tab or device) replaces the earlier one.
+      const replaced = [...(rooms.get(roomCode)?.values() || [])].filter(p => String(p.userId) === String(userId));
+      if ((rooms.get(roomCode)?.size || 0) - replaced.length >= MAX_PARTICIPANTS) { socket.emit('room-full', { max: MAX_PARTICIPANTS }); return; }
       const existingRoom = rooms.get(roomCode);
       if (roomLocks[roomCode] && !isPrivileged(roomCode, userId) && !roomMembers.get(roomCode)?.has(userId) && !ticketed) {
         socket.emit('room-locked-error');
@@ -316,7 +318,7 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       socket.emit('hands-state', { hands: roomHands.get(roomCode) || [] });
 
       // Send existing participants to the new joiner
-      const existing = Array.from(room.values()).filter(p=>getGroup(roomCode,p.socketId)===getGroup(roomCode,socket.id));
+      const existing = Array.from(room.values()).filter(p=>!replaced.includes(p)&&getGroup(roomCode,p.socketId)===getGroup(roomCode,socket.id));
       socket.emit('existing-users', existing);
 
       // Tell the new joiner if someone is already presenting
@@ -339,6 +341,12 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
       socket.data.requestedRoom = null;
       socket.emit('admission-ticket', { ticket: issueAdmissionTicket(roomCode, userId) });
       meetingMetrics.joined(roomCode, userId, userName);
+      // Removed after the new socket is in the room, so the account never looks absent (no host hand-off, no empty room).
+      for (const previous of replaced) {
+        const previousSocket = io.sockets.sockets.get(previous.socketId);
+        io.to(previous.socketId).emit('session-replaced');
+        if (previousSocket) previousSocket.disconnect();
+      }
       extension.snapshot();
       // Guests may request entry before the host arrives or while the host reconnects.
       if (isPrivileged(roomCode, userId)) {
@@ -962,8 +970,10 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
           socket.to(currentRoom).emit('co-host-changed', { socketId: null, userId: null, userName: null });
         }
 
-        // If the HOST disconnects and a co-host is present, promote them automatically.
-        if (leavingMember && room.size > 0 && String(roomHosts.get(currentRoom)) === String(leavingMember.userId)) {
+        // If the HOST disconnects and a co-host is present, promote them automatically
+        // (not when the host is still here from the tab or device that replaced this one).
+        const hostStillPresent = leavingMember && [...room.values()].some(p => String(p.userId) === String(leavingMember.userId));
+        if (leavingMember && !hostStillPresent && room.size > 0 && String(roomHosts.get(currentRoom)) === String(leavingMember.userId)) {
           const newHost = roomCoHosts.get(currentRoom);
           if (newHost && room.has(newHost.socketId)) {
             roomHosts.set(currentRoom, newHost.userId);

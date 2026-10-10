@@ -31,6 +31,7 @@ const FALLBACK_ICE_SERVERS = [
  * @param {string} roomCode  - The meeting room code.
  * @param {object} [opts]    - Options object.
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
+ * @param {Function} [opts.onReplaced] - Called when the same account joins from another tab or device.
  */
 // Video lines in negotiated order: [0] camera, [1] screen share. Each connection carries both, so a
 // presenter's camera keeps flowing while they share. Lines not yet negotiated (mid null) are skipped.
@@ -38,7 +39,7 @@ const videoLines = (pc) => pc.getTransceivers()
   .filter(t => t.mid !== null && t.receiver.track.kind === 'video')
   .sort((a, b) => Number(a.mid) - Number(b.mid));
 
-export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffects = false, enabled = true } = {}) {
+export function useWebRTC(roomCode, { onKicked, onReplaced, isHost, initialMedia, videoEffects = false, enabled = true } = {}) {
   const normalizedCode = (roomCode || '').trim().toLowerCase();
   const { account } = useWallet();
   const storedUser = getStoredUser();
@@ -481,6 +482,11 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         if (typeof onKicked === 'function') onKicked();
       });
 
+      // This account joined the meeting from another tab or device, which took this place.
+      socket.on('session-replaced', () => {
+        if (typeof onReplaced === 'function') onReplaced();
+      });
+
       // Room lock state changed (by host) — broadcast to everyone including sender
       socket.on('room-locked', ({ locked }) => {
         setRoomLockedState(locked);
@@ -671,7 +677,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       screenAudioMixRef.current?.ctx.close().catch(() => { });screenAudioMixRef.current=null;
       socketRef.current?.disconnect();
     };
-  }, [normalizedCode, userId, createPC, isHost, enabled]); // onKicked intentionally excluded to avoid reconnect loop
+  }, [normalizedCode, userId, createPC, isHost, enabled]); // onKicked/onReplaced intentionally excluded to avoid reconnect loop
 
   // ── Feature 4: Network Quality polling (every 5s) ───────────────────────────
   useEffect(() => {
