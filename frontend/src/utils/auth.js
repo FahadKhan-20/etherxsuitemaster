@@ -81,8 +81,12 @@ export function persistAuthSession({ token, user }) {
   }
 
   const normalizedUser = buildStoredUser(user);
+  const serialized = JSON.stringify(normalizedUser);
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
-  window.localStorage.setItem(AUTH_USER_KEY, JSON.stringify(normalizedUser));
+  window.localStorage.setItem(AUTH_USER_KEY, serialized);
+  // Browsers only fire 'storage' in other tabs; tell this tab too, so UserContext shows the
+  // signed-in name and photo straight after sign-in instead of the default profile.
+  window.dispatchEvent(new StorageEvent('storage', { key: AUTH_USER_KEY, newValue: serialized }));
 }
 
 export function clearAuthSession() {

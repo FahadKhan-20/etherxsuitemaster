@@ -8,6 +8,7 @@ import WorkspaceHeader from '../src/components/layout/WorkspaceHeader';
 import Scheduler from '../src/components/features/Scheduler';
 import { useSchedules } from '../src/hooks/useSchedules';
 import apiClient from '../src/utils/apiClient';
+import { persistAuthSession } from '../src/utils/auth';
 
 vi.mock('../src/utils/apiClient', () => ({ default: { get: vi.fn(), post: vi.fn(), delete: vi.fn() }, getApiErrorMessage: (error, fallback) => error.message || fallback }));
 let roots = [], hook;
@@ -37,6 +38,17 @@ describe('shared workspace header', () => {
     act(() => document.querySelector('.workspace-avatar img').dispatchEvent(new Event('error')));
     expect(document.querySelector('.workspace-avatar img')).toBeNull();
     expect(document.querySelector('.workspace-avatar').textContent).toBe('T');
+  });
+});
+
+describe('sign-in updates the open page', () => {
+  it('shows the signed-in name and photo without a reload (Google and email sign-in)', () => {
+    localStorage.removeItem('nexmeet_user');
+    mount(<UserProvider><MemoryRouter><WorkspaceHeader /></MemoryRouter></UserProvider>);
+    expect(document.querySelector('.workspace-avatar img')).toBeNull();
+    act(() => persistAuthSession({ token: 'jwt', user: { _id: 'g-1', name: 'Vinay Gk', email: 'v@example.com', avatar: 'https://example.invalid/vinay.png' } }));
+    expect(document.querySelector('.workspace-avatar img').src).toBe('https://example.invalid/vinay.png');
+    expect(document.querySelector('.workspace-avatar img').alt).toContain('Vinay Gk');
   });
 });
 
