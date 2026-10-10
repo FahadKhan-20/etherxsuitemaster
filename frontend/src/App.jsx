@@ -21,8 +21,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Recordings = lazy(() => import('./pages/Recordings'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
@@ -39,8 +38,8 @@ function AppRoutes() {
 
       <Suspense fallback={<PageLoading />}>
       <Routes location={location}>
-        <Route path={ROUTES.LOGIN}           element={<Login />} />
-        <Route path={ROUTES.REGISTER}        element={<Register />} />
+        <Route path={ROUTES.LOGIN}           element={<AuthPage mode="signin" />} />
+        <Route path={ROUTES.REGISTER}        element={<AuthPage mode="signup" />} />
         <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
         <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
         <Route element={<ProtectedRoute />}>
