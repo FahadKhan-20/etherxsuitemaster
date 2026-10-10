@@ -7,7 +7,7 @@ import "../../styles/reference-room.css";
 export const REFERENCE_ICONS={
   hand: 'M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L6 14', people: 'M9 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6', share: 'M3 4h18v13H3zM8 21h8M12 17v4M9 10l3-3 3 3M12 7v7',
   rec: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0', grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', invite: 'M9 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM2.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6', wb: 'M3 4h18v12H3zM8 20l4-4 4 4M7 12l3-3 2 2 4-4',
-  perf: 'M13 2L4 14h7l-1 8 9-12h-7z', full: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5', agenda: 'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 8h8M8 12h8M8 16h5',
+  perf: 'M13 2L4 14h7l-1 8 9-12h-7z', full: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5', chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z', agenda: 'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 8h8M8 12h8M8 16h5',
   cc: 'M3 5h18v14H3zM10 10a2 2 0 1 0 0 4M17 10a2 2 0 1 0 0 4', poll: 'M5 20V10M12 20V4M19 20v-7', file: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6',
   video: 'M3 5h18v12H3zM8 21h8M12 17v4', audio: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z', noise: 'M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4',
   bg: 'M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6', stats: 'M3 3v18h18M7 15l4-4 3 3 5-6', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
@@ -202,6 +202,7 @@ export const REFERENCE_BINDINGS=[
   "roomCode",
   "roomTitle",
   "roomy",
+  "pip",
   "rxRef",
   "sendChat",
   "sendFb",
@@ -273,7 +274,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 </div>
 </header>
 <div style={{"flex": "1","minHeight": "0","position": "relative","padding": "0 " + String(v.stagePadR) + " 0 16px"}}>
-<div style={{"position": "relative","height": "100%","display": "grid","gridTemplateColumns": v.gridCols,"gridTemplateRows": v.gridRows,"gap": "10px"}}>
+<div data-pip={v.pip} style={{"position": "relative","height": "100%","display": "grid","gridTemplateColumns": v.gridCols,"gridTemplateRows": v.gridRows,"gap": "10px"}}>
 {(v.tiles || []).map(t=><ReferenceTile key={t.key} person={t}>{t=><>
 <div data-tile={t.key} onClick={t.click} style={{"position": "relative","minHeight": "0","minWidth": "0","gridColumn": t.col,"gridRow": t.row,"borderRadius": t.radius,"overflow": "hidden","background": t.bg,"border": "2px solid " + String(t.ring),"boxShadow": t.glow,"filter": t.freeze,"display": "flex","flexDirection": "column","gap": "18px","alignItems": "center","justifyContent": "center","cursor": "pointer","transition": "border-color 200ms, box-shadow 160ms ease, filter 400ms ease"}}>
 {(t.isScreen) && <>
@@ -311,19 +312,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <video ref={t.videoRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "cover","filter": t.vfilter,"transform": t.vflip}}></video>
 </>}
 {(t.showAv) && <>
-<ProfileAvatar style={{"width": "clamp(48px,22%,120px)","aspectRatio": "1","borderRadius": "50%","background": "#2a2519","display": "flex","alignItems": "center","justifyContent": "center","fontSize": "clamp(18px,2.4vw,40px)","fontWeight": "600","color": "#d9b54a"}} src={t.avatar} name={t.name} initials={t.initials}/>
-</>}
-{(t.invite) && <>
-<div className="room-empty-invite" data-video={t.showVid}>
-<div style={{"display": "flex","flexDirection": "column","gap": "6px"}}>
-<div className="room-empty-title">{"Your meeting is ready"}</div>
-<div className="room-empty-description">{"Invite people to join you."}</div>
-</div>
-<div className="room-empty-link">
-<span title={v.inviteLink}>{v.inviteLink}</span>
-<button onClick={v.copyLink}>{v.linkShort === 'Copy' ? 'Copy link' : v.linkShort}</button>
-</div>
-</div>
+<ProfileAvatar style={{"width": "clamp(48px,22%,120px)","aspectRatio": "1","borderRadius": "50%","background": t.avatarBg,"display": "flex","alignItems": "center","justifyContent": "center","fontSize": "clamp(18px,2.4vw,40px)","fontWeight": "500","color": "#ffffff"}} src={t.avatar} name={t.name} initials={t.initials}/>
 </>}
 {(t.hand) && <>
 <div style={{"position": "absolute","top": "10px","left": "10px","padding": "4px 9px","borderRadius": "7px","background": "#d9b54a","color": "#1a1608","fontSize": "12px","fontWeight": "600"}}>{t.handLabel}</div>
@@ -383,10 +372,10 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.roomy) && <><button aria-label={"Share screen"} onClick={v.togglePresent} title={"Share screen"} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.share.bg,"color": v.b.share.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-1"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><rect x={"3"} y={"4"} width={"18"} height={"13"} rx={"2"}></rect><path d={"M8 21h8M12 17v4M9 10l3-3 3 3M12 7v7"}></path></svg></button>
 </>}
 <span style={{"width": "1px","height": "28px","background": "#26231c","margin": "0 6px"}}></span>
-{(v.roomy) && <><button aria-label={"Reactions"} onClick={v.openReact} title={"Reactions"} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.react.bg,"color": v.b.react.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-2"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><circle cx={"12"} cy={"12"} r={"9"}></circle><path d={"M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"}></path></svg></button></>}
+<button aria-label={"Reactions"} onClick={v.openReact} title={"Reactions"} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.react.bg,"color": v.b.react.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-2"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><circle cx={"12"} cy={"12"} r={"9"}></circle><path d={"M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"}></path></svg></button>
 <button aria-label={"Chat (C)"} onClick={v.openChat} title={"Chat (C)"} style={{"position": "relative","width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.chat.bg,"color": v.b.chat.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-3"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"}></path></svg>{(v.unread) && <><span style={{"position": "absolute","top": "9px","right": "9px","width": "8px","height": "8px","borderRadius": "50%","background": "#d9b54a"}}></span></>}</button>
-{(v.roomy) && <><button aria-label={v.handTitle} onClick={v.toggleHand} title={v.handTitle} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.hand.bg,"color": v.b.hand.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-4"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"}></path><path d={"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L6 14"}></path></svg></button>
-<button aria-label={"Participants"} onClick={v.openPeople} title={"Participants"} style={{"position": "relative","width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.people.bg,"color": v.b.people.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-5"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><circle cx={"9"} cy={"8"} r={"3.5"}></circle><path d={"M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"}></path></svg><span style={{"position": "absolute","top": "3px","right": "2px","minWidth": "16px","height": "16px","padding": "0 4px","borderRadius": "8px","background": v.peopleBadgeBg,"color": v.peopleBadgeFg,"fontSize": "10px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.peopleBadge}</span></button>
+<button aria-label={v.handTitle} onClick={v.toggleHand} title={v.handTitle} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.hand.bg,"color": v.b.hand.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-4"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"}></path><path d={"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L6 14"}></path></svg></button>
+{(v.roomy) && <><button aria-label={"Participants"} onClick={v.openPeople} title={"Participants"} style={{"position": "relative","width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.people.bg,"color": v.b.people.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-5"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.8"} strokeLinecap={"round"} strokeLinejoin={"round"}><circle cx={"9"} cy={"8"} r={"3.5"}></circle><path d={"M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"}></path></svg><span style={{"position": "absolute","top": "3px","right": "2px","minWidth": "16px","height": "16px","padding": "0 4px","borderRadius": "8px","background": v.peopleBadgeBg,"color": v.peopleBadgeFg,"fontSize": "10px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{v.peopleBadge}</span></button>
 </>}
 <button aria-label={"More options"} onClick={v.openMore} title={"More options"} style={{"width": "44px","height": "44px","borderRadius": "12px","border": "0","background": v.b.more.bg,"color": v.b.more.fg,"display": "flex","alignItems": "center","justifyContent": "center","cursor": "pointer"}} className="dc-6"><svg width={"20"} height={"20"} viewBox={"0 0 24 24"} fill={"currentColor"}><circle cx={"5"} cy={"12"} r={"1.7"}></circle><circle cx={"12"} cy={"12"} r={"1.7"}></circle><circle cx={"19"} cy={"12"} r={"1.7"}></circle></svg></button>
 <span style={{"width": "1px","height": "28px","background": "#26231c","margin": "0 6px"}}></span>
