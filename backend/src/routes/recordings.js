@@ -132,7 +132,8 @@ router.post('/upload', auth, handleUpload, async (req, res, next) => {
       roomCode: roomCode.trim().toLowerCase(),
       uploadedBy: req.user.id,
       filename: req.file.filename,
-      originalName: req.file.originalname,
+      // multer reads the multipart filename as latin1; names with accents or dashes need UTF-8.
+      originalName: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
       size: req.file.size,
       duration: Number(duration) || 0,
     });
