@@ -6,7 +6,8 @@ import { UserProvider } from './context/UserContext';
 import { UIProvider } from './context/UIContext';
 import { WalletProvider } from './context/WalletContext';
 import VideoBackground from './components/effects/VideoBackground';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
+import SplashScreen from './components/effects/SplashScreen';
 import CommandPalette from './components/layout/CommandPalette';
 import ToastSystem from './components/layout/ToastSystem';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -57,8 +58,22 @@ function AppRoutes() {
   );
 }
 
+// The intro plays once per browser session, never in front of a meeting link or an auth redirect.
+const SPLASH_KEY = 'etherx_seen_splash';
+function shouldShowSplash() {
+  try { if (sessionStorage.getItem(SPLASH_KEY)) return false; } catch { /* storage blocked: still show once */ }
+  return !/^\/(auth\/callback|reset-password|room\/|join)/.test(window.location.pathname);
+}
+
 function App() {
+  const [splash, setSplash] = useState(shouldShowSplash);
+  const finishSplash = useCallback(() => {
+    try { sessionStorage.setItem(SPLASH_KEY, '1'); } catch { /* ignore */ }
+    setSplash(false);
+  }, []);
   return (
+    <>
+    {splash && <SplashScreen onDone={finishSplash} />}
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <VideoBackground />
       <WalletProvider>
@@ -73,6 +88,7 @@ function App() {
         </AnimationProvider>
       </WalletProvider>
     </BrowserRouter>
+    </>
   );
 }
 

@@ -1,147 +1,55 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import etherxLogo from '../../assets/etherx_transparent.png';
+import { useEffect, useState } from 'react';
+import { LOGO_LETTERS, LOGO_VIEWBOX, LogoDefs, LogoLetter, SHIELD_PATHS } from '../brand/EtherXLogo';
+import './splash-screen.css';
 
-export default function SplashScreen({ onComplete }) {
-  const [visible, setVisible] = useState(true);
-  const videoRef = useRef(null);
+// EtherX Meet intro, built from the vector logo so it stays sharp while zoomed: the shield's outline
+// traces itself, the gold shield fills in under it, the shield shrinks left, then each letter of the
+// wordmark pops in. The last frame is exactly the logo.
+const HOLD_MS = 900; // logo stays this long after the last letter lands
+const FALLBACK_MS = 7000; // leave even if animations never report (hidden tab, throttled CPU)
+export const SPLASH_FADE_MS = 500;
 
-  const handleFinish = () => {
-    setVisible(false);
-    setTimeout(() => {
-      if (onComplete) onComplete();
-    }, 400);
-  };
+export default function SplashScreen({ onDone }) {
+  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const [landed, setLanded] = useState(reduced);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    // Fallback auto-dismiss after 6 seconds if video is long or stuck
-    const timer = setTimeout(() => {
-      handleFinish();
-    }, 6000);
+    const timer = setTimeout(() => setLeaving(true), landed ? HOLD_MS : FALLBACK_MS);
     return () => clearTimeout(timer);
+  }, [landed]);
+
+  useEffect(() => {
+    if (!leaving) return undefined;
+    const timer = setTimeout(onDone, SPLASH_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [leaving, onDone]);
+
+  useEffect(() => {
+    const skip = (event) => { if (['Escape', ' ', 'Enter'].includes(event.key)) setLeaving(true); };
+    window.addEventListener('keydown', skip);
+    return () => window.removeEventListener('keydown', skip);
   }, []);
 
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 1 }}
-          exit={{ opacity: 0, scale: 1.03 }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            background: 'var(--c-000000)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Background Video */}
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            onEnded={handleFinish}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              zIndex: 1,
-            }}
-          >
-            <source src="/splash.mp4" type="video/mp4" />
-            <source src="/bg-animation.mp4" type="video/mp4" />
-          </video>
-
-          {/* Dark Overlay Vignette */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'radial-gradient(circle at center, color-mix(in srgb, var(--c-000000) 30%, transparent) 0%, color-mix(in srgb, var(--c-000000) 85%, transparent) 100%)',
-              zIndex: 2,
-            }}
-          />
-
-          {/* Center Brand Overlay */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            style={{
-              position: 'relative',
-              zIndex: 3,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-              gap: 16,
-              padding: '0 20px',
-            }}
-          >
-            <img
-              src={etherxLogo}
-              alt="EtherX Meet"
-              style={{
-                width: 'clamp(140px, 30vw, 220px)',
-                height: 'auto',
-                filter: 'drop-shadow(0 0 30px rgba(212,175,55,0.4))',
-              }}
-            />
-
-            <button
-              onClick={handleFinish}
-              style={{
-                marginTop: 24,
-                background: 'linear-gradient(135deg, var(--c-d4af37) 0%, var(--c-b8860b) 100%)',
-                color: 'var(--t-000000)',
-                border: 'none',
-                padding: '12px 28px',
-                borderRadius: '30px',
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: 'pointer',
-                letterSpacing: '0.04em',
-                boxShadow: '0 4px 20px rgba(212,175,55,0.35)',
-                transition: 'transform 0.2s, boxShadow 0.2s',
-              }}
-              onMouseEnter={(e) => (e.target.style.transform = 'scale(1.04)')}
-              onMouseLeave={(e) => (e.target.style.transform = 'scale(1)')}
+    <div className="exm-splash" data-leaving={leaving} data-reduced={reduced} onClick={() => setLeaving(true)} role="presentation">
+      <div className="exm-splash-art">
+        <svg viewBox={LOGO_VIEWBOX} role="img" aria-label="EtherX Meet">
+          <LogoDefs />
+          <path className="exm-splash-shield-art" d={SHIELD_PATHS.join(' ')} fill="url(#exm-logo-shield)" />
+          {SHIELD_PATHS.map((d, i) => <path key={i} className="exm-splash-line" d={d} pathLength="1" style={{ animationDelay: `${i * 90}ms, 1200ms` }} />)}
+          {LOGO_LETTERS.map(({ box: [x0, x1, , y1], face }, i) => (
+            <g
+              key={i} className="exm-splash-letter"
+              style={{ transformOrigin: `${(x0 + x1) / 2}px ${y1}px`, animationDelay: `${1950 + i * 50}ms` }}
+              onAnimationEnd={i === LOGO_LETTERS.length - 1 ? () => setLanded(true) : undefined}
             >
-              Enter Application →
-            </button>
-          </motion.div>
-
-          {/* Top-Right Skip Button */}
-          <button
-            onClick={handleFinish}
-            style={{
-              position: 'absolute',
-              top: 24,
-              right: 24,
-              zIndex: 4,
-              background: 'color-mix(in srgb, var(--c-000000) 60%, transparent)',
-              color: 'color-mix(in srgb, var(--t-ffffff) 80%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--c-ffffff) 15%, transparent)',
-              padding: '8px 18px',
-              borderRadius: '20px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            Skip Intro
-          </button>
-        </motion.div>
-      )}
-    </AnimatePresence>
+              <LogoLetter face={face} />
+            </g>
+          ))}
+        </svg>
+      </div>
+      <span className="exm-splash-skip">Click or press Esc to skip</span>
+    </div>
   );
 }
