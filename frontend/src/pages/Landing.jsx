@@ -299,7 +299,7 @@ export default function Landing() {
         <main className="meet-main">
           <div className="meet-content">
             <section className="meet-preview-column">
-              <div className="meet-preview-box" style={cameraOn ? undefined : { background: avatarTone.tile }}>
+              <div className="meet-preview-box">
                 {cameraOn ? (
                   <video ref={videoRef} autoPlay muted playsInline className="meet-video" />
                 ) : (
