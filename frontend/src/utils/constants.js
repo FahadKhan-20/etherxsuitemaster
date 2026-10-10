@@ -10,6 +10,8 @@ export const ROUTES = {
   RECORDINGS: '/recordings',
   ANALYTICS: '/analytics',
   SETTINGS: '/settings',
+  TERMS: '/terms',
+  PRIVACY: '/privacy',
 };
 
 export const MEETING_STATES = {

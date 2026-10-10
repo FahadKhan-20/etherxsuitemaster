@@ -159,9 +159,12 @@ export default function AuthPage({ mode }) {
             </button>
 
             {signUp && (
-              <button type="button" className="exm-auth-check exm-auth-terms" onClick={() => { setTerms((on) => !on); clear(); }} aria-pressed={terms}>
-                <Tick on={terms} bad={bad === 'terms'} /><span>I agree to the Terms and Privacy Policy</span>
-              </button>
+              <div className="exm-auth-check exm-auth-terms">
+                <button type="button" className="exm-auth-tick" onClick={() => { setTerms((on) => !on); clear(); }} aria-pressed={terms} aria-label="I agree to the Terms and Privacy Policy">
+                  <Tick on={terms} bad={bad === 'terms'} />
+                </button>
+                <span>I agree to the <PolicyLinks /></span>
+              </div>
             )}
           </form>
 
@@ -172,8 +175,17 @@ export default function AuthPage({ mode }) {
         </div>
       </main>
 
-      {!signUp && <footer className="exm-auth-footer">By continuing you agree to the Terms and Privacy Policy</footer>}
+      {!signUp && <footer className="exm-auth-footer">By continuing you agree to the <PolicyLinks /></footer>}
     </div>
+  );
+}
+
+function PolicyLinks() {
+  return (
+    <>
+      <Link to={ROUTES.TERMS} target="_blank" rel="noopener noreferrer">Terms</Link> and{' '}
+      <Link to={ROUTES.PRIVACY} target="_blank" rel="noopener noreferrer">Privacy Policy</Link>
+    </>
   );
 }
 

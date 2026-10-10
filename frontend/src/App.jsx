@@ -22,6 +22,7 @@ const Recordings = lazy(() => import('./pages/Recordings'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
@@ -40,6 +41,8 @@ function AppRoutes() {
       <Routes location={location}>
         <Route path={ROUTES.LOGIN}           element={<AuthPage mode="signin" />} />
         <Route path={ROUTES.REGISTER}        element={<AuthPage mode="signup" />} />
+        <Route path={ROUTES.TERMS}           element={<LegalPage page="terms" />} />
+        <Route path={ROUTES.PRIVACY}         element={<LegalPage page="privacy" />} />
         <Route path={ROUTES.AUTH_CALLBACK}   element={<AuthCallback />} />
         <Route path={ROUTES.RESET_PASSWORD}  element={<ResetPassword />} />
         <Route element={<ProtectedRoute />}>
@@ -57,11 +60,11 @@ function AppRoutes() {
   );
 }
 
-// The intro plays once per browser session, never in front of a meeting link or an auth redirect.
+// The intro plays once per browser session, never in front of a meeting link, an auth redirect or a policy page.
 const SPLASH_KEY = 'etherx_seen_splash';
 function shouldShowSplash() {
   try { if (sessionStorage.getItem(SPLASH_KEY)) return false; } catch { /* storage blocked: still show once */ }
-  return !/^\/(auth\/callback|reset-password|room\/|join)/.test(window.location.pathname);
+  return !/^\/(auth\/callback|reset-password|room\/|join|terms|privacy)/.test(window.location.pathname);
 }
 
 function App() {
