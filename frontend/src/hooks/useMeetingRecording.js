@@ -136,8 +136,11 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
+    document.body.appendChild(link);
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    link.remove();
+    // Revoking at once can cancel a large download before the browser starts writing it.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }, []);
 
   const uploadRecording = useCallback(async (blob, duration) => {
@@ -226,15 +229,17 @@ export function useMeetingRecording({ roomCode, isHost, localStream, screenStrea
         return;
       }
       try {
+        // The host always gets a copy on this computer; the upload adds it to their Recordings page.
+        downloadRecording(blob, `etherx-meeting-${roomCode}-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')}.webm`);
         const uploaded = await uploadRecording(blob, duration);
-        if (!uploaded) downloadRecording(blob, `etherx-meeting-${roomCode}-${Date.now()}.webm`);
+        if (!uploaded) onError?.('Saved to this computer, but the copy for your Recordings page could not be uploaded.');
         setRecordingState('completed');
       } finally { completeFinish(); }
       // Only clear the "saved" notice; never a recording that started since.
       window.setTimeout(() => setRecordingState(current => (current === 'completed' ? 'idle' : current)), 2500);
     };
     recorder.start(1000);
-  }, [cleanupCapture, completeFinish, downloadRecording, roomCode, uploadRecording]);
+  }, [cleanupCapture, completeFinish, downloadRecording, onError, roomCode, uploadRecording]);
 
   const syncCaptureSources = useCallback(() => {
     const session = sessionRef.current;
