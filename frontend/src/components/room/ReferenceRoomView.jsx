@@ -570,11 +570,12 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <div style={{"display": "flex","flexDirection": "column","gap": "1px"}}><span style={{"fontSize": "11px","color": "var(--t-7d7666)"}}>{st.l}</span><span style={{"fontSize": "13px","fontFamily": "'JetBrains Mono',monospace","color": "var(--t-e8e2d3)"}}>{st.v}</span></div>
 </Fragment>)}
 </div>
-{(p.canAct) && <>
+{(p.canAct || p.canSpot) && <>
 <div style={{"display": "flex","flexWrap": "wrap","gap": "6px"}}>
-<button onClick={p.mute} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid var(--c-3a3424)","background": "transparent","color": "var(--t-e8e2d3)","font": "inherit","fontSize": "12px","cursor": "pointer"}} className="dc-23">{p.muteLabel}</button>
+{(p.canSpot) && <><button onClick={p.spot} aria-pressed={p.spotOn} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid " + String(p.spotOn ? "var(--c-d9b54a)" : "var(--c-3a3424)"),"background": "transparent","color": "var(--t-e8e2d3)","font": "inherit","fontSize": "12px","cursor": "pointer"}}>{p.spotLabel}</button></>}
+{(p.canAct) && <><button onClick={p.mute} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid var(--c-3a3424)","background": "transparent","color": "var(--t-e8e2d3)","font": "inherit","fontSize": "12px","cursor": "pointer"}} className="dc-23">{p.muteLabel}</button>
 {(p.canCohost) && <><button onClick={p.cohost} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid var(--c-3a3424)","background": "transparent","color": "var(--t-e8e2d3)","font": "inherit","fontSize": "12px","cursor": "pointer"}} className="dc-24">{p.cohostLabel}</button></>}
-<button onClick={p.remove} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid var(--c-4a2320)","background": "transparent","color": "var(--t-ff8a83)","font": "inherit","fontSize": "12px","cursor": "pointer"}} className="dc-25">{"Remove"}</button>
+<button onClick={p.remove} style={{"height": "30px","padding": "0 10px","borderRadius": "8px","border": "1px solid var(--c-4a2320)","background": "transparent","color": "var(--t-ff8a83)","font": "inherit","fontSize": "12px","cursor": "pointer"}} className="dc-25">{"Remove"}</button></>}
 </div>
 </>}
 </div>

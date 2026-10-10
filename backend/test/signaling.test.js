@@ -261,6 +261,17 @@ test('participants draw on the whiteboard only when the host allows it, and neve
   assert.equal(sent(), 1, 'board-wide actions stay with hosts');
   guest.trigger('meeting-policy-set', { roomCode: f.code, allowDrawing: true }, r => reply = r); assert.equal(reply.ok, false, 'only hosts change the policy');
 });
+test('the host spotlights one person for everyone; it clears when they leave', async t => {
+  const f = fixture(t); const host = await f.host(); const guest = await f.guest(host, 'star'); let reply;
+  guest.trigger('spotlight-set', { roomCode: f.code, socketId: guest.id }, r => reply = r); assert.equal(reply.ok, false, 'participants cannot spotlight');
+  host.trigger('spotlight-set', { roomCode: f.code, socketId: guest.id }, r => reply = r); assert.equal(reply.ok, true);
+  assert.deepEqual(f.io.emittedEvents.filter(e => e.event === 'spotlight-state').at(-1).payload, { socketId: 'star' });
+  const late = await f.guest(host, 'late');
+  assert.deepEqual(events(late, 'spotlight-state').at(-1).payload, { socketId: 'star' }, 'late joiners see it');
+  guest.disconnect();
+  assert.deepEqual(f.io.emittedEvents.filter(e => e.event === 'spotlight-state').at(-1).payload, { socketId: null });
+  host.trigger('spotlight-set', { roomCode: f.code, socketId: 'gone' }, r => reply = r); assert.equal(reply.ok, false);
+});
 test('joiners learn the current co-host', async t => {
   const f = fixture(t); const host = await f.host(); const co = await f.guest(host, 'co-a', 'co-a');
   host.trigger('make-co-host', { roomCode: f.code, socketId: co.id });

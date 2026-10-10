@@ -2,13 +2,17 @@ const { meetingMetrics } = require('./meetingMetrics');
 const { safeAck, guardedOn } = require('./socketGuard');
 // Server-authoritative policies and subgroup membership for the reference meeting UI.
 const policies = new Map(), breakouts = new Map(), ended = new Set();
+// roomCode -> socketId the host spotlighted: shown large for everyone.
+const spotlights = new Map();
 const defaults = { waitingRoom: true, allowChat: true, allowShare: true, allowDrawing: false };
 const getMeetingPolicy = code => ({ ...defaults, ...policies.get(code) });
 const getGroup = (code, id) => breakouts.get(code)?.assignments?.[id] || 'main';
 function registerMeetingExtensions(io, socket, context) {
   const { roomCode, getRoom, privileged, host, setHand, setNotes, screenShares, recordings } = context;
-  const roster = () => { const code=roomCode();if(code)io.to(code).emit('roster-state',{members:[...(getRoom()?.values()||[])].map(p=>({...p,group:getGroup(code,p.socketId)}))}); };
-  const snapshot = () => {const code=roomCode();if(!code)return;socket.emit('meeting-policy',getMeetingPolicy(code));socket.emit('breakout-state',publicBreakout(code));for(const member of getRoom()?.values()||[]){const peer=io.sockets.sockets.get(member.socketId);if(member.socketId!==socket.id&&getGroup(code,member.socketId)===getGroup(code,socket.id))socket.emit('peer-quality-request',{socketId:member.socketId,low:!!peer?.data.lowBandwidth});}roster();};
+  const roster = () => { const code=roomCode();if(!code)return;io.to(code).emit('roster-state',{members:[...(getRoom()?.values()||[])].map(p=>({...p,group:getGroup(code,p.socketId)}))});
+    // The spotlight ends when that person leaves.
+    if(spotlights.has(code)&&!getRoom()?.has(spotlights.get(code))){spotlights.delete(code);io.to(code).emit('spotlight-state',{socketId:null});} };
+  const snapshot = () => {const code=roomCode();if(!code)return;socket.emit('meeting-policy',getMeetingPolicy(code));socket.emit('breakout-state',publicBreakout(code));socket.emit('spotlight-state',{socketId:spotlights.get(code)||null});for(const member of getRoom()?.values()||[]){const peer=io.sockets.sockets.get(member.socketId);if(member.socketId!==socket.id&&getGroup(code,member.socketId)===getGroup(code,socket.id))socket.emit('peer-quality-request',{socketId:member.socketId,low:!!peer?.data.lowBandwidth});}roster();};
   const resetMedia = code => {
     const room=getRoom();if(!room)return;
     // Tear down old links before offering to peers in the new subgroup.
@@ -61,10 +65,16 @@ function registerMeetingExtensions(io, socket, context) {
     if(!privileged(code,member.userId))return ack({ok:false,error:'Only the host or co-host can switch rooms.'});
     if(groupId!=='main'&&!session.rooms.some(g=>g.id===groupId))return ack({ok:false,error:'Room unavailable.'});session.assignments[socket.id]=groupId;io.to(code).emit('breakout-state',publicBreakout(code));resetMedia(code);ack({ok:true});
   });
+  // Host or co-host spotlights one participant for everyone (null clears it).
+  on('spotlight-set',({socketId},ack,_member,room,code)=>{
+    if(socketId!==null&&!room.has(socketId))return ack({ok:false,error:'That person has left.'});
+    if(socketId)spotlights.set(code,socketId);else spotlights.delete(code);
+    io.to(code).emit('spotlight-state',{socketId:socketId||null});ack({ok:true});
+  },true);
   on('breakout-close',(_payload,ack)=>{closeBreakouts();ack({ok:true});},true);
   on('end-meeting',({notes},ack,_member,room,code)=>{ended.add(code);if(typeof notes==='string')setNotes(code,notes.slice(0,20000));if(breakouts.has(code))closeBreakouts();recordings.delete(code);io.to(code).emit('meeting-ended',{roomCode:code});ack({ok:true});for(const member of room.values()){const target=io.sockets.sockets.get(member.socketId);target?.disconnect(true);}meetingMetrics.finish(code);},true);
   return {snapshot,roster};
 }
 function publicBreakout(code){const session=breakouts.get(code);return session?{rooms:session.rooms,assignments:session.assignments,endsAt:session.endsAt}:null;}
-function clearMeetingExtensions(code){const session=breakouts.get(code);if(session?.timer)clearTimeout(session.timer);breakouts.delete(code);policies.delete(code);}
+function clearMeetingExtensions(code){const session=breakouts.get(code);if(session?.timer)clearTimeout(session.timer);breakouts.delete(code);policies.delete(code);spotlights.delete(code);}
 module.exports={registerMeetingExtensions,getMeetingPolicy,getGroup,meetingEnded:code=>ended.has(code),clearMeetingExtensions};
