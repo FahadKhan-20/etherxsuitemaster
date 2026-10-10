@@ -47,6 +47,7 @@ create table if not exists chat_messages (
   updated_at timestamptz not null default now()
 );
 create index if not exists chat_messages_room_idx on chat_messages (room_code, created_at);
+create index if not exists chat_messages_sender_idx on chat_messages (sender_id);
 
 create table if not exists feedback (
   id uuid primary key default gen_random_uuid(),
@@ -56,6 +57,7 @@ create table if not exists feedback (
   text text not null check (char_length(text) <= 2000),
   created_at timestamptz not null default now()
 );
+create index if not exists feedback_submitted_by_idx on feedback (submitted_by);
 
 create table if not exists meeting_agendas (
   id uuid primary key default gen_random_uuid(),
