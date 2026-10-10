@@ -34,6 +34,7 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
   const [isDrawing, setIsDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [template, setTemplate] = useState('blank');
+  const [uploadError, setUploadError] = useState('');
   const [layers, setLayers] = useState({
     guides: true,
     ink: true,
@@ -499,21 +500,32 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
                   <ImagePlus className="h-4 w-4" />
                   Upload image
                 </div>
+                {uploadError && <p role="alert" className="mt-2 text-xs text-red-400">{uploadError}</p>}
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(event) => {
+                  onChange={async (event) => {
                     const file = event.target.files?.[0];
+                    event.target.value = '';
                     if (!file) {
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onload = () => addImage(String(reader.result));
-                    reader.readAsDataURL(file);
+                    setUploadError('');
+                    try {
+                      addImage(await boardImage(file));
+                    } catch (error) {
+                      setUploadError(error.message);
+                    }
                   }}
                 />
               </label>
+            )}
+            {canEdit && uploadedImage && (
+              <button type="button" className={outlineBtn} onClick={removeImage}>
+                <X className="h-4 w-4" />
+                Remove image
+              </button>
             )}
 
             <div className="mt-auto flex flex-col gap-2">
@@ -531,6 +543,35 @@ export default function Whiteboard({ isOpen, onClose, socket, socketReady, roomC
       </div>
     </motion.div>
   );
+}
+
+// The board image travels to everyone in one socket message, which the server caps at 1 MB; a phone
+// photo is several MB as a data URL and would be dropped (and cut the uploader's connection).
+// Fit it to the board and re-encode until it is comfortably under the cap.
+const MAX_BOARD_IMAGE_CHARS = 700_000;
+async function boardImage(file) {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode().catch(() => { throw new Error('This image could not be read.'); });
+    for (const [maxWidth, quality] of [[1600, 0.85], [1280, 0.75], [960, 0.65]]) {
+      const scale = Math.min(1, maxWidth / image.naturalWidth, (maxWidth * 9 / 16) / image.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0a0a0a'; // JPEG has no transparency: match the board
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      if (dataUrl.length <= MAX_BOARD_IMAGE_CHARS) return dataUrl;
+    }
+    throw new Error('This image is too detailed to share. Try a smaller one.');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function ToolButton({ active, icon: Icon, label, onClick }) {
