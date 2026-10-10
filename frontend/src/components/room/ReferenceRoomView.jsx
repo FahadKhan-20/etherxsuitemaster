@@ -204,6 +204,7 @@ export const REFERENCE_BINDINGS=[
   "roomy",
   "pip",
   "rxRef",
+  "chatListRef",
   "sendChat",
   "sendFb",
   "sendInvite",
@@ -484,7 +485,7 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 {(v.isChat) && <>
 <div style={{"display": "flex","alignItems": "center","gap": "8px","margin": "12px 16px 0","padding": "8px 12px","borderRadius": "10px","background": "var(--c-16201a)","color": "var(--t-8fd8a8)","fontSize": "12px"}}>
 <svg width={"14"} height={"14"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"}></path><path d={"M9 12l2 2 4-4"}></path></svg>{"Messages shared with everyone"}</div>
-<div style={{"flex": "1","minHeight": "0","overflow": "auto","padding": "16px","display": "flex","flexDirection": "column","gap": "16px"}}>
+<div ref={v.chatListRef} style={{"flex": "1","minHeight": "0","overflow": "auto","padding": "16px","display": "flex","flexDirection": "column","gap": "16px"}}>
 {(v.messages || []).map((m,index)=><Fragment key={m?.key || m?.id || index}>
 <div style={{"display": "flex","gap": "10px"}}>
 <span style={{"flexShrink": "0","width": "30px","height": "30px","borderRadius": "50%","background": "var(--c-2a2519)","color": "var(--t-d9b54a)","fontSize": "11px","fontWeight": "700","display": "flex","alignItems": "center","justifyContent": "center"}}>{m.initials}</span>
