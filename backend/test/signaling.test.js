@@ -219,13 +219,11 @@ test('reference security policy blocks guest actions and admits without waiting 
   const admitted=await f.connect('auto');admitted.trigger('request-join',{roomCode:f.code});assert.equal(events(admitted,'admitted').length,1);f.join(admitted);assert(rooms.get(f.code).has('auto'));
   host.trigger('lock-room',{roomCode:f.code,locked:true});const blocked=await f.connect('blocked');blocked.trigger('request-join',{roomCode:f.code});assert.equal(events(blocked,'admitted').length,0);
 });
-test('breakouts isolate signaling and permit only assigned guest rooms and host visits',async t=>{
+test('breakouts isolate signaling and only the host or co-host switches rooms',async t=>{
   const f=fixture(t),host=await f.host(),a=await f.guest(host,'a'),b=await f.guest(host,'b');let reply;
   host.trigger('breakout-open',{roomCode:f.code,groups:[[a.id],[b.id]],minutes:5},r=>reply=r);assert.equal(reply.ok,true);
   const count=events(b,'offer').length;a.trigger('offer',{roomCode:f.code,to:b.id,offer:{sdp:'cross-room'}});assert.equal(events(b,'offer').length,count);
-  a.trigger('breakout-visit',{roomCode:f.code,groupId:'breakout-2'},r=>reply=r);assert.equal(reply.ok,false);
-  a.trigger('breakout-visit',{roomCode:f.code,groupId:'main'},r=>reply=r);assert.equal(reply.ok,true);
-  a.trigger('breakout-visit',{roomCode:f.code,groupId:'breakout-1'},r=>reply=r);assert.equal(reply.ok,true);
+  for(const groupId of ['breakout-2','main','breakout-1']){a.trigger('breakout-visit',{roomCode:f.code,groupId},r=>reply=r);assert.equal(reply.ok,false,'participants cannot switch rooms: '+groupId);}
   host.trigger('breakout-visit',{roomCode:f.code,groupId:'breakout-1'},r=>reply=r);assert.equal(reply.ok,true);
   const before=events(host,'offer').length;a.trigger('offer',{roomCode:f.code,to:host.id,offer:{sdp:'same-room'}});assert.equal(events(host,'offer').length,before+1);
   host.trigger('breakout-close',{roomCode:f.code},r=>reply=r);assert.equal(reply.ok,true);assert.equal(f.io.emittedEvents.filter(e=>e.event==='breakout-state').at(-1).payload,null);

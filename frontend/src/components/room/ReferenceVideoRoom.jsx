@@ -236,6 +236,6 @@ export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,prefere
     {Object.entries(rtc.peers).map(([id,p])=>p.stream&&!s.left&&!s.ended?<RemoteVoice key={id} stream={p.stream} output={preferences.outputDevice}/>:null)}
     {(s.captions||s.captionDemand)&&!s.left&&!s.ended&&<CaptionsOverlay socket={rtc.socket} roomCode={roomCode} show={s.captions} transcribe={(s.captions||s.captionDemand)&&micLive&&!rtc.hostMuted} language={preferences.captionLanguage} onUnavailable={captionUnavailable} render={()=>null} onUpdate={captionUpdate}/>}
     
-    {s.breakout&&!s.left&&!s.ended&&<div className="reference-breakout-navigation"><span>{s.breakout.rooms.find(r=>r.id===s.breakout.assignments[rtc.mySocketId])?.name||'Main room'}</span>{(canMod?s.breakout.rooms:s.breakout.rooms.filter(r=>r.members.includes(rtc.mySocketId))).map(r=><button key={r.id} onClick={()=>command('breakout-visit',{groupId:r.id})}>Visit {r.name}</button>)}<button onClick={()=>command('breakout-visit',{groupId:'main'})}>Return to main room</button></div>}
+    {s.breakout&&!s.left&&!s.ended&&<div className="reference-breakout-navigation"><span>{s.breakout.rooms.find(r=>r.id===s.breakout.assignments[rtc.mySocketId])?.name||'Main room'}</span>{canMod&&<>{s.breakout.rooms.map(r=><button key={r.id} onClick={()=>command('breakout-visit',{groupId:r.id})}>Visit {r.name}</button>)}<button onClick={()=>command('breakout-visit',{groupId:'main'})}>Return to main room</button></>}</div>}
   </>;
 }

@@ -57,7 +57,8 @@ function registerMeetingExtensions(io, socket, context) {
   },true);
   on('breakout-visit',({groupId},ack,member,_room,code)=>{
     const session=breakouts.get(code);if(!session)return ack({ok:false,error:'Breakout rooms are closed.'});
-    if(!privileged(code,member.userId)&&groupId!=='main'&&!session.rooms.some(r=>r.id===groupId&&r.members.includes(socket.id)))return ack({ok:false,error:'Join your assigned room.'});
+    // Participants stay in the room they were assigned; only the host or co-host moves between rooms.
+    if(!privileged(code,member.userId))return ack({ok:false,error:'Only the host or co-host can switch rooms.'});
     if(groupId!=='main'&&!session.rooms.some(g=>g.id===groupId))return ack({ok:false,error:'Room unavailable.'});session.assignments[socket.id]=groupId;io.to(code).emit('breakout-state',publicBreakout(code));resetMedia(code);ack({ok:true});
   });
   on('breakout-close',(_payload,ack)=>{closeBreakouts();ack({ok:true});},true);
