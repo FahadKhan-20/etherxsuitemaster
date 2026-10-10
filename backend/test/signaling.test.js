@@ -240,6 +240,22 @@ test('reference rename, bandwidth request, file removal and end-all use authenti
   host.trigger('end-meeting',{roomCode:f.code,notes:'Saved summary'},r=>reply=r);assert.equal(reply.ok,true);assert.equal(guest.connected,false);assert.equal(host.connected,false);
 });
 
+test('a co-host who reconnects keeps the role and can still edit the whiteboard', async t => {
+  const f = fixture(t); const host = await f.host(); const co = await f.guest(host, 'co-1', 'co-user');
+  host.trigger('make-co-host', { roomCode: f.code, socketId: co.id }); co.disconnect();
+  const back = await f.connect('co-2', 'co-user'); back.trigger('request-join', { roomCode: f.code });
+  assert.equal(events(back, 'admitted').length, 1, 'co-host needs no new approval'); f.join(back);
+  assert.deepEqual(events(back, 'co-host-changed').at(-1).payload, { socketId: 'co-2', userId: 'co-user', userName: 'co-user' });
+  const before = host.clientEvents.length;
+  back.trigger('whiteboard-op', { roomCode: f.code, op: { type: 'STROKE_START', id: 'l1', tool: 'pen', color: '#fff', size: 4, point: { x: 1, y: 1 } } });
+  assert.ok(back.roomEvents.some(e => e.event === 'whiteboard-op'), 'stroke is broadcast'); assert.ok(host.clientEvents.length >= before);
+});
+test('joiners learn the current co-host', async t => {
+  const f = fixture(t); const host = await f.host(); const co = await f.guest(host, 'co-a', 'co-a');
+  host.trigger('make-co-host', { roomCode: f.code, socketId: co.id });
+  const late = await f.guest(host, 'late');
+  assert.equal(events(late, 'co-host-changed').at(-1).payload.socketId, 'co-a');
+});
 test('host departure promotes co-host and publishes updated roster authority',async t=>{
   const f=fixture(t),host=await f.host(),guest=await f.guest(host,'successor');
   host.trigger('make-co-host',{roomCode:f.code,socketId:guest.id});host.disconnect();

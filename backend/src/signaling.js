@@ -319,6 +319,14 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
 
       // Send existing participants to the new joiner
       const existing = Array.from(room.values()).filter(p=>!replaced.includes(p)&&getGroup(roomCode,p.socketId)===getGroup(roomCode,socket.id));
+      // Same for the co-host: a rejoining co-host takes the role to this socket, and every joiner learns who holds it.
+      const coHost = roomCoHosts.get(roomCode);
+      if (coHost && String(coHost.userId) === String(userId)) {
+        coHost.socketId = socket.id;
+        coHost.userName = userName;
+        io.to(roomCode).emit('co-host-changed', { socketId: socket.id, userId: coHost.userId, userName });
+      }
+      socket.emit('co-host-changed', coHost ? { socketId: coHost.socketId, userId: coHost.userId, userName: coHost.userName } : { socketId: null, userId: null, userName: null });
       socket.emit('existing-users', existing);
 
       // Tell the new joiner if someone is already presenting
@@ -963,12 +971,8 @@ function setupSignaling(httpServer, allowedOrigin, SocketServer = Server, {
         console.info(`[participants] ${currentRoom}: ${room.size} participant(s) in room`);
         extension.roster();
 
-        // If the co-host disconnects, the badge/authority goes with them.
-        const co = roomCoHosts.get(currentRoom);
-        if (co && co.socketId === socket.id) {
-          roomCoHosts.delete(currentRoom);
-          socket.to(currentRoom).emit('co-host-changed', { socketId: null, userId: null, userName: null });
-        }
+        // A co-host who drops keeps the role (it belongs to the account) and gets it back on rejoin;
+        // the host can still remove it. Until then the co-host has no socket to act from.
 
         // If the HOST disconnects and a co-host is present, promote them automatically
         // (not when the host is still here from the tab or device that replaced this one).
