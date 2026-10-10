@@ -51,3 +51,8 @@
 
 .exmeet-reference-logo{display:block;height:32px;width:auto}
 .exmeet-reference [data-stack=true]>[data-tile]:first-child{aspect-ratio:16/9;height:auto;min-height:0!important}
+/* Enlarge a shared screen: always visible on touch screens (no hover there). */
+.exmeet-reference .reference-enlarge{position:absolute;right:10px;top:10px;z-index:3;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--c-3a3424);border-radius:10px;background:rgba(0,0,0,.6);color:#f3eee2;cursor:pointer;opacity:.85}
+.exmeet-reference .reference-enlarge:hover,.exmeet-reference .reference-enlarge:focus-visible{opacity:1;border-color:var(--c-d9b54a)}
+.exmeet-reference [data-tile]:fullscreen{border:0!important;border-radius:0!important;background:#000!important}
+.exmeet-reference [data-tile]:fullscreen .reference-enlarge{display:none}

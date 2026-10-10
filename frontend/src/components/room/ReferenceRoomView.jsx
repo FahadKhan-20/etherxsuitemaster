@@ -283,6 +283,9 @@ export default function ReferenceRoomView({v}) { return <div className="exmeet-r
 <div data-tile={t.key} onClick={t.click} style={{"position": "relative","minHeight": "0","minWidth": "0","gridColumn": t.col,"gridRow": t.row,"borderRadius": t.radius,"overflow": "hidden","background": t.bg,"border": "2px solid " + String(t.ring),"boxShadow": t.glow,"filter": t.freeze,"display": "flex","flexDirection": "column","gap": "18px","alignItems": "center","justifyContent": "center","cursor": "pointer","transition": "border-color 200ms, box-shadow 160ms ease, filter 400ms ease"}}>
 {(t.isScreen) && <>
 <video ref={t.videoRef} autoPlay={true} muted={true} playsInline={true} style={{"position": "absolute","inset": "0","width": "100%","height": "100%","objectFit": "contain","background": "var(--c-050504)"}}></video>
+{(!t.screenFallback) && <>
+<button className="reference-enlarge" onClick={t.enlarge} aria-label={"Enlarge shared screen"} title={"Enlarge"}><svg width={"18"} height={"18"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}><path d={"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"}></path></svg></button>
+</>}
 {(t.screenFallback) && <>
 <div style={{"position": "absolute","inset": "0","display": "flex","flexDirection": "column","alignItems": "center","justifyContent": "center","gap": "10px","background": "var(--c-0e0d0b)","textAlign": "center","padding": "24px"}}>
 <svg width={"40"} height={"40"} viewBox={"0 0 24 24"} fill={"none"} stroke={"var(--t-d9b54a)"} strokeWidth={"1.5"} strokeLinecap={"round"} strokeLinejoin={"round"}><rect x={"3"} y={"4"} width={"18"} height={"13"} rx={"2"}></rect><path d={"M8 21h8M12 17v4M9 10l3-3 3 3M12 7v7"}></path></svg>
