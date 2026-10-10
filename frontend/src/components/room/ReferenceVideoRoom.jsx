@@ -148,7 +148,7 @@ export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,prefere
   const me=s.name.trim()||'Guest',canMod=rtc.canHost,amHost=rtc.amHost,micLive=!rtc.micMuted,camLive=!rtc.cameraOff&&!!rtc.localStream;
   const myAvatar=s.roster.find(p=>p.socketId===rtc.mySocketId)?.avatar||getStoredUser()?.avatar||null;
   const roster=s.roster.length?s.roster:[{socketId:rtc.mySocketId,userName:me,isHost:amHost},...Object.entries(rtc.peers).map(([id,p])=>({...p,socketId:id}))];
-  const persons=[{id:'me',me:true,name:me,avatar:myAvatar,muted:!micLive,stream:effects?processed:rtc.localStream},...Object.entries(rtc.peers).map(([id,p])=>({id,name:roster.find(r=>r.socketId===id)?.userName||p.userName||'Guest',avatar:roster.find(r=>r.socketId===id)?.avatar||p.avatar||null,muted:!!p.isMuted,camOff:!!p.videoOff,stream:p.stream}))];
+  const persons=[{id:'me',me:true,name:me,avatar:myAvatar,muted:!micLive,stream:effects?processed:rtc.localStream},...Object.entries(rtc.peers).map(([id,p])=>({id,name:roster.find(r=>r.socketId===id)?.userName||p.userName||'Guest',avatar:roster.find(r=>r.socketId===id)?.avatar||p.avatar||null,muted:!!p.isMuted,camOff:!!p.videoOff,stream:p.stream,screenStream:p.screenStream}))];
   // Camera-off tiles take a darker shade of the person's profile photo colour; people without a photo get a colour from their name.
   const avatarKey=persons.map(p=>p.avatar||'').join('\n');
   useEffect(()=>{let alive=true;for(const src of new Set(avatarKey.split('\n').filter(Boolean)))avatarColor(src).then(rgb=>{if(alive&&rgb)setPhotoTones(prev=>prev[src]?prev:{...prev,[src]:rgb});});return()=>{alive=false;};},[avatarKey]);
@@ -157,7 +157,7 @@ export default function ReferenceVideoRoom({roomCode,isHost,initialMedia,prefere
   const hands=rtc.handQueue.map((h,i)=>({id:h.socketId===rtc.mySocketId?'me':h.socketId,name:h.socketId===rtc.mySocketId?me+' (you)':h.userName,num:i+1}));const handPos=id=>hands.findIndex(h=>h.id===id)+1;
   let items=persons.filter(p=>!(p.me&&s.selfHidden&&persons.length>1));
   const media=rtc.sharedMediaUrl,main=media?'media':rtc.isScreenSharing?'screen':rtc.screenSharerId?'remote-screen':s.spot||(!s.grid?(items.some(p=>p.id===s.speaker)?s.speaker:'me'):null);
-  if(rtc.screenSharerId){const sharer=items.find(p=>p.id===rtc.screenSharerId);if(sharer)items=[{id:'remote-screen',kind:'screen',stream:sharer.stream},...items.map(p=>p.id===sharer.id?{...p,stream:null,camOff:true}:p)];}
+  if(rtc.screenSharerId){const sharer=items.find(p=>p.id===rtc.screenSharerId);/* the screen arrives on its own video line, so the presenter's tile keeps their camera */if(sharer)items=[{id:'remote-screen',kind:'screen',stream:sharer.screenStream||sharer.stream},...(sharer.screenStream?items:items.map(p=>p.id===sharer.id?{...p,stream:null,camOff:true}:p))];}
   if(main==='screen')items=[{id:'screen',kind:'screen',stream:rtc.screenStream},...items];else if(main==='media')items=[{id:'media',kind:'media'},...items];else if(main||s.pinSpeaker){const focus=main||s.speaker;items=[...items.filter(p=>p.id===focus),...items.filter(p=>p.id!==focus)];}
   const stage=!!main&&items.length>1,cols=narrow?(items.length<=2&&(s.height||innerHeight)>(s.width||innerWidth)?1:Math.min(2,items.length)):items.length<=1?1:items.length<=4?2:items.length<=9?3:4;
   const backgroundOptions=/^data:image\/|^https?:\/\//i.test(s.bg||'')?[...BGS,{id:s.bg,label:'Custom',css:`url("${s.bg}") center / cover`}]:BGS;

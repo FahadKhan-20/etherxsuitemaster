@@ -32,6 +32,12 @@ const FALLBACK_ICE_SERVERS = [
  * @param {object} [opts]    - Options object.
  * @param {Function} [opts.onKicked] - Called when the local user is removed by host.
  */
+// Video lines in negotiated order: [0] camera, [1] screen share. Each connection carries both, so a
+// presenter's camera keeps flowing while they share. Lines not yet negotiated (mid null) are skipped.
+const videoLines = (pc) => pc.getTransceivers()
+  .filter(t => t.mid !== null && t.receiver.track.kind === 'video')
+  .sort((a, b) => Number(a.mid) - Number(b.mid));
+
 export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffects = false, enabled = true } = {}) {
   const normalizedCode = (roomCode || '').trim().toLowerCase();
   const { account } = useWallet();
@@ -144,13 +150,16 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
   // Keeps one stable MediaStream per remote peer so VideoTile's srcObject
   // never needs to be replaced — we just mutate the track list in place and
   // force a re-render by updating the peers state with a new stream wrapper.
-  const remoteStreamsRef = useRef({}); // socketId → MediaStream
+  const remoteStreamsRef = useRef({}); // socketId → MediaStream (camera + mic)
+  const remoteScreensRef = useRef({}); // socketId → MediaStream (their shared screen)
   const pendingCandidatesRef = useRef({}); // socketId → [candidate]
 
   // ── Peer connection factory ─────────────────────────────────────────────────
   // createPC creates a NEW RTCPeerConnection for socketId.
   // For renegotiation on an EXISTING connection use the 'offer' handler below.
-  const createPC = useCallback((socketId, onStream) => {
+  // The side that creates the offer adds the audio, camera and screen lines; the answering side gets
+  // them from that offer (see the 'offer' handler), so both ends agree on which video line is which.
+  const createPC = useCallback((socketId, onStream, offerer = false) => {
     // Close any pre-existing PC for this peer before creating a new one
     if (pcsRef.current[socketId]) {
       pcsRef.current[socketId].close();
@@ -163,11 +172,12 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     const screenTrack = screenStreamRef.current?.getVideoTracks()[0] || null;
     const audioTrack = screenAudioMixRef.current?.track || local?.getAudioTracks()[0];
     const rawVideo = local?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
-    const videoTrack = screenTrack || (cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : rawVideo));
+    const videoTrack = cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : rawVideo);
     if (audioTrack) pc.addTrack(audioTrack, local);
-    else pc.addTransceiver('audio', { direction: 'sendrecv' });
+    else if (offerer) pc.addTransceiver('audio', { direction: 'sendrecv' });
     if (videoTrack) pc.addTrack(videoTrack, local);
-    else pc.addTransceiver('video', { direction: 'sendrecv' });
+    else if (offerer) pc.addTransceiver('video', { direction: 'sendrecv' });
+    if (offerer) pc.addTransceiver(screenTrack || 'video', { direction: 'sendrecv' });
 
     // Reuse or create a stable MediaStream for this peer.
     // Reusing the same object means the <video> srcObject stays valid;
@@ -177,17 +187,18 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     }
     const remoteStream = remoteStreamsRef.current[socketId];
 
-    pc.ontrack = ({ track, streams }) => {
-      // Replace any existing track of the same kind so we never accumulate
-      // stale camera/screen tracks on the same stream object.
-      remoteStream.getTracks()
-        .filter(t => t.kind === track.kind)
-        .forEach(t => remoteStream.removeTrack(t));
-      remoteStream.addTrack(track);
-      // Notify VideoTile by passing a NEW MediaStream wrapper that contains
-      // the same underlying tracks — this changes the object reference so
-      // VideoTile's useEffect re-runs and reassigns srcObject.
-      onStream(new MediaStream(remoteStream.getTracks()));
+    pc.ontrack = ({ track, transceiver }) => {
+      if (track.kind === 'video' && videoLines(pc)[1] === transceiver) {
+        remoteScreensRef.current[socketId] = new MediaStream([track]);
+      } else {
+        // Replace any existing track of the same kind so stale camera/mic tracks never accumulate.
+        remoteStream.getTracks()
+          .filter(t => t.kind === track.kind)
+          .forEach(t => remoteStream.removeTrack(t));
+        remoteStream.addTrack(track);
+      }
+      // New MediaStream wrappers change the object reference, so tiles reassign srcObject.
+      onStream(new MediaStream(remoteStream.getTracks()), remoteScreensRef.current[socketId] || null);
     };
 
     pc.onicecandidate = ({ candidate }) => {
@@ -203,6 +214,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         pc.close();
         delete pcsRef.current[socketId];
         delete remoteStreamsRef.current[socketId];
+        delete remoteScreensRef.current[socketId];
         delete pendingCandidatesRef.current[socketId];
       }
     };
@@ -241,8 +253,8 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
    * otherwise (peer joined while we had no camera, or the line is receive-only)
    * it enables the line and renegotiates.
    */
-  const setPeerVideo = useCallback(async (socketId, pc, track) => {
-    const tr = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+  const setPeerLine = useCallback(async (socketId, pc, track, line) => {
+    const tr = videoLines(pc)[line] || (line === 0 ? pc.getTransceivers().find(t => t.receiver.track.kind === 'video') : null);
     const canSend = !!tr && tr.mid !== null &&
       (tr.currentDirection === 'sendrecv' || tr.currentDirection === 'sendonly');
     if (canSend || !track) {
@@ -252,11 +264,15 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     if (tr) {
       tr.direction = 'sendrecv';
       await tr.sender.replaceTrack(track);
-    } else {
+    } else if (line === 0) {
       pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+    } else {
+      pc.addTransceiver(track, { direction: 'sendrecv' });
     }
     await renegotiate(socketId, pc);
   }, [renegotiate]);
+  const setPeerVideo = useCallback((socketId, pc, track) => setPeerLine(socketId, pc, track, 0), [setPeerLine]);
+  const setPeerScreen = useCallback((socketId, pc, track) => setPeerLine(socketId, pc, track, 1), [setPeerLine]);
 
   // ── Main effect: media + socket ─────────────────────────────────────────────
   useEffect(() => {
@@ -346,9 +362,9 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       socket.on('peer-quality-request',({socketId,low})=>{peerQualityRef.current[socketId]=!!low;if(pcsRef.current[socketId])applyPeerQuality(socketId,pcsRef.current[socketId]);});
       socket.on('existing-users', async (users) => {
         for (const u of users) {
-          const pc = createPC(u.socketId, (remoteStream) => {
-            setPeers(prev => ({ ...prev, [u.socketId]: { ...prev[u.socketId], stream: remoteStream } }));
-          });
+          const pc = createPC(u.socketId, (remoteStream, screenStream) => {
+            setPeers(prev => ({ ...prev, [u.socketId]: { ...prev[u.socketId], stream: remoteStream, screenStream } }));
+          }, true);
           setPeers(prev => ({
             ...prev,
             [u.socketId]: {
@@ -379,28 +395,16 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         // established ICE connection and lose all existing tracks.
         let pc = pcsRef.current[from];
         if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-          pc = createPC(from, (remoteStream) => {
-            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
+          pc = createPC(from, (remoteStream, screenStream) => {
+            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream, screenStream } }));
           });
-        } else {
-          // Renegotiation: update the ontrack handler so new tracks from the
-          // screen-share are delivered to the correct peers state entry.
-          const onStream = (remoteStream) => {
-            setPeers(prev => ({ ...prev, [from]: { ...prev[from], stream: remoteStream } }));
-          };
-          if (!remoteStreamsRef.current[from]) {
-            remoteStreamsRef.current[from] = new MediaStream();
-          }
-          const remoteStream = remoteStreamsRef.current[from];
-          pc.ontrack = ({ track }) => {
-            remoteStream.getTracks()
-              .filter(t => t.kind === track.kind)
-              .forEach(t => remoteStream.removeTrack(t));
-            remoteStream.addTrack(track);
-            onStream(new MediaStream(remoteStream.getTracks()));
-          };
         }
         await pc.setRemoteDescription(offer);
+        // Answer with both video lines able to send: camera on line 0, our screen (if sharing) on line 1.
+        const [cameraLine, screenLine] = videoLines(pc);
+        for (const line of [cameraLine, screenLine]) if (line && line.direction !== 'sendrecv') line.direction = 'sendrecv';
+        const ourScreen = screenStreamRef.current?.getVideoTracks()[0] || null;
+        if (screenLine && screenLine.sender.track !== ourScreen) await screenLine.sender.replaceTrack(ourScreen);
 
         // Drain any pending ICE candidates that arrived before the remote description was set
         if (pendingCandidatesRef.current[from]?.length) {
@@ -449,6 +453,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
         pcsRef.current[socketId]?.close();
         delete pcsRef.current[socketId];
         delete remoteStreamsRef.current[socketId];
+        delete remoteScreensRef.current[socketId];
         delete pendingCandidatesRef.current[socketId];
         setPeers(prev => { const n = { ...prev }; delete n[socketId]; return n; });
         setSpotlightId(id => id === socketId ? 'local' : id);
@@ -637,7 +642,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       socket.on('connect', () => {
         if (connectedBefore) {
           Object.values(pcsRef.current).forEach(pc => pc.close());
-          pcsRef.current = {}; remoteStreamsRef.current = {}; pendingCandidatesRef.current = {};
+          pcsRef.current = {}; remoteStreamsRef.current = {}; remoteScreensRef.current = {}; pendingCandidatesRef.current = {};
           setPeers({}); setSpotlightId('local'); setScreenSharerId(null);
         }
         connectedBefore = true;
@@ -657,6 +662,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       Object.values(pcsRef.current).forEach(pc => pc.close());
       pcsRef.current = {};
       remoteStreamsRef.current = {};
+      remoteScreensRef.current = {};
       pendingCandidatesRef.current = {};
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
@@ -697,7 +703,6 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
   const setOutgoingVideoTrack = useCallback(async track => {
     outgoingVideoRef.current = !cameraOffRef.current && track?.readyState === 'live' ? track : null;
-    if (screenStreamRef.current) return;
     const raw = localStreamRef.current?.getVideoTracks().find(t => t.enabled && t.readyState === 'live');
     const outgoing = cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : raw) || null;
     await Promise.all(Object.entries(pcsRef.current).map(([id, pc]) => setPeerVideo(id, pc, outgoing).catch(() => {})));
@@ -843,15 +848,13 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     const mix = screenAudioMixRef.current;
     screenAudioMixRef.current = null;
     const micTrack = localStreamRef.current?.getAudioTracks()[0] || null;
-    // Back to the camera — or null when the camera is off, which clears the ended screen frame.
-    const camTrack = cameraOffRef.current ? null : outgoingVideoRef.current || (effectsRef.current ? null : localStreamRef.current?.getVideoTracks().find(t => t.enabled)) || null;
 
     await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
       try {
         if (mix && micTrack) {
           await pc.getTransceivers().find(t => t.receiver.track.kind === 'audio')?.sender.replaceTrack(micTrack);
         }
-        await setPeerVideo(id, pc, camTrack);
+        await setPeerScreen(id, pc, null); // the camera line was never touched
       } catch (err) {
         console.warn('Could not restore outgoing tracks for', id, err);
       }
@@ -860,7 +863,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
     mix?.ctx.close().catch(() => { });
     socketRef.current?.emit('screen-share-stop', { roomCode });
     setIsScreenSharing(false);
-  }, [roomCode, setPeerVideo]);
+  }, [roomCode, setPeerScreen]);
 
   const startScreenShare = useCallback(async () => {
     if (screenStreamRef.current) return;
@@ -916,7 +919,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
 
     await Promise.all(Object.entries(pcsRef.current).map(async ([id, pc]) => {
       try {
-        await setPeerVideo(id, pc, screenTrack);
+        await setPeerScreen(id, pc, screenTrack);
         if (mixTrack) {
           await pc.getTransceivers().find(t => t.receiver.track.kind === 'audio')?.sender.replaceTrack(mixTrack);
         }
@@ -925,7 +928,7 @@ export function useWebRTC(roomCode, { onKicked, isHost, initialMedia, videoEffec
       }
     }));
     setIsScreenSharing(true);
-  }, [roomCode, screenSharerId, setPeerVideo, stopScreenShare, showScreenNotice]);
+  }, [roomCode, screenSharerId, setPeerScreen, stopScreenShare, showScreenNotice]);
 
   const toggleScreenShare = useCallback(
     () => (screenStreamRef.current ? stopScreenShare() : startScreenShare()),
