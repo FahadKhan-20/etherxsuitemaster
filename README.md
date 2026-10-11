@@ -18,19 +18,19 @@
   </p>
 
   <p align="center">
-    <a href="#-key-features">Key Features</a> •
-    <a href="#-tech-stack">Tech Stack</a> •
-    <a href="#-getting-started">Getting Started</a> •
-    <a href="#-project-structure">Project Structure</a> •
-    <a href="#-environment-configuration">Configuration</a> •
-    <a href="#-roadmap">Roadmap</a>
+    <a href="#overview">Overview</a> •
+    <a href="#key-features">Key Features</a> •
+    <a href="#tech-stack">Tech Stack</a> •
+    <a href="#getting-started">Getting Started</a> •
+    <a href="#project-structure">Project Structure</a> •
+    <a href="#security--privacy">Security & Privacy</a>
   </p>
 
 </div>
 
 ---
 
-## 🌟 Overview
+## Overview
 
 **EtherX Meet** is a high-performance, privacy-focused video conferencing platform designed to bridge Web2 convenience with Web3 security. Engineered from the ground up for minimal latency, sleek dark luxury aesthetics, and multi-device fluidity, EtherX Meet offers an enterprise-grade meeting experience without surveillance or data exploitation.
 
@@ -38,38 +38,38 @@ Whether hosting an all-hands call, a Web3 governance summit, or an interactive w
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 🎥 High-Fidelity Video & Audio
+### High-Fidelity Video & Audio
 - **WebRTC Mesh & LiveKit Core**: Crystal-clear, ultra-low latency audio/video streaming.
 - **Adaptive Layouts**: Automatic speaker spotlight, active speaker detection, grid and focus views.
 - **Smart Mobile Adaptation**: Fullscreen landscape viewing on phones for shared screens and presentations.
 - **Noise Suppression**: Deep filter audio toggle for eliminating ambient noise.
 - **Virtual Backgrounds**: Fluid background blurring and preset selection previewed directly from the pre-join lobby.
 
-### 🛡️ Dual Web3 & Web2 Authentication
+### Dual Web3 & Web2 Authentication
 - **MetaMask / Web3Auth Embedded Wallets**: Sign in seamlessly with social accounts backed by non-custodial Polygon wallets.
 - **Google OAuth 2.0 & Password Auth**: Enterprise-grade Google Sign-In with automated email-linking protection to prevent account takeover.
 - **Zero-Friction Guest Mode**: One-click instant lobby join with host admittance approval.
 
-### 🎨 Real-Time Collaborative Whiteboard
+### Real-Time Collaborative Whiteboard
 - **Multi-User Canvas**: Live synchronized drawing with host-controlled permissions.
 - **Asset Attachment**: Drag-and-drop image uploads viewable by all meeting participants.
 - **Vector & PDF Export**: Instant export to PNG or vector-optimized high-definition PDF.
 
-### 📅 Smart Meeting Management
+### Smart Meeting Management
 - **Instant & Scheduled Rooms**: Schedule meetings with recurring cadence and automatic duration checks.
 - **Calendar & Invitations**: Direct integration with Google Calendar and automated email invitations powered by EmailJS.
 - **Web Push Notifications**: Real-time push alerts for join requests and upcoming meeting reminders.
 
-### 💾 Decentralized Storage & Recording
+### Decentralized Storage & Recording
 - **Serverless & Cloud Recording**: Client-side recording with instant download upon meeting end.
 - **IPFS & Cloudflare R2**: Secure, encrypted meeting archive storage through Pinata IPFS and signed S3-compatible URLs.
 - **Restricted Access**: Time-expiring signed playback URLs to protect private deliberations.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Domain | Technologies |
 |---|---|
@@ -83,7 +83,7 @@ Whether hosting an all-hands call, a Web3 governance summit, or an interactive w
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **Node.js**: `v20+` or `v24+`
@@ -160,7 +160,7 @@ npm run dev
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 etherxsuitemaster/
@@ -189,7 +189,7 @@ etherxsuitemaster/
 
 ---
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 - **End-to-End Media**: Peer-to-peer WebRTC connections with DTLS/SRTP encryption.
 - **Robust Authentication**: Non-custodial Web3 cryptographic keypairs alongside OAuth 2.0 with strict origin validation.
@@ -198,7 +198,7 @@ etherxsuitemaster/
 
 ---
 
-## 👥 Contributors & Acknowledgements
+## Contributors & Acknowledgements
 
 Created with passion by the **EtherX Meet** team. Built for communities, developers, and organizations looking for sovereign, high-performance collaboration tools.
 
