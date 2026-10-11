@@ -1,11 +1,11 @@
-# Keep only frontend/ and backend/ at the repo root
+# Keep frontend, backend, and README.md at the repo root
 /*
 !/.gitignore
+!/README.md
 !/frontend/
 !/backend/
 
-# Docs and markdown
-*.md
+# Docs
 docs/
 
 node_modules
