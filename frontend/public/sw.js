@@ -4,8 +4,8 @@ self.addEventListener('push', (event) => {
   try { message = event.data ? event.data.json() : {}; } catch { message = { title: event.data?.text() }; }
   event.waitUntil(self.registration.showNotification(message.title || 'EtherX Meet', {
     body: message.body || '',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
+    icon: '/favicon.png',
+    badge: '/favicon.png',
     tag: message.tag,
     data: { url: message.url || '/' },
   }));
