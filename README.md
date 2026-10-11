@@ -200,7 +200,7 @@ etherxsuitemaster/
 
 ## Contributors & Acknowledgements
 
-Created with passion by the **EtherX Meet** team. Built for communities, developers, and organizations looking for sovereign, high-performance collaboration tools.
+Created with passion by the **IgniteX** team. Built for communities, developers, and organizations looking for sovereign, high-performance collaboration tools.
 
 ---
 
